@@ -53,3 +53,27 @@ jobs:
           
       - name: Deploy Application
         run: azd deploy --no-prompt
+
+      - name: Publish app URL to run summary
+        if: success()
+        shell: pwsh
+        run: |
+          $endpoints = azd env get-value SERVICE_API_ENDPOINTS 2>$null
+          if ([string]::IsNullOrWhiteSpace($endpoints)) {
+            "No SERVICE_API_ENDPOINTS found in azd env." | Out-File -FilePath $Env:GITHUB_STEP_SUMMARY -Append
+            return
+          }
+          $webhook = ($endpoints | ConvertFrom-Json)[0]
+          $baseUrl = ([uri]$webhook).GetLeftPart([System.UriPartial]::Authority)
+          $lines = @(
+            "## 🚀 Voice Agent deployed",
+            "",
+            "| | |",
+            "|---|---|",
+            "| **Web client (live URL)** | $baseUrl |",
+            "| **Telephony webhook** | ``$webhook`` |",
+            "",
+            "Open the web client URL in a browser and click **Start Talking to Agent**."
+          )
+          $lines | Out-File -FilePath $Env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          Write-Host "App URL: $baseUrl"
