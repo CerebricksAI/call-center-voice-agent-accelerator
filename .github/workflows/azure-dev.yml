@@ -56,14 +56,15 @@ jobs:
 
       - name: Publish app URL to run summary
         if: success()
+        continue-on-error: true
         shell: pwsh
         run: |
-          $endpoints = azd env get-value SERVICE_API_ENDPOINTS 2>$null
-          if ([string]::IsNullOrWhiteSpace($endpoints)) {
-            "No SERVICE_API_ENDPOINTS found in azd env." | Out-File -FilePath $Env:GITHUB_STEP_SUMMARY -Append
+          $raw = azd env get-value SERVICE_API_ENDPOINTS 2>$null
+          $webhook = [regex]::Match([string]$raw, 'https?://[^"\]\s,]+').Value
+          if ([string]::IsNullOrWhiteSpace($webhook)) {
+            "Could not determine app URL from azd env." | Out-File -FilePath $Env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
             return
           }
-          $webhook = ($endpoints | ConvertFrom-Json)[0]
           $baseUrl = ([uri]$webhook).GetLeftPart([System.UriPartial]::Authority)
           $lines = @(
             "## 🚀 Voice Agent deployed",
