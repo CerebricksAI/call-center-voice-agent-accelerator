@@ -8,7 +8,7 @@ from quart import Quart, request, websocket
 from app.call_loop import run_call_loop
 from app.call_manager import CallManager
 from app.config_validator import validate_config
-from app.handler.voicelive_media_handler import VoiceLiveMediaHandler
+from app.handler.web_media_handler import WebMediaHandler
 from app.logging_config import configure_logging, new_correlation_id
 from app.provider_registry import detect_provider, get_configured_providers, get_provider
 
@@ -114,8 +114,9 @@ async def web_ws():
         await websocket.close(4429, "Too Many Connections")
         return
 
-    handler = VoiceLiveMediaHandler(app.config)
+    handler = WebMediaHandler(app.config)
     await handler.init_websocket(websocket)
+    handler.set_call_context(call_id, "web")
     try:
         await run_call_loop(
             call_manager=call_manager,
@@ -135,7 +136,9 @@ async def web_ws():
 @app.route("/")
 async def index():
     """Serves the static index page."""
-    return await app.send_static_file("index.html")
+    response = await app.send_static_file("index.html")
+    response.cache_control.no_store = True
+    return response
 
 
 @app.route("/health")

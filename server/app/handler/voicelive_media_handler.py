@@ -10,6 +10,8 @@ import base64
 import json
 import logging
 import time
+import uuid
+from datetime import datetime, timezone
 from typing import Optional, Union
 
 import numpy as np
@@ -19,8 +21,10 @@ from azure.ai.voicelive.aio import connect as voicelive_connect
 from azure.ai.voicelive.models import (
     AudioEchoCancellation,
     AudioNoiseReduction,
+    AzureSemanticDetection,
     AzureSemanticVad,
     AzureStandardVoice,
+    EouThresholdLevel,
     InputAudioFormat,
     Modality,
     OutputAudioFormat,
@@ -29,6 +33,15 @@ from azure.ai.voicelive.models import (
 )
 
 from .ambient_mixer import AmbientMixer
+from app import call_store
+from app.agent_persona import (
+    AGENT_VOICE_NAME,
+    AGENT_VOICE_RATE,
+    AGENT_VOICE_STYLE,
+    AGENT_VOICE_TEMPERATURE,
+    BROKERAGE_NAME,
+    LEAD_QUALIFICATION_INSTRUCTIONS,
+)
 
 # Data type for WebSocket messages (str or bytes) sent to client
 Data = Union[str, bytes]
@@ -79,17 +92,55 @@ class VoiceLiveMediaHandler:
             except Exception as e:
                 logger.error(f"Failed to initialize AmbientMixer: {e}")
 
+        # Agent metrics / event timeline (surfaced by the web client)
+        self._metrics_t0 = None         # perf_counter origin for the session clock
+        self._turn_index = 0            # increments on each user turn
+        self._turn_ts = {}              # event name -> perf_counter for the active user turn
+        # Response-side timing is tracked per response (keyed off response.created),
+        # isolated from user turns so a stale audio chunk from a barged-over reply
+        # can't be mis-attributed to the next turn's "first audio".
+        self._active_response = None
+
+        # Per-call persistence (one Cosmos document per call)
+        self.call_id = None
+        self.channel = "web"
+        self._call_started_at = None
+        self._call_turns = []     # [{role, text, atMs}]
+        self._call_metrics = []   # [{turn, atMs, metrics, tokens, tokensPerSec}]
+        self._call_events = []    # [{event, turn, atMs, ...}]
+
     def _session_config(self) -> RequestSession:
         """Return the typed session configuration for Voice Live."""
+        voice_kwargs = {
+            "name": AGENT_VOICE_NAME,
+            "temperature": AGENT_VOICE_TEMPERATURE,
+        }
+        if AGENT_VOICE_STYLE:
+            voice_kwargs["style"] = AGENT_VOICE_STYLE
+        if AGENT_VOICE_RATE:
+            voice_kwargs["rate"] = AGENT_VOICE_RATE
+
         return RequestSession(
             modalities=[Modality.TEXT, Modality.AUDIO],
-            instructions="You are a helpful AI assistant responding in natural, engaging language.",
-            turn_detection=AzureSemanticVad(),
+            instructions=LEAD_QUALIFICATION_INSTRUCTIONS,
+            # Semantic end-of-utterance detection: wait until the caller is
+            # actually finished speaking (not just a brief pause), so turns
+            # feel human instead of getting cut off or awkwardly delayed.
+            turn_detection=AzureSemanticVad(
+                end_of_utterance_detection=AzureSemanticDetection(
+                    threshold_level=EouThresholdLevel.MEDIUM,
+                ),
+                # Barge-in: the instant the caller starts talking, interrupt the
+                # agent and discard the audio she hadn't spoken yet — she stops,
+                # listens, then responds, like a real person.
+                interrupt_response=True,
+                auto_truncate=True,
+            ),
             input_audio_format=InputAudioFormat.PCM16,
             output_audio_format=OutputAudioFormat.PCM16,
             input_audio_noise_reduction=AudioNoiseReduction(type="azure_deep_noise_suppression"),
             input_audio_echo_cancellation=AudioEchoCancellation(),
-            voice=AzureStandardVoice(name="en-US-Aria:DragonHDLatestNeural", temperature=0.8),
+            voice=AzureStandardVoice(**voice_kwargs),
         )
 
     # ------------------------------------------------------------------
@@ -99,6 +150,7 @@ class VoiceLiveMediaHandler:
     async def connect_voicelive(self):
         """Connect to Azure Voice Live API using the SDK."""
         t0 = time.perf_counter()
+        self._call_started_at = datetime.now(timezone.utc)
 
         if self.client_id:
             self._credential = ManagedIdentityCredential(client_id=self.client_id)
@@ -142,9 +194,24 @@ class VoiceLiveMediaHandler:
                     case ServerEventType.SESSION_CREATED:
                         session_id = event.session.id if hasattr(event, "session") else None
                         logger.info("[VoiceLive] Session ID: %s", session_id)
+                        await self._mark("session_created")
 
                     case ServerEventType.SESSION_UPDATED:
-                        logger.info("[VoiceLive] Session updated")
+                        session = getattr(event, "session", None)
+                        transcription = (
+                            getattr(session, "input_audio_transcription", None)
+                            if session
+                            else None
+                        )
+                        logger.info(
+                            "[VoiceLive] Session updated (input_transcription=%s)",
+                            transcription,
+                        )
+
+                    case ServerEventType.CONVERSATION_ITEM_CREATED:
+                        item = getattr(event, "item", None)
+                        if item:
+                            await self.on_conversation_item_created(item)
 
                     case ServerEventType.INPUT_AUDIO_BUFFER_CLEARED:
                         logger.debug("[VoiceLive] Input audio buffer cleared")
@@ -154,36 +221,120 @@ class VoiceLiveMediaHandler:
                             "[VoiceLive] Speech started at %s ms",
                             event.audio_start_ms,
                         )
+                        # New user turn — reset per-turn timing state.
+                        self._turn_index += 1
+                        self._turn_ts = {}
+                        await self._mark(
+                            "speech_started", audioStartMs=event.audio_start_ms
+                        )
                         await self.on_speech_started()
 
                     case ServerEventType.INPUT_AUDIO_BUFFER_SPEECH_STOPPED:
                         logger.info("[VoiceLive] Speech stopped")
+                        await self._mark("speech_stopped")
+
+                    case ServerEventType.CONVERSATION_ITEM_INPUT_AUDIO_TRANSCRIPTION_DELTA:
+                        delta = getattr(event, "delta", None)
+                        if delta:
+                            if "stt_first" not in self._turn_ts:
+                                await self._mark("stt_first")
+                            await self.on_user_transcript_delta(delta)
 
                     case ServerEventType.CONVERSATION_ITEM_INPUT_AUDIO_TRANSCRIPTION_COMPLETED:
                         transcript = event.transcript
-                        logger.debug("[VoiceLive] User: %s", transcript)
+                        logger.info("[VoiceLive] User transcript: %s", transcript)
+                        now = time.perf_counter()
+                        await self._mark(
+                            "stt_done",
+                            ts=now,
+                            sttMs=self._delta_ms(self._turn_ts.get("speech_stopped"), now),
+                        )
+                        if transcript:
+                            self._call_turns.append(
+                                {"role": "user", "text": transcript, "atMs": self._clock_ms()}
+                            )
+                            await self.on_user_transcript_done(transcript)
 
                     case ServerEventType.CONVERSATION_ITEM_INPUT_AUDIO_TRANSCRIPTION_FAILED:
+                        error = event.error if hasattr(event, "error") else "unknown"
                         logger.warning(
-                            "[VoiceLive] Transcription error: %s", event.error if hasattr(event, "error") else "unknown"
+                            "[VoiceLive] User transcription failed: %s", error
                         )
+                        await self._mark("stt_failed", message=str(error))
+
+                    case ServerEventType.RESPONSE_CREATED:
+                        created = await self._mark("response_created")
+                        # Start an isolated timing record for THIS response and
+                        # snapshot the user-turn timing that triggered it.
+                        self._active_response = {
+                            "id": getattr(getattr(event, "response", None), "id", None),
+                            "turn": self._turn_index,
+                            "created": created,
+                            "first_audio": None,
+                            "audio_done": None,
+                            "done": None,
+                            "user": dict(self._turn_ts),
+                        }
 
                     case ServerEventType.RESPONSE_AUDIO_DELTA:
                         delta = event.delta
                         if delta:
+                            ar = self._active_response
+                            rid = getattr(event, "response_id", None)
+                            if (
+                                ar is not None
+                                and ar["first_audio"] is None
+                                and (rid is None or rid == ar["id"])
+                            ):
+                                now = time.perf_counter()
+                                ar["first_audio"] = now
+                                await self._mark(
+                                    "first_audio",
+                                    ts=now,
+                                    ttfaMs=self._delta_ms(
+                                        ar["user"].get("speech_stopped"), now
+                                    ),
+                                )
                             await self.on_audio_delta(delta)
+
+                    case ServerEventType.RESPONSE_AUDIO_TRANSCRIPT_DELTA:
+                        delta = getattr(event, "delta", None)
+                        if delta:
+                            await self.on_assistant_transcript_delta(delta)
+
+                    case ServerEventType.RESPONSE_AUDIO_DONE:
+                        now = await self._mark("audio_done")
+                        if self._active_response is not None:
+                            self._active_response["audio_done"] = now
 
                     case ServerEventType.RESPONSE_AUDIO_TRANSCRIPT_DONE:
                         transcript = event.transcript
                         logger.debug("[VoiceLive] AI: %s", transcript)
-                        await self.on_transcript_done(transcript)
+                        if transcript:
+                            self._call_turns.append(
+                                {"role": "assistant", "text": transcript, "atMs": self._clock_ms()}
+                            )
+                            await self.on_transcript_done(transcript)
 
                     case ServerEventType.RESPONSE_DONE:
-                        response_id = event.response.id if hasattr(event, "response") else None
+                        response = getattr(event, "response", None)
+                        response_id = getattr(response, "id", None)
                         logger.info("[VoiceLive] Response done: id=%s", response_id)
+                        now = await self._mark("response_done")
+                        ar = self._active_response
+                        # Only emit metrics for a response we tracked from its start
+                        # (skips stale/cancelled barge-in responses with no record).
+                        if ar is not None and ar.get("created") is not None:
+                            ar["done"] = now
+                            await self._emit_turn_metrics(ar, self._extract_usage(response))
+                            self._active_response = None
 
                     case ServerEventType.ERROR:
                         logger.error("[VoiceLive] Error: %s", event.error)
+                        err = getattr(event, "error", None)
+                        await self._mark(
+                            "error", message=str(getattr(err, "message", err))
+                        )
 
                     case _:
                         logger.debug("[VoiceLive] Event: %s", event_type)
@@ -210,6 +361,11 @@ class VoiceLiveMediaHandler:
     async def init_websocket(self, socket):
         """Sets up the client WebSocket."""
         self.client_ws = socket
+
+    def set_call_context(self, call_id, channel="web"):
+        """Record identifying context used when persisting the call record."""
+        self.call_id = call_id
+        self.channel = channel
 
     async def send_message(self, message: Data):
         """Sends data back to client WebSocket."""
@@ -249,11 +405,138 @@ class VoiceLiveMediaHandler:
         else:
             await self._send_audio_to_client(audio_bytes)
 
+    async def on_user_transcript_delta(self, transcript: str):
+        """Hook: partial user speech transcript (web client only)."""
+
+    async def on_user_transcript_done(self, transcript: str):
+        """Hook: final user speech transcript (web client only)."""
+
+    async def on_assistant_transcript_delta(self, transcript: str):
+        """Hook: partial assistant speech transcript (web client only)."""
+
+    async def on_conversation_item_created(self, item):
+        """Hook: conversation item created (web client may extract user transcript)."""
+
     async def on_transcript_done(self, transcript: str):
-        """Forward transcript to client."""
-        await self.send_message(
-            json.dumps({"Kind": "Transcription", "Text": transcript})
+        """Hook: final assistant speech transcript (web client only)."""
+
+    async def on_agent_event(self, payload: dict):
+        """Hook: agent metrics + event-timeline payload (web client forwards to UI)."""
+
+    # ------------------------------------------------------------------
+    # Agent metrics + event timeline
+    # ------------------------------------------------------------------
+
+    def _clock_ms(self, t=None):
+        """Milliseconds since the session clock origin (None until first mark)."""
+        if self._metrics_t0 is None:
+            return None
+        end = t if t is not None else time.perf_counter()
+        return round((end - self._metrics_t0) * 1000)
+
+    @staticmethod
+    def _delta_ms(t_start, t_end):
+        """Milliseconds between two perf_counter readings.
+
+        Returns None if either reading is missing or the interval is negative —
+        a negative interval only arises from cross-turn / barge-in artifacts, so
+        it is surfaced as "—" rather than a bogus number.
+        """
+        if t_start is None or t_end is None:
+            return None
+        ms = round((t_end - t_start) * 1000)
+        return ms if ms >= 0 else None
+
+    async def _mark(self, name, *, ts=None, emit=True, **info):
+        """Record a per-turn timestamp and emit a timeline event to the metrics hook."""
+        now = ts if ts is not None else time.perf_counter()
+        if self._metrics_t0 is None:
+            self._metrics_t0 = now
+        self._turn_ts[name] = now
+        self._call_events.append(
+            {"event": name, "turn": self._turn_index, "atMs": self._clock_ms(now), **info}
         )
+        if emit:
+            payload = {
+                "Kind": "AgentEvent",
+                "kind": "event",
+                "event": name,
+                "turn": self._turn_index,
+                "atMs": self._clock_ms(now),
+            }
+            payload.update(info)
+            await self.on_agent_event(payload)
+        return now
+
+    @staticmethod
+    def _extract_usage(response):
+        """Pull token counts off a RESPONSE_DONE response.usage (None if absent)."""
+        usage_model = getattr(response, "usage", None) if response else None
+        if not usage_model:
+            return None
+        usage = {
+            "total": getattr(usage_model, "total_tokens", None),
+            "input": getattr(usage_model, "input_tokens", None),
+            "output": getattr(usage_model, "output_tokens", None),
+        }
+        out_details = getattr(usage_model, "output_token_details", None)
+        if out_details is not None:
+            usage["outputText"] = getattr(out_details, "text_tokens", None)
+            usage["outputAudio"] = getattr(out_details, "audio_tokens", None)
+        in_details = getattr(usage_model, "input_token_details", None)
+        if in_details is not None:
+            usage["inputText"] = getattr(in_details, "text_tokens", None)
+            usage["inputAudio"] = getattr(in_details, "audio_tokens", None)
+        return usage
+
+    async def _emit_turn_metrics(self, ar, usage):
+        """Compute one response's latencies + tokens and emit them.
+
+        Timing comes from the response's own record (``ar``) plus the snapshot of
+        the user turn that triggered it, so overlapping / barged-over responses
+        never contaminate each other. Negative intervals are clamped to None.
+        """
+        u = ar["user"]
+        speech_started = u.get("speech_started")
+        speech_stopped = u.get("speech_stopped")
+        created = ar.get("created")
+        first_audio = ar.get("first_audio")
+        audio_done = ar.get("audio_done")
+        done = ar.get("done")
+        metrics = {
+            "userSpeechMs": self._delta_ms(speech_started, speech_stopped),
+            "sttFirstMs": self._delta_ms(speech_stopped, u.get("stt_first")),
+            "sttMs": self._delta_ms(speech_stopped, u.get("stt_done")),
+            "thinkMs": self._delta_ms(speech_stopped, created),
+            "ttfaMs": self._delta_ms(speech_stopped, first_audio),
+            "ttsStartMs": self._delta_ms(created, first_audio),
+            "ttsMs": self._delta_ms(first_audio, audio_done),
+            "responseMs": self._delta_ms(created, done),
+            "turnMs": self._delta_ms(speech_started or created, done),
+        }
+        payload = {
+            "Kind": "AgentEvent",
+            "kind": "metrics",
+            "turn": ar.get("turn", self._turn_index),
+            "atMs": self._clock_ms(),
+            "metrics": metrics,
+        }
+        if usage:
+            payload["tokens"] = usage
+            output_tokens = usage.get("output")
+            response_ms = metrics.get("responseMs")
+            if output_tokens and response_ms:
+                payload["tokensPerSec"] = round(output_tokens / (response_ms / 1000), 1)
+        self._call_metrics.append(
+            {
+                "turn": payload["turn"],
+                "atMs": payload.get("atMs"),
+                "metrics": payload.get("metrics"),
+                "tokens": payload.get("tokens"),
+                "tokensPerSec": payload.get("tokensPerSec"),
+            }
+        )
+        await self.on_agent_event(payload)
 
     # ------------------------------------------------------------------
     # Audio output to client
@@ -346,8 +629,37 @@ class VoiceLiveMediaHandler:
     # Cleanup
     # ------------------------------------------------------------------
 
+    async def _persist_call_record(self) -> None:
+        """Write one document for this call to Cosmos (no-op if disabled)."""
+        if not call_store.is_enabled():
+            return
+        if not (self._call_turns or self._call_metrics):
+            return  # nothing meaningful happened on this call
+        try:
+            call_id = self.call_id or uuid.uuid4().hex
+            ended = datetime.now(timezone.utc)
+            started = self._call_started_at
+            record = {
+                "id": call_id,
+                "callId": call_id,
+                "channel": self.channel,
+                "brokerage": BROKERAGE_NAME,
+                "persona": "Maya — mortgage pre-qualification",
+                "startedAt": started.isoformat() if started else None,
+                "endedAt": ended.isoformat(),
+                "durationSec": round((ended - started).total_seconds(), 1) if started else None,
+                "turnCount": len(self._call_turns),
+                "transcript": self._call_turns,
+                "metrics": self._call_metrics,
+                "events": self._call_events,
+            }
+            await call_store.save_call(record)
+        except Exception:
+            logger.exception("[VoiceLive] Error building call record for persistence")
+
     async def cleanup(self):
-        """Cancel background tasks and close the Voice Live connection."""
+        """Persist the call record, then cancel tasks and close the connection."""
+        await self._persist_call_record()
         if self._receiver_task:
             self._receiver_task.cancel()
             try:
