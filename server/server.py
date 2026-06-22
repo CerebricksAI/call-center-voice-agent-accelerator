@@ -148,4 +148,5 @@ async def health():
 
 
 if __name__ == "__main__":
-    app.run(debug=_debug, host="0.0.0.0", port=8000)
+    _port = int(os.getenv("PORT", "8000"))
+    app.run(debug=_debug, host="0.0.0.0", port=_port)

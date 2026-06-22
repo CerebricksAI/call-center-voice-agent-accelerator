@@ -108,6 +108,7 @@ class VoiceLiveMediaHandler:
         self._call_turns = []     # [{role, text, atMs}]
         self._call_metrics = []   # [{turn, atMs, metrics, tokens, tokensPerSec}]
         self._call_events = []    # [{event, turn, atMs, ...}]
+        self._metrics_seq = 0     # sequential response # for the UI table
 
     def _session_config(self) -> RequestSession:
         """Return the typed session configuration for Voice Live."""
@@ -514,10 +515,12 @@ class VoiceLiveMediaHandler:
             "responseMs": self._delta_ms(created, done),
             "turnMs": self._delta_ms(speech_started or created, done),
         }
+        self._metrics_seq += 1
         payload = {
             "Kind": "AgentEvent",
             "kind": "metrics",
             "turn": ar.get("turn", self._turn_index),
+            "seq": self._metrics_seq,
             "atMs": self._clock_ms(),
             "metrics": metrics,
         }
@@ -530,6 +533,7 @@ class VoiceLiveMediaHandler:
         self._call_metrics.append(
             {
                 "turn": payload["turn"],
+                "seq": payload["seq"],
                 "atMs": payload.get("atMs"),
                 "metrics": payload.get("metrics"),
                 "tokens": payload.get("tokens"),
