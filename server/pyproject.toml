@@ -19,6 +19,7 @@ dependencies = [
     "azure-ai-voicelive[aiohttp]>=1.1.0",
     "urllib3>=2.7.0",
     "pyjwt>=2.13.0",
+    "azure-cosmos>=4.16.0",
 ]
 
 [project.optional-dependencies]
