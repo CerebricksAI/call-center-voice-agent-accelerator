@@ -4,6 +4,7 @@ import os
 from dotenv import load_dotenv
 
 from app.conversation_extractor import (
+    _build_extract_credential,
     _parse_insights,
     _voicelive_text_completion,
     build_extract_user_prompt,
@@ -26,12 +27,21 @@ TURNS = [
 async def main() -> None:
     emitted: dict[str, str] = {}
     prompt = build_extract_user_prompt(TURNS, emitted)
-    raw, usage = await _voicelive_text_completion(
-        os.getenv("AZURE_VOICE_LIVE_ENDPOINT", "").rstrip("/"),
-        os.getenv("AZURE_VOICE_LIVE_API_KEY", ""),
-        os.getenv("VOICE_LIVE_MODEL", "gpt-4o-mini"),
-        prompt,
-    )
+    endpoint = os.getenv("AZURE_VOICE_LIVE_ENDPOINT", "").rstrip("/")
+    credential = _build_extract_credential()
+    if not endpoint or credential is None:
+        raise SystemExit("Set AZURE_VOICE_LIVE_ENDPOINT and credentials")
+    try:
+        raw, usage = await _voicelive_text_completion(
+            endpoint,
+            credential,
+            os.getenv("VOICE_LIVE_MODEL", "gpt-4o-mini"),
+            prompt,
+        )
+    finally:
+        close = getattr(credential, "close", None)
+        if close:
+            await close()
     print("RAW repr:", repr(raw[:800] if raw else ""))
     print("PARSED:", _parse_insights(raw))
     print("MERGED:", merge_llm_insights(raw, {}))

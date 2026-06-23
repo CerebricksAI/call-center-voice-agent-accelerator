@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import re
+import time
 
 from azure.ai.voicelive.aio import connect as voicelive_connect
 from azure.ai.voicelive.models import (
@@ -15,6 +16,7 @@ from azure.ai.voicelive.models import (
     UserMessageItem,
 )
 from azure.core.credentials import AzureKeyCredential
+from azure.identity.aio import ManagedIdentityCredential
 from app.usage_cost import normalize_usage
 
 logger = logging.getLogger(__name__)
@@ -34,10 +36,17 @@ Rules:
 - Do not repeat facts listed under "Already extracted" unless correcting them.
 - Return {"insights":[]} if nothing new yet."""
 
+SUMMARY_SYSTEM = """Summarize this mortgage pre-qual call in 2 short prose paragraphs (about 4–6 sentences total). No bullets, lists, or markdown. Separate paragraphs with one blank line."""
+
 EXTRACT_SYSTEM = _EXTRACT_SYSTEM
 
 _EXTRACT_TIMEOUT_S = float(os.getenv("EXTRACT_TIMEOUT_S", "30"))
+_SUMMARY_TIMEOUT_S = float(os.getenv("SUMMARY_TIMEOUT_S", "20"))
+_SUMMARY_MAX_CHARS = int(os.getenv("SUMMARY_MAX_CHARS", "4000"))
+_SUMMARY_MAX_TURNS = int(os.getenv("SUMMARY_MAX_TURNS", "24"))
+_SUMMARY_MAX_OUTPUT_TOKENS = int(os.getenv("SUMMARY_MAX_OUTPUT_TOKENS", "200"))
 _EXTRACT_SEMAPHORE: asyncio.Semaphore | None = None
+_SUMMARY_SEMAPHORE: asyncio.Semaphore | None = None
 
 
 def _extract_semaphore() -> asyncio.Semaphore:
@@ -46,6 +55,24 @@ def _extract_semaphore() -> asyncio.Semaphore:
         limit = max(1, int(os.getenv("EXTRACT_MAX_PARALLEL", "1")))
         _EXTRACT_SEMAPHORE = asyncio.Semaphore(limit)
     return _EXTRACT_SEMAPHORE
+
+
+def _summary_semaphore() -> asyncio.Semaphore:
+    global _SUMMARY_SEMAPHORE
+    if _SUMMARY_SEMAPHORE is None:
+        _SUMMARY_SEMAPHORE = asyncio.Semaphore(1)
+    return _SUMMARY_SEMAPHORE
+
+
+def _build_extract_credential() -> AzureKeyCredential | ManagedIdentityCredential | None:
+    """Match VoiceLiveMediaHandler: managed identity in Azure, API key for local dev."""
+    client_id = os.getenv("AZURE_USER_ASSIGNED_IDENTITY_CLIENT_ID", "").strip()
+    if client_id:
+        return ManagedIdentityCredential(client_id=client_id)
+    key = os.getenv("AZURE_VOICE_LIVE_API_KEY", "").strip()
+    if key:
+        return AzureKeyCredential(key)
+    return None
 
 _SLUG_RE = re.compile(r"[^a-z0-9]+")
 
@@ -120,6 +147,21 @@ def _format_transcript(turns: list[dict]) -> str:
         speaker = "Caller" if role == "user" else "Agent"
         lines.append(f"[{i}] {speaker}: {text}")
     return "\n".join(lines)
+
+
+def _trim_turns_for_summary(turns: list[dict]) -> list[dict]:
+    """Keep prompt size bounded so end-of-call summary stays fast."""
+    if not turns:
+        return []
+    kept = list(turns)
+    if len(kept) > _SUMMARY_MAX_TURNS:
+        head = min(2, len(kept))
+        tail = max(0, _SUMMARY_MAX_TURNS - head)
+        kept = kept[:head] + kept[-tail:]
+    while len(kept) > 2 and len(_format_transcript(kept)) > _SUMMARY_MAX_CHARS:
+        drop_at = 2 if len(kept) > 3 else 1
+        kept.pop(drop_at)
+    return kept
 
 
 def _fact(key: str, value: str, confidence: float = 0.8) -> dict:
@@ -637,25 +679,29 @@ def build_extract_user_prompt(turns: list[dict], emitted: dict[str, str]) -> str
 
 async def _voicelive_text_completion(
     endpoint: str,
-    key: str,
+    credential: AzureKeyCredential | ManagedIdentityCredential,
     model: str,
     user_prompt: str,
+    *,
+    instructions: str = EXTRACT_SYSTEM,
+    temperature: float = 0.1,
+    max_output_tokens: int | None = None,
 ) -> tuple[str, dict | None]:
     """Run a short text-only Voice Live session for transcript analysis."""
-    credential = AzureKeyCredential(key)
     usage: dict | None = None
+    session_kwargs: dict = {
+        "modalities": [Modality.TEXT],
+        "instructions": instructions,
+        "temperature": temperature,
+    }
+    if max_output_tokens is not None:
+        session_kwargs["max_response_output_tokens"] = max_output_tokens
     async with voicelive_connect(
         endpoint=endpoint,
         credential=credential,
         model=model,
     ) as conn:
-        await conn.session.update(
-            session=RequestSession(
-                modalities=[Modality.TEXT],
-                instructions=EXTRACT_SYSTEM,
-                temperature=0.1,
-            )
-        )
+        await conn.session.update(session=RequestSession(**session_kwargs))
         await conn.conversation.item.create(
             item=UserMessageItem(
                 role="user",
@@ -696,30 +742,43 @@ async def llm_extract_insights(
 ) -> tuple[list[dict], dict | None]:
     """Analyze the transcript with a dedicated Voice Live text session (parallel-safe)."""
     endpoint = os.getenv("AZURE_VOICE_LIVE_ENDPOINT", "").rstrip("/")
-    key = os.getenv("AZURE_VOICE_LIVE_API_KEY", "")
     model = (
         os.getenv("EXTRACT_MODEL")
         or os.getenv("VOICE_LIVE_MODEL", "gpt-4o-mini")
     ).strip()
-    if not endpoint or not key:
-        logger.warning("[Extract] AZURE_VOICE_LIVE credentials missing")
+    if not endpoint:
+        logger.warning("[Extract] AZURE_VOICE_LIVE_ENDPOINT is not set")
         return [], None
     if not turns:
         return [], None
 
+    credential = _build_extract_credential()
+    if credential is None:
+        logger.warning(
+            "[Extract] AZURE_VOICE_LIVE credentials missing "
+            "(set AZURE_VOICE_LIVE_API_KEY or AZURE_USER_ASSIGNED_IDENTITY_CLIENT_ID)"
+        )
+        return [], None
+
     prompt = build_extract_user_prompt(turns, emitted)
-    async with _extract_semaphore():
-        try:
-            raw, usage = await asyncio.wait_for(
-                _voicelive_text_completion(endpoint, key, model, prompt),
-                timeout=_EXTRACT_TIMEOUT_S,
-            )
-        except asyncio.TimeoutError:
-            logger.warning("[Extract] LLM timed out after %.0fs", _EXTRACT_TIMEOUT_S)
-            return [], None
-        except Exception:
-            logger.exception("[Extract] Voice Live LLM extraction failed")
-            return [], None
+    raw = ""
+    usage: dict | None = None
+    try:
+        async with _extract_semaphore():
+            try:
+                raw, usage = await asyncio.wait_for(
+                    _voicelive_text_completion(endpoint, credential, model, prompt),
+                    timeout=_EXTRACT_TIMEOUT_S,
+                )
+            except asyncio.TimeoutError:
+                logger.warning("[Extract] LLM timed out after %.0fs", _EXTRACT_TIMEOUT_S)
+                return [], None
+            except Exception:
+                logger.exception("[Extract] Voice Live LLM extraction failed")
+                return [], None
+    finally:
+        if isinstance(credential, ManagedIdentityCredential):
+            await credential.close()
 
     insights = merge_llm_insights(raw, emitted)
     if not insights and (raw or "").strip():
@@ -729,6 +788,125 @@ async def llm_extract_insights(
         )
     logger.info("[Extract] LLM returned %d new insight(s)", len(insights))
     return insights, usage
+
+
+def build_call_summary_prompt(
+    turns: list[dict],
+    key_facts: dict[str, str] | None = None,
+) -> str:
+    """Build the user prompt for end-of-call summary."""
+    trimmed = _trim_turns_for_summary(turns)
+    if key_facts and len(trimmed) > 10:
+        trimmed = trimmed[:2] + trimmed[-10:]
+    elif key_facts and len(trimmed) > 6:
+        trimmed = trimmed[:1] + trimmed[-8:]
+    transcript = _format_transcript(trimmed)
+    parts = []
+    if key_facts:
+        facts = "\n".join(f"- {v}" for v in key_facts.values())
+        parts.append(f"Key facts already captured:\n{facts}\n")
+    parts.append(f"Call transcript:\n\n{transcript}\n")
+    parts.append(
+        "Summarize outcome, loan intent, timeline, and next steps in two short paragraphs."
+    )
+    return "\n".join(parts)
+
+
+def format_summary_as_prose(text: str) -> str:
+    """Normalize LLM output to paragraph prose (no bullet list formatting)."""
+    text = (text or "").strip()
+    if not text:
+        return ""
+    if re.search(r"^[\s]*[-•*]\s", text, re.MULTILINE):
+        lines = []
+        for line in text.replace("\r\n", "\n").split("\n"):
+            line = re.sub(r"^[\s•\-*]+\s*", "", line.strip())
+            if line:
+                lines.append(line)
+        if not lines:
+            return text
+        mid = max(1, len(lines) // 2)
+        return "\n\n".join(
+            p
+            for p in (" ".join(lines[:mid]), " ".join(lines[mid:]))
+            if p.strip()
+        )
+    if "\n\n" in text:
+        return text
+    return text.replace("\n", " ").strip()
+
+
+async def llm_generate_call_summary(
+    turns: list[dict],
+    key_facts: dict[str, str] | None = None,
+) -> tuple[str, dict | None]:
+    """Generate a plain-text summary of the full call transcript."""
+    t0 = time.perf_counter()
+    endpoint = os.getenv("AZURE_VOICE_LIVE_ENDPOINT", "").rstrip("/")
+    model = (
+        os.getenv("SUMMARY_MODEL")
+        or os.getenv("EXTRACT_MODEL")
+        or os.getenv("VOICE_LIVE_MODEL", "gpt-4o-mini")
+    ).strip()
+    if not endpoint:
+        logger.warning("[Summary] AZURE_VOICE_LIVE_ENDPOINT is not set")
+        return "", None
+    if not turns:
+        return "", None
+
+    credential = _build_extract_credential()
+    if credential is None:
+        logger.warning(
+            "[Summary] AZURE_VOICE_LIVE credentials missing "
+            "(set AZURE_VOICE_LIVE_API_KEY or AZURE_USER_ASSIGNED_IDENTITY_CLIENT_ID)"
+        )
+        return "", None
+
+    trimmed = _trim_turns_for_summary(turns)
+    prompt = build_call_summary_prompt(trimmed, key_facts)
+    logger.info(
+        "[Summary] Starting LLM pass (turns=%d→%d, prompt_chars=%d, model=%s)",
+        len(turns),
+        len(trimmed),
+        len(prompt),
+        model,
+    )
+    raw = ""
+    usage: dict | None = None
+    try:
+        async with _summary_semaphore():
+            try:
+                raw, usage = await asyncio.wait_for(
+                    _voicelive_text_completion(
+                        endpoint,
+                        credential,
+                        model,
+                        prompt,
+                        instructions=SUMMARY_SYSTEM,
+                        temperature=0.2,
+                        max_output_tokens=_SUMMARY_MAX_OUTPUT_TOKENS,
+                    ),
+                    timeout=_SUMMARY_TIMEOUT_S,
+                )
+            except asyncio.TimeoutError:
+                logger.warning(
+                    "[Summary] LLM timed out after %.0fs", _SUMMARY_TIMEOUT_S
+                )
+                return "", None
+            except Exception:
+                logger.exception("[Summary] Voice Live summary generation failed")
+                return "", None
+    finally:
+        if isinstance(credential, ManagedIdentityCredential):
+            await credential.close()
+
+    summary = format_summary_as_prose(raw)
+    logger.info(
+        "[Summary] Generated call summary (%d chars) in %.2fs",
+        len(summary),
+        time.perf_counter() - t0,
+    )
+    return summary, usage
 
 
 def merge_llm_insights(raw: str, emitted: dict[str, str]) -> list[dict]:

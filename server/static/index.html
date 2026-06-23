@@ -1,112 +1,134 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="dark">
+<html lang="en" data-theme="light">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Quadrant Financial Agent</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <style>
     :root,
+    [data-theme="light"] {
+      --qt-black: #000000;
+      --qt-white: #ffffff;
+      --qt-text: #111111;
+      --qt-text-muted: #5c6678;
+      --qt-heading: #002060;
+      --qt-primary: #8929fe;
+      --qt-primary-hover: #7420db;
+      --qt-border: #dddddd;
+      --qt-page-bg: #ffffff;
+      --qt-card-shadow: 0 8px 32px rgba(17, 17, 17, 0.08);
+      --qt-toggle-bg: #ffffff;
+      --qt-toggle-border: #dddddd;
+      --qt-toggle-color: #111111;
+      --bg-deep: var(--qt-page-bg);
+      --bg-main: #f5f7fa;
+      --bg-panel: var(--qt-white);
+      --bg-card: var(--qt-white);
+      --bg-elevated: #f8fafc;
+      --border: var(--qt-border);
+      --border-subtle: #e8e8e8;
+      --accent-purple: var(--qt-primary);
+      --accent-purple-dark: var(--qt-primary-hover);
+      --accent-purple-light: #9d4dff;
+      --accent-purple-glow: rgba(137, 41, 254, 0.28);
+      --accent-cyan: var(--qt-heading);
+      --accent-cyan-dim: rgba(0, 32, 96, 0.1);
+      --text-primary: var(--qt-text);
+      --text-secondary: var(--qt-text-muted);
+      --text-muted: #767676;
+      --nav-bg: var(--qt-black);
+      --nav-border: rgba(255, 255, 255, 0.06);
+      --nav-text: rgba(255, 255, 255, 0.92);
+      --nav-text-muted: rgba(255, 255, 255, 0.72);
+      --panel-shadow: var(--qt-card-shadow);
+      --glow-cyan: transparent;
+      --glow-purple: transparent;
+      --danger: #cf2e2e;
+      --danger-hover: #b91c1c;
+      --success: #16a34a;
+      --radius-sm: 4px;
+      --radius-md: 8px;
+    }
+
     [data-theme="dark"] {
-      --bg-deep: #050a15;
-      --bg-main: #070d18;
-      --bg-panel: #0c1322;
-      --bg-card: #101a2e;
-      --bg-elevated: #141f35;
-      --border: rgba(147, 51, 234, 0.18);
-      --border-subtle: rgba(255, 255, 255, 0.06);
-      --accent-purple: #9333ea;
-      --accent-purple-dark: #7e22ce;
-      --accent-purple-light: #a855f7;
-      --accent-purple-glow: rgba(147, 51, 234, 0.4);
-      --accent-cyan: #c084fc;
-      --accent-cyan-dim: rgba(147, 51, 234, 0.18);
-      --text-primary: #ffffff;
-      --text-secondary: #a0aec0;
-      --text-muted: #64748b;
+      --qt-heading: #ffffff;
+      --qt-toggle-bg: #111111;
+      --qt-toggle-border: rgba(255, 255, 255, 0.14);
+      --qt-toggle-color: #ffffff;
+      --bg-deep: #090909;
+      --bg-main: #090909;
+      --bg-panel: #111111;
+      --bg-card: #111111;
+      --bg-elevated: #1a1a1a;
+      --border: rgba(255, 255, 255, 0.14);
+      --border-subtle: rgba(255, 255, 255, 0.08);
+      --accent-purple: #8929fe;
+      --accent-purple-dark: #7420db;
+      --accent-purple-light: #9d4dff;
+      --accent-purple-glow: rgba(137, 41, 254, 0.35);
+      --accent-cyan: #f5f5f5;
+      --accent-cyan-dim: rgba(137, 41, 254, 0.18);
+      --text-primary: #f5f5f5;
+      --text-secondary: #b0b8c4;
+      --text-muted: #8b95a5;
       --nav-bg: #000000;
       --nav-border: rgba(255, 255, 255, 0.06);
       --nav-text: rgba(255, 255, 255, 0.92);
       --nav-text-muted: rgba(255, 255, 255, 0.72);
-      --panel-shadow: 0 4px 24px rgba(0, 0, 0, 0.35);
-      --glow-cyan: rgba(147, 51, 234, 0.07);
-      --glow-purple: rgba(147, 51, 234, 0.14);
-      --danger: #ef4444;
-      --danger-hover: #dc2626;
+      --panel-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+      --glow-cyan: transparent;
+      --glow-purple: transparent;
+      --danger: #f87171;
+      --danger-hover: #ef4444;
       --success: #22c55e;
-    }
-
-    [data-theme="light"] {
-      --bg-deep: #eef2f8;
-      --bg-main: #e4eaf3;
-      --bg-panel: #ffffff;
-      --bg-card: #f8fafc;
-      --bg-elevated: #f1f5f9;
-      --border: rgba(15, 23, 42, 0.32);
-      --border-subtle: rgba(15, 23, 42, 0.16);
-      --accent-purple: #9333ea;
-      --accent-purple-dark: #7e22ce;
-      --accent-purple-light: #a855f7;
-      --accent-purple-glow: rgba(147, 51, 234, 0.28);
-      --accent-cyan: #9333ea;
-      --accent-cyan-dim: rgba(147, 51, 234, 0.14);
-      --text-primary: #0f172a;
-      --text-secondary: #475569;
-      --text-muted: #94a3b8;
-      --nav-bg: #050a15;
-      --nav-border: rgba(255, 255, 255, 0.08);
-      --nav-text: rgba(255, 255, 255, 0.92);
-      --nav-text-muted: rgba(255, 255, 255, 0.72);
-      --panel-shadow: 0 2px 8px rgba(15, 23, 42, 0.1);
-      --glow-cyan: rgba(147, 51, 234, 0.1);
-      --glow-purple: rgba(147, 51, 234, 0.16);
     }
 
     [data-theme="light"] .panel,
     [data-theme="light"] .metric-card,
     [data-theme="light"] .details-toggle,
     [data-theme="light"] .turns-panel {
-      border-color: rgba(15, 23, 42, 0.38);
+      border-color: var(--qt-border);
     }
 
     [data-theme="light"] .panel-header,
     [data-theme="light"] .insight-item,
     [data-theme="light"] .turn-table th,
     [data-theme="light"] .turn-table td {
-      border-color: rgba(15, 23, 42, 0.14);
+      border-color: #e8e8e8;
     }
 
     [data-theme="light"] .turn-table td,
     [data-theme="light"] .turn-table td.cost-cell,
     [data-theme="light"] .turn-table tfoot td {
-      color: var(--text-primary);
+      color: var(--qt-heading);
     }
 
     [data-theme="light"] .transcript-bubble.assistant {
-      border-color: rgba(15, 23, 42, 0.28);
+      border-color: var(--qt-border);
+    }
+
+    [data-theme="light"] .panel-title,
+    [data-theme="light"] .panel-header {
+      color: var(--qt-heading);
+    }
+
+    [data-theme="light"] .metric-value {
+      color: var(--qt-primary);
     }
 
     * { box-sizing: border-box; }
 
     body {
       margin: 0;
-      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      font-family: "Montserrat", "Segoe UI", system-ui, sans-serif;
       background: var(--bg-deep);
       height: 100vh;
       overflow: hidden;
       color: var(--text-primary);
-    }
-
-    /* subtle tech glow background */
-    body::before {
-      content: "";
-      position: fixed;
-      inset: 0;
-      background:
-        radial-gradient(ellipse 80% 60% at 70% 20%, var(--glow-cyan) 0%, transparent 55%),
-        radial-gradient(ellipse 60% 50% at 20% 80%, var(--glow-purple) 0%, transparent 50%);
-      pointer-events: none;
-      z-index: 0;
-      transition: background 0.25s ease;
+      transition: background 0.2s ease, color 0.2s ease;
     }
 
     .app-nav,
@@ -115,17 +137,16 @@
       z-index: 1;
     }
 
-    /* --- App navbar --- */
+    /* --- App navbar (matches login header) --- */
     .app-nav {
       display: flex;
       align-items: center;
       gap: 1.5rem;
-      padding: 0 1rem;
-      height: 52px;
+      padding: 0 1.25rem;
+      height: 58px;
       background: var(--nav-bg);
       color: var(--nav-text);
       border-bottom: 1px solid var(--nav-border);
-      box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
       position: sticky;
       top: 0;
       z-index: 100;
@@ -140,18 +161,18 @@
     }
 
     .nav-logo {
-      height: 26px;
+      height: 34px;
       width: auto;
       display: block;
     }
 
     .nav-product {
       font-size: 0.82rem;
-      font-weight: 500;
+      font-weight: 600;
       color: var(--nav-text-muted);
       padding-left: 0.75rem;
       border-left: 1px solid rgba(255, 255, 255, 0.12);
-      letter-spacing: 0.02em;
+      letter-spacing: 0.01em;
     }
 
     .nav-links {
@@ -162,10 +183,10 @@
     }
 
     .nav-link {
-      padding: 0.4rem 0.85rem;
-      border-radius: 999px;
-      font-size: 0.88rem;
-      font-weight: 500;
+      padding: 0.42rem 0.85rem;
+      border-radius: var(--radius-sm);
+      font-size: 0.84rem;
+      font-weight: 600;
       color: var(--nav-text-muted);
       text-decoration: none;
       cursor: default;
@@ -173,9 +194,8 @@
     }
 
     .nav-link.active {
-      background: var(--accent-purple-dark);
+      background: var(--qt-primary);
       color: #ffffff;
-      box-shadow: 0 0 12px var(--accent-purple-glow);
     }
 
     .nav-link.disabled {
@@ -190,23 +210,40 @@
       margin-left: auto;
     }
 
-    .nav-badge {
-      font-size: 0.72rem;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      padding: 0.2rem 0.55rem;
-      border-radius: 999px;
-      background: var(--accent-purple-dark);
-      color: #ffffff;
-    }
-
     .nav-status {
       display: flex;
       align-items: center;
       gap: 0.4rem;
       font-size: 0.82rem;
       color: var(--nav-text-muted);
+    }
+
+    .nav-user {
+      font-size: 0.78rem;
+      color: var(--nav-text-muted);
+      max-width: 11rem;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .logout-btn {
+      padding: 0.38rem 0.75rem;
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      border-radius: var(--radius-sm);
+      background: transparent;
+      color: var(--nav-text-muted);
+      font-family: inherit;
+      font-size: 0.78rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s, color 0.15s;
+    }
+
+    .logout-btn:hover {
+      background: rgba(207, 46, 46, 0.15);
+      border-color: rgba(248, 113, 113, 0.45);
+      color: #fca5a5;
     }
 
     .theme-toggle {
@@ -216,19 +253,19 @@
       width: 34px;
       height: 34px;
       padding: 0;
-      border: 1px solid rgba(255, 255, 255, 0.15);
-      border-radius: 999px;
-      background: rgba(255, 255, 255, 0.06);
-      color: #fff;
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      border-radius: var(--radius-sm);
+      background: transparent;
+      color: var(--nav-text);
       font-size: 1rem;
       cursor: pointer;
-      transition: background 0.15s, border-color 0.15s;
+      transition: border-color 0.15s, background 0.15s;
       line-height: 1;
     }
 
     .theme-toggle:hover {
-      background: rgba(147, 51, 234, 0.35);
-      border-color: rgba(147, 51, 234, 0.55);
+      border-color: var(--qt-primary);
+      background: rgba(137, 41, 254, 0.12);
     }
 
     .status-dot {
@@ -245,8 +282,8 @@
 
     /* --- Main content --- */
     .app-main {
-      padding: 0.65rem 0.75rem 0.4rem 0.65rem;
-      height: calc(100vh - 52px);
+      padding: 0.75rem 0.85rem 0.45rem;
+      height: calc(100vh - 58px);
       overflow: hidden;
       display: flex;
       flex-direction: column;
@@ -338,7 +375,7 @@
     }
 
     .details-toggle.open {
-      border-radius: 0.5rem 0.5rem 0 0;
+      border-radius: var(--radius-md) var(--radius-md) 0 0;
       flex-shrink: 0;
     }
 
@@ -376,25 +413,25 @@
     }
 
     .call-controls button {
-      padding: 0.4rem 1rem;
+      padding: 0.42rem 1rem;
+      font-family: inherit;
       font-size: 0.82rem;
       font-weight: 600;
       border: none;
-      border-radius: 999px;
+      border-radius: var(--radius-sm);
       cursor: pointer;
-      transition: background 0.2s ease, box-shadow 0.2s ease;
+      transition: background 0.15s ease, transform 0.12s ease;
       white-space: nowrap;
     }
 
     #startBtn {
-      background: #16a34a;
+      background: var(--qt-primary);
       color: #fff;
-      box-shadow: 0 0 12px rgba(22, 163, 74, 0.4);
     }
 
     #startBtn:hover:not(:disabled) {
-      background: #22c55e;
-      box-shadow: 0 0 16px rgba(34, 197, 94, 0.5);
+      background: var(--qt-primary-hover);
+      transform: translateY(-1px);
     }
 
     #stopBtn {
@@ -419,6 +456,60 @@
     #stopBtn:disabled {
       background: #dc2626;
       border-color: #dc2626;
+    }
+
+    #muteBtn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.35rem;
+      min-width: 2.65rem;
+      padding: 0.4rem 0.85rem;
+      background: var(--bg-elevated);
+      color: var(--text-primary);
+      border: 1px solid var(--border-subtle);
+    }
+
+    #muteBtn .mute-icon {
+      width: 1.15rem;
+      height: 1.15rem;
+      flex-shrink: 0;
+      display: block;
+    }
+
+    #muteBtn .mute-icon-off {
+      display: none;
+    }
+
+    #muteBtn:hover:not(:disabled) {
+      background: var(--bg-card);
+      border-color: var(--border);
+    }
+
+    #muteBtn.muted-active {
+      background: #dc2626;
+      color: #fff;
+      border-color: #dc2626;
+      box-shadow: 0 0 10px rgba(220, 38, 38, 0.35);
+    }
+
+    #muteBtn.muted-active .mute-icon-on {
+      display: none;
+    }
+
+    #muteBtn.muted-active .mute-icon-off {
+      display: block;
+    }
+
+    #muteBtn.muted-active:hover:not(:disabled) {
+      background: #ef4444;
+      border-color: #ef4444;
+    }
+
+    #muteBtn:disabled {
+      opacity: 0.35;
+      cursor: not-allowed;
+      box-shadow: none;
     }
 
     audio { display: none; }
@@ -458,7 +549,7 @@
     .metric-card {
       background: var(--bg-card);
       border: 1px solid var(--border);
-      border-radius: 0.75rem;
+      border-radius: var(--radius-md);
       padding: 0.65rem 0.75rem;
       text-align: left;
       box-shadow: var(--panel-shadow);
@@ -474,7 +565,6 @@
     .metric-label {
       word-wrap: break-word;
       overflow-wrap: break-word;
-    }
       font-size: 0.7rem;
       text-transform: uppercase;
       letter-spacing: 0.04em;
@@ -492,7 +582,7 @@
     .metric-value {
       font-size: 1.5rem;
       font-weight: 700;
-      color: var(--accent-cyan);
+      color: var(--qt-primary);
       margin: 0.3rem 0 0.15rem;
       font-variant-numeric: tabular-nums;
     }
@@ -507,7 +597,7 @@
     .panel {
       background: var(--bg-panel);
       border: 1px solid var(--border);
-      border-radius: 0.75rem;
+      border-radius: var(--radius-md);
       box-shadow: var(--panel-shadow);
       display: flex;
       flex-direction: column;
@@ -572,22 +662,21 @@
 
     .transcript-bubble.user {
       align-self: flex-end;
-      background: linear-gradient(135deg, var(--accent-purple-dark), var(--accent-purple-light));
-      color: var(--text-primary);
-      border-bottom-right-radius: 0.2rem;
-      box-shadow: 0 2px 12px var(--accent-purple-glow);
+      background: var(--qt-primary);
+      color: #ffffff;
+      border-bottom-right-radius: var(--radius-sm);
     }
 
     .transcript-bubble.assistant {
       align-self: flex-start;
       background: var(--bg-elevated);
       color: var(--text-primary);
-      border: 1px solid var(--accent-cyan-dim);
-      border-bottom-left-radius: 0.2rem;
+      border: 1px solid var(--border);
+      border-bottom-left-radius: var(--radius-sm);
     }
 
     .transcript-bubble.live {
-      opacity: 0.8;
+      opacity: 0.92;
     }
 
     .transcript-label {
@@ -597,12 +686,12 @@
       text-transform: uppercase;
       letter-spacing: 0.04em;
       margin-bottom: 0.25rem;
-      opacity: 0.7;
+      opacity: 0.85;
       color: var(--accent-cyan);
     }
 
     .transcript-bubble.user .transcript-label {
-      color: rgba(255, 255, 255, 0.75);
+      color: rgba(255, 255, 255, 0.85);
     }
 
     /* --- Extracted fields --- */
@@ -628,12 +717,12 @@
     }
 
     .fields-loading {
-      color: var(--accent-cyan);
+      color: var(--qt-primary);
       font-style: italic;
     }
 
     .fields-loading-footer {
-      color: var(--accent-cyan);
+      color: var(--qt-primary);
       font-size: 0.82rem;
       font-style: italic;
       text-align: left;
@@ -646,10 +735,69 @@
       color: #f87171;
     }
 
+    .call-summary-section {
+      margin-top: 0.85rem;
+      padding-top: 0.85rem;
+      border-top: 1px solid var(--border-subtle);
+      flex-shrink: 0;
+    }
+
+    .call-summary-card {
+      padding: 0.7rem 0.85rem;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      background: var(--bg-card);
+      flex-shrink: 0;
+    }
+
+    .call-summary-heading {
+      font-size: 0.72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--qt-heading);
+      margin-bottom: 0.55rem;
+    }
+
+    .call-summary-body {
+      font-size: 0.9rem;
+      line-height: 1.6;
+      color: var(--text-primary);
+      word-wrap: break-word;
+    }
+
+    .call-summary-body p {
+      margin: 0 0 0.75rem;
+    }
+
+    .call-summary-body p:last-child {
+      margin-bottom: 0;
+    }
+
+    .call-summary-loading {
+      font-size: 0.82rem;
+      font-style: italic;
+      color: var(--qt-primary);
+    }
+
+    [data-theme="light"] .call-summary-loading {
+      color: var(--qt-primary);
+    }
+
+    [data-theme="light"] #muteBtn:not(.muted-active) {
+      border-color: var(--qt-border);
+      color: var(--qt-text);
+    }
+
+    [data-theme="light"] #muteBtn:not(.muted-active):hover:not(:disabled) {
+      border-color: var(--qt-primary);
+      color: var(--qt-text);
+    }
+
     .insight-item {
       padding: 0.7rem 0.85rem;
-      border: 1px solid var(--border-subtle);
-      border-radius: 0.65rem;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
       background: var(--bg-card);
       margin-bottom: 0.55rem;
       flex-shrink: 0;
@@ -672,7 +820,7 @@
       font-weight: 700;
       text-transform: uppercase;
       letter-spacing: 0.04em;
-      color: var(--accent-purple);
+      color: var(--qt-primary);
       margin-bottom: 0.35rem;
     }
 
@@ -712,7 +860,8 @@
       padding: 0.55rem 1rem;
       background: var(--bg-card);
       border: 1px solid var(--border);
-      border-radius: 0.5rem;
+      border-radius: var(--radius-md);
+      font-family: inherit;
       font-size: 0.88rem;
       font-weight: 600;
       color: var(--text-primary);
@@ -721,18 +870,18 @@
       display: flex;
       justify-content: space-between;
       align-items: center;
-      transition: background 0.15s;
+      transition: background 0.15s, border-color 0.15s;
     }
 
     .details-toggle:hover {
       background: var(--bg-elevated);
-      border-color: rgba(147, 51, 234, 0.4);
+      border-color: var(--qt-primary);
     }
 
     .details-toggle .chevron {
       transition: transform 0.2s ease;
       font-size: 0.75rem;
-      color: var(--accent-cyan);
+      color: var(--qt-primary);
     }
 
     .details-toggle.open .chevron { transform: rotate(180deg); }
@@ -747,7 +896,7 @@
       background: var(--bg-panel);
       border: 1px solid var(--border);
       border-top: none;
-      border-radius: 0 0 0.75rem 0.75rem;
+      border-radius: 0 0 var(--radius-md) var(--radius-md);
       box-shadow: var(--panel-shadow);
       text-align: left;
       display: none;
@@ -784,7 +933,11 @@
     }
 
     .turn-table td {
-      color: var(--accent-cyan);
+      color: var(--qt-heading);
+    }
+
+    [data-theme="dark"] .turn-table td {
+      color: var(--text-primary);
     }
 
     .turn-table tfoot td {
@@ -795,7 +948,7 @@
     }
 
     .turn-table td.cost-cell {
-      color: #a7f3d0;
+      color: var(--success);
       white-space: nowrap;
     }
 
@@ -808,21 +961,20 @@
       text-align: center;
     }
 
-    /* dark scrollbars */
+    .transcript-log::-webkit-scrollbar-thumb,
+    .fields-log::-webkit-scrollbar-thumb,
+    .metrics-scroll::-webkit-scrollbar-thumb,
+    .turn-table-wrap::-webkit-scrollbar-thumb {
+      background: rgba(137, 41, 254, 0.35);
+      border-radius: 3px;
+    }
+
     .transcript-log::-webkit-scrollbar,
     .fields-log::-webkit-scrollbar,
     .metrics-scroll::-webkit-scrollbar,
     .turn-table-wrap::-webkit-scrollbar {
       width: 6px;
       height: 6px;
-    }
-
-    .transcript-log::-webkit-scrollbar-thumb,
-    .fields-log::-webkit-scrollbar-thumb,
-    .metrics-scroll::-webkit-scrollbar-thumb,
-    .turn-table-wrap::-webkit-scrollbar-thumb {
-      background: rgba(147, 51, 234, 0.4);
-      border-radius: 3px;
     }
 
     .transcript-log::-webkit-scrollbar-track,
@@ -847,9 +999,10 @@
     </div>
     <div class="nav-right">
       <button type="button" class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="Toggle light/dark theme" aria-label="Toggle theme">
-        <span id="themeIcon">☀</span>
+        <span id="themeIcon">☾</span>
       </button>
-      <span class="nav-badge">Demo</span>
+      <span class="nav-user" id="navUser" title="Signed in"></span>
+      <button type="button" class="logout-btn" id="logoutBtn" onclick="logout()" title="Sign out">Sign out</button>
       <div class="nav-status">
         <span class="status-dot" id="statusDot"></span>
         <span id="statusLabel">Idle</span>
@@ -868,6 +1021,21 @@
         <div class="call-controls">
           <button id="startBtn" onclick="startStreaming()" title="Start a voice call with the agent">
             Start Call
+          </button>
+          <button type="button" id="muteBtn" onclick="toggleMicMute()" disabled title="Mute microphone" aria-label="Mute microphone" aria-pressed="false">
+            <svg class="mute-icon mute-icon-on" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 1 0-6 0v6a3 3 0 0 0 3 3z"/>
+              <path d="M19 10v1a7 7 0 0 1-14 0v-1"/>
+              <path d="M12 18v3"/>
+              <path d="M8 21h8"/>
+            </svg>
+            <svg class="mute-icon mute-icon-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 1 0-6 0v6a3 3 0 0 0 3 3z"/>
+              <path d="M19 10v1a7 7 0 0 1-14 0v-1"/>
+              <path d="M12 18v3"/>
+              <path d="M8 21h8"/>
+              <line x1="3" y1="3" x2="21" y2="21"/>
+            </svg>
           </button>
           <button id="stopBtn" onclick="stopStreaming()" disabled title="End the current call">
             End Call
@@ -975,7 +1143,7 @@
   <audio id="ttsPlayer" autoplay></audio>
 
   <footer>
-    Powered by Azure Voice Live
+    Powered by Azure Voice Live · Quadrant Technologies
   </footer>
   </div>
   </main>
@@ -985,9 +1153,59 @@
     let audioContext = new AudioContext({ sampleRate: 24000 });
     let playbackNode;
     let micNode;
+    let micTrack = null;
+    let micMuted = false;
     const liveBubbles = { user: null, assistant: null };
     const partialText = { user: "", assistant: "" };
     let pendingTranscriptFlush = false;
+    let sessionCheckTimer = null;
+    let speechRecognition = null;
+    let speechRecognitionActive = false;
+    let liveTranscriptPaused = false;
+
+    // ---------------------------------------------------------------
+    // Auth session (30-minute sliding window; server middleware enforces)
+    // ---------------------------------------------------------------
+    async function ensureAuthenticated() {
+      try {
+        const res = await fetch("/auth/session", { credentials: "same-origin" });
+        if (!res.ok) {
+          window.location.replace("/login");
+          return false;
+        }
+        const data = await res.json();
+        const navUser = document.getElementById("navUser");
+        if (navUser && data.email) {
+          navUser.textContent = data.email;
+          navUser.title = data.email;
+        }
+        return true;
+      } catch (_) {
+        window.location.replace("/login");
+        return false;
+      }
+    }
+
+    function startSessionWatcher() {
+      if (sessionCheckTimer) clearInterval(sessionCheckTimer);
+      sessionCheckTimer = setInterval(() => {
+        ensureAuthenticated();
+      }, 60000);
+    }
+
+    async function logout() {
+      try {
+        await fetch("/auth/logout", { method: "POST", credentials: "same-origin" });
+      } catch (_) {}
+      if (socket && socket.readyState === WebSocket.OPEN) {
+        socket.close();
+      }
+      window.location.replace("/login");
+    }
+
+    function handleAuthFailure() {
+      window.location.replace("/login");
+    }
 
     // ---------------------------------------------------------------
     // Transcript
@@ -1011,6 +1229,153 @@
       liveBubbles.assistant = null;
       const log = document.getElementById("transcriptLog");
       log.innerHTML = '<div id="transcriptEmpty" class="transcript-empty">Transcript will appear here once you start a call.</div>';
+    }
+
+    function beginUserSpeechTurn() {
+      partialText.user = "";
+      if (liveBubbles.user) {
+        liveBubbles.user.remove();
+        liveBubbles.user = null;
+      }
+      if (
+        speechRecognition &&
+        speechRecognitionActive &&
+        !liveTranscriptPaused &&
+        !micMuted
+      ) {
+        try {
+          speechRecognition.stop();
+        } catch (_) {}
+        speechRecognitionActive = false;
+      }
+    }
+
+    function getSpeechRecognitionCtor() {
+      return window.SpeechRecognition || window.webkitSpeechRecognition || null;
+    }
+
+    function updateUserLiveText(text, { finalize = false, source = "server" } = {}) {
+      const cleaned = (text || "").trim();
+      if (!cleaned) return;
+
+      if (finalize) {
+        partialText.user = "";
+        if (liveBubbles.user) {
+          liveBubbles.user.querySelector(".transcript-text").textContent = cleaned;
+          liveBubbles.user.classList.remove("live");
+          liveBubbles.user = null;
+        } else {
+          createBubble("user", cleaned, false);
+        }
+        recordTranscriptTurn("user", cleaned);
+        scheduleTranscriptFlush();
+        return;
+      }
+
+      if (source === "server" && speechRecognitionActive) {
+        return;
+      }
+
+      partialText.user = cleaned;
+      if (!liveBubbles.user) {
+        liveBubbles.user = createBubble("user", cleaned, true);
+      } else {
+        liveBubbles.user.querySelector(".transcript-text").textContent = cleaned;
+        liveBubbles.user.classList.add("live");
+      }
+      scheduleTranscriptFlush();
+    }
+
+    function handleBrowserSpeechResult(event) {
+      if (micMuted || liveTranscriptPaused) return;
+
+      let interim = "";
+      let final = "";
+      for (let i = 0; i < event.results.length; i++) {
+        const result = event.results[i];
+        const chunk = result[0]?.transcript || "";
+        if (result.isFinal) final += chunk;
+        else interim += chunk;
+      }
+
+      const display = (final + interim).trim();
+      if (display) updateUserLiveText(display, { source: "browser" });
+    }
+
+    function startLiveUserTranscript() {
+      const Ctor = getSpeechRecognitionCtor();
+      if (!Ctor || micMuted || liveTranscriptPaused) return;
+      if (socket?.readyState !== WebSocket.OPEN) return;
+
+      if (!speechRecognition) {
+        speechRecognition = new Ctor();
+        speechRecognition.continuous = true;
+        speechRecognition.interimResults = true;
+        speechRecognition.lang = "en-US";
+        speechRecognition.maxAlternatives = 1;
+
+        speechRecognition.onresult = handleBrowserSpeechResult;
+
+        speechRecognition.onerror = (err) => {
+          if (err.error === "aborted" || err.error === "not-allowed") return;
+          console.warn("Live transcript error:", err.error);
+        };
+
+        speechRecognition.onend = () => {
+          speechRecognitionActive = false;
+          if (
+            socket?.readyState === WebSocket.OPEN &&
+            !micMuted &&
+            !liveTranscriptPaused
+          ) {
+            try {
+              speechRecognition.start();
+              speechRecognitionActive = true;
+            } catch (_) {}
+          }
+        };
+      }
+
+      if (speechRecognitionActive) return;
+      try {
+        speechRecognition.start();
+        speechRecognitionActive = true;
+      } catch (err) {
+        if (err.name !== "InvalidStateError") {
+          console.warn("Live transcript unavailable:", err);
+        }
+      }
+    }
+
+    function stopLiveUserTranscript() {
+      liveTranscriptPaused = false;
+      speechRecognitionActive = false;
+      if (!speechRecognition) return;
+      try {
+        speechRecognition.stop();
+      } catch (_) {}
+      speechRecognition.onresult = null;
+      speechRecognition.onerror = null;
+      speechRecognition.onend = null;
+      speechRecognition = null;
+    }
+
+    function pauseLiveUserTranscript() {
+      liveTranscriptPaused = true;
+      if (speechRecognition && speechRecognitionActive) {
+        try {
+          speechRecognition.stop();
+        } catch (_) {}
+        speechRecognitionActive = false;
+      }
+    }
+
+    function resumeLiveUserTranscript() {
+      if (!getSpeechRecognitionCtor() || micMuted || socket?.readyState !== WebSocket.OPEN) {
+        return;
+      }
+      liveTranscriptPaused = false;
+      startLiveUserTranscript();
     }
 
     function hideTranscriptEmpty() {
@@ -1040,10 +1405,59 @@
       return bubble;
     }
 
+    function sanitizeAssistantTranscript(text) {
+      if (!text) return "";
+      return text
+        .replace(
+          /\s*\[(?:Call\s+)?(?:end_call|end\s+call|transfer_to_lo|transfer\s+to\s+lo|schedule_callback|schedule\s+callback|capture_borrower_field|capture\s+borrower\s+field)(?:\s+with\s+reason\s*:\s*[\w_]+)?[^\]]*\]/gi,
+          ""
+        )
+        .replace(
+          /\s*\*+\s*(?:Call\s+)?(?:end_call|end\s+call|transfer_to_lo|schedule_callback|capture_borrower_field)\s+with\s+reason\s*:\s*[\w_]+\.?\s*\*+/gi,
+          ""
+        )
+        .replace(
+          /\s*(?:Call\s+)?(?:end_call|end\s+call|transfer_to_lo|schedule_callback|capture_borrower_field)\s+with\s+reason\s*:\s*[\w_]+\.?\s*/gi,
+          ""
+        )
+        .replace(
+          /\s*(?:\[|\*+)\s*(?:Call\s+)?(?:end_call|end\s+call|transfer_to_lo|schedule_callback|capture_borrower_field).*$/gi,
+          ""
+        )
+        .replace(
+          /\s*\[(?:[^\]]*\b(?:Ending|End(?:ing)?)\s+(?:the\s+)?call\b[^\]]*)\]\s*/gi,
+          ""
+        )
+        .replace(
+          /\s*\b(?:I'm\s+)?(?:Ending|End(?:ing)?)\s+(?:the\s+)?call(?:\s+now)?\.?\s*$/gi,
+          ""
+        )
+        .replace(
+          /\s*\[(?:I'm\s+)?(?:Ending|End(?:ing)?)\s+(?:the\s+)?call.*$/gi,
+          ""
+        )
+        .trim();
+    }
+
     function handleTranscript(msg) {
       const role = msg.Role;
-      const text = msg.Text || "";
+      let text = msg.Text || "";
       if (!role || !text) return;
+
+      if (role === "user") {
+        if (msg.Final) {
+          updateUserLiveText(text, { finalize: true });
+        } else {
+          const merged = msg.Replace ? text : `${partialText.user}${text}`;
+          updateUserLiveText(merged, { source: "server" });
+        }
+        return;
+      }
+
+      if (role === "assistant") {
+        text = sanitizeAssistantTranscript(text);
+        if (!text) return;
+      }
 
       if (msg.Final) {
         partialText[role] = "";
@@ -1059,7 +1473,12 @@
         return;
       }
 
-      partialText[role] = msg.Replace ? text : partialText[role] + text;
+      partialText[role] = msg.Replace
+        ? text
+        : role === "assistant"
+          ? sanitizeAssistantTranscript(partialText[role] + text)
+          : partialText[role] + text;
+      if (role === "assistant" && !partialText[role]) return;
       if (!liveBubbles[role]) {
         liveBubbles[role] = createBubble(role, partialText[role], true);
       } else {
@@ -1084,6 +1503,20 @@
     let insightsLoading = false;
     let insightsError = null;
     let insightsTurnSeq = 0;
+    let summaryLoading = false;
+    let callSummary = null;
+    let summaryError = null;
+    let waitingForSummary = false;
+    let summaryCloseTimer = null;
+    const SUMMARY_CLOSE_TIMEOUT_MS = 180000;
+
+    function armSummaryCloseTimer() {
+      if (summaryCloseTimer) clearTimeout(summaryCloseTimer);
+      if (!waitingForSummary) return;
+      summaryCloseTimer = setTimeout(() => {
+        closeSocketAfterSummary();
+      }, SUMMARY_CLOSE_TIMEOUT_MS);
+    }
 
     function normalizeInsightLine(value) {
       return (value || "").trim().toLowerCase().replace(/\s+/g, " ");
@@ -1157,11 +1590,19 @@
       const log = document.getElementById("fieldsLog");
       log.innerHTML = "";
 
-      if (!insightLog.length && !insightsLoading && !insightsError) {
+      if (
+        !insightLog.length &&
+        !insightsLoading &&
+        !insightsError &&
+        !summaryLoading &&
+        !callSummary &&
+        !summaryError
+      ) {
         const empty = document.createElement("div");
         empty.className = "fields-empty";
         empty.textContent = "Key details will appear here as important information is shared.";
         log.appendChild(empty);
+        renderCallSummarySection(log);
         return;
       }
 
@@ -1201,6 +1642,94 @@
         err.textContent = insightsError;
         log.appendChild(err);
       }
+
+      renderCallSummarySection(log);
+    }
+
+    function summaryToParagraphs(text) {
+      const t = (text || "").trim();
+      if (!t) return [];
+      if (t.includes("\n\n")) {
+        return t.split(/\n\n+/).map((s) => s.trim()).filter(Boolean);
+      }
+      return [t.replace(/\n+/g, " ")];
+    }
+
+    function renderCallSummarySection(log) {
+      if (!summaryLoading && !callSummary && !summaryError) return;
+
+      const section = document.createElement("div");
+      section.className = "call-summary-section";
+
+      const card = document.createElement("div");
+      card.className = "call-summary-card";
+
+      const heading = document.createElement("div");
+      heading.className = "call-summary-heading";
+      heading.textContent = "Call Summary";
+      card.appendChild(heading);
+
+      if (summaryLoading) {
+        const loading = document.createElement("div");
+        loading.className = "call-summary-loading";
+        loading.textContent = "Generating call summary…";
+        card.appendChild(loading);
+      } else if (summaryError) {
+        const err = document.createElement("div");
+        err.className = "fields-error";
+        err.style.textAlign = "left";
+        err.style.margin = "0";
+        err.textContent = summaryError;
+        card.appendChild(err);
+      } else if (callSummary) {
+        const body = document.createElement("div");
+        body.className = "call-summary-body";
+        for (const para of summaryToParagraphs(callSummary)) {
+          const p = document.createElement("p");
+          p.textContent = para;
+          body.appendChild(p);
+        }
+        card.appendChild(body);
+      }
+
+      section.appendChild(card);
+      log.appendChild(section);
+    }
+
+    function handleCallSummaryMsg(msg) {
+      if (msg.loading === true) {
+        summaryLoading = true;
+        summaryError = null;
+        armSummaryCloseTimer();
+        renderKeyDetails();
+        scrollKeyDetailsToBottom();
+        return;
+      }
+      summaryLoading = false;
+      summaryError = msg.error || null;
+      callSummary = msg.summary || null;
+      renderKeyDetails();
+      scrollKeyDetailsToBottom();
+      if (waitingForSummary) {
+        closeSocketAfterSummary();
+      }
+    }
+
+    function closeSocketAfterSummary() {
+      if (summaryCloseTimer) {
+        clearTimeout(summaryCloseTimer);
+        summaryCloseTimer = null;
+      }
+      waitingForSummary = false;
+      if (summaryLoading && !callSummary && !summaryError) {
+        summaryLoading = false;
+        summaryError =
+          "Call summary timed out — the connection closed before the summary arrived. Try End Call again and wait a little longer.";
+        renderKeyDetails();
+      }
+      if (socket && socket.readyState === WebSocket.OPEN) {
+        socket.close();
+      }
     }
 
     function handleExtractedInsightsMsg(msg) {
@@ -1236,6 +1765,14 @@
       insightsLoading = false;
       insightsError = null;
       insightsTurnSeq = 0;
+      summaryLoading = false;
+      callSummary = null;
+      summaryError = null;
+      waitingForSummary = false;
+      if (summaryCloseTimer) {
+        clearTimeout(summaryCloseTimer);
+        summaryCloseTimer = null;
+      }
       renderKeyDetails();
     }
 
@@ -1404,7 +1941,7 @@
         msg.seq != null ? msg.seq : msg.turn,
         fmtMs(m.sttMs),
         fmtMs(m.thinkMs),
-        fmtMs(m.ttfaMs),
+        fmtMs(m.ttsStartMs != null ? m.ttsStartMs : m.ttfaMs),
         fmtMs(m.ttsMs),
         fmtMs(m.responseMs),
         fmtMs(m.turnMs),
@@ -1464,6 +2001,13 @@
       if (msg.kind === "metrics") {
         applyTurnMetrics(msg);
         return;
+      }
+      if (msg.event === "speech_started") {
+        beginUserSpeechTurn();
+        resumeLiveUserTranscript();
+      }
+      if (msg.event === "first_audio") {
+        pauseLiveUserTranscript();
       }
       // Live card updates from timeline events (stream no longer shown in UI).
       if (msg.event === "first_audio" && msg.ttfaMs != null) setCardLatest("respLatency", msg.ttfaMs);
@@ -1533,18 +2077,50 @@
           channelCount: 1,
         },
       });
+      micTrack = mediaStream.getAudioTracks()[0] || null;
+      micMuted = false;
+      updateMuteButton();
       source = audioContext.createMediaStreamSource(mediaStream);
       micNode = new AudioWorkletNode(audioContext, "mic-processor");
       micNode.port.onmessage = (event) => {
+        if (micMuted) return;
         const pcm = float32ToInt16(event.data);
         if (socket?.readyState === WebSocket.OPEN) {
           socket.send(pcm.buffer);
         }
       };
       source.connect(micNode);
+      startLiveUserTranscript();
+    }
+
+    function updateMuteButton() {
+      const btn = document.getElementById("muteBtn");
+      if (!btn) return;
+      const onCall = socket && socket.readyState === WebSocket.OPEN;
+      btn.disabled = !onCall;
+      btn.setAttribute("aria-pressed", micMuted ? "true" : "false");
+      btn.title = micMuted ? "Unmute microphone" : "Mute microphone";
+      btn.setAttribute("aria-label", btn.title);
+      btn.classList.toggle("muted-active", micMuted);
+    }
+
+    function toggleMicMute() {
+      if (!mediaStream || !socket || socket.readyState !== WebSocket.OPEN) return;
+      micMuted = !micMuted;
+      if (micTrack) micTrack.enabled = !micMuted;
+      if (micMuted) pauseLiveUserTranscript();
+      else resumeLiveUserTranscript();
+      updateMuteButton();
+    }
+
+    function resetMicMute() {
+      micMuted = false;
+      micTrack = null;
+      updateMuteButton();
     }
 
     function stopMicrophone() {
+      stopLiveUserTranscript();
       if (micNode) {
         micNode.port.onmessage = null;
         micNode.disconnect();
@@ -1558,16 +2134,22 @@
         mediaStream.getTracks().forEach((t) => t.stop());
         mediaStream = null;
       }
+      resetMicMute();
     }
 
     function stopStreaming() {
       if (!socket) return;
       stopMicrophone();
+      stopPlayback();
       if (socket.readyState === WebSocket.OPEN) {
+        waitingForSummary = true;
+        summaryLoading = true;
+        summaryError = null;
+        renderKeyDetails();
+        scrollKeyDetailsToBottom();
+        document.getElementById("stopBtn").disabled = true;
         socket.send(JSON.stringify({ Kind: "EndCall" }));
-        setTimeout(() => {
-          if (socket && socket.readyState === WebSocket.OPEN) socket.close();
-        }, 500);
+        armSummaryCloseTimer();
       }
     }
 
@@ -1586,6 +2168,7 @@
         await startMicrophone();
         document.getElementById("startBtn").disabled = true;
         document.getElementById("stopBtn").disabled = false;
+        updateMuteButton();
       };
 
       socket.onmessage = (event) => {
@@ -1609,6 +2192,9 @@
           if (msg.Kind === "ExtractedInsights") {
             handleExtractedInsightsMsg(msg);
           }
+          if (msg.Kind === "CallSummary") {
+            handleCallSummaryMsg(msg);
+          }
           return;
         }
         if (event.data instanceof ArrayBuffer) {
@@ -1616,13 +2202,18 @@
         }
       };
 
-      socket.onclose = () => {
+      socket.onclose = (event) => {
         console.log("WebSocket closed");
+        if (event.code === 4401) {
+          handleAuthFailure();
+          return;
+        }
         setCallStatus(false);
         stopMicrophone();
         stopPlayback();
         document.getElementById("startBtn").disabled = false;
         document.getElementById("stopBtn").disabled = true;
+        resetMicMute();
         socket = null;
       };
 
@@ -1637,19 +2228,24 @@
     }
 
     function toggleTheme() {
-      const current = document.documentElement.getAttribute("data-theme") || "dark";
+      const current = document.documentElement.getAttribute("data-theme") || "light";
       applyTheme(current === "dark" ? "light" : "dark");
     }
 
     function initTheme() {
       const saved = localStorage.getItem("quadrant-theme");
-      applyTheme(saved === "light" ? "light" : "dark");
+      applyTheme(saved === "dark" ? "dark" : "light");
     }
 
     // Initialize
-    initTheme();
-    renderKeyDetails();
-    loadAudioProcessors();
+    (async () => {
+      const authed = await ensureAuthenticated();
+      if (!authed) return;
+      startSessionWatcher();
+      initTheme();
+      renderKeyDetails();
+      loadAudioProcessors();
+    })();
   </script>
 </body>
 </html>

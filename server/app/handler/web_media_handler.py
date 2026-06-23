@@ -4,13 +4,18 @@ import asyncio
 import json
 import logging
 import os
+import uuid
+from datetime import datetime, timezone
 
 from azure.ai.voicelive.models import (
     AudioInputTranscriptionOptions,
     RequestSession,
 )
 
-from app.conversation_extractor import llm_extract_insights
+from app.conversation_extractor import llm_extract_insights, llm_generate_call_summary
+from app.transcript_sanitize import sanitize_assistant_transcript
+from app import call_store
+from app.agent_persona import BROKERAGE_NAME
 
 from .voicelive_media_handler import VoiceLiveMediaHandler, _coerce_pcm_bytes
 
@@ -37,6 +42,12 @@ class WebMediaHandler(VoiceLiveMediaHandler):
         self._extract_run_lock = asyncio.Lock()
         self._extract_worker: asyncio.Task | None = None
         self._finalizing = False
+        self._summary_sent = False
+        self._summary_loading_sent = False
+        self._voicelive_cleaned = False
+        self._persist_done = False
+        self._call_summary_text: str | None = None
+        self._finalize_task: asyncio.Task | None = None
 
     def _session_config(self) -> RequestSession:
         session = super()._session_config()
@@ -60,6 +71,8 @@ class WebMediaHandler(VoiceLiveMediaHandler):
 
     def _record_final_turn(self, role: str, text: str) -> None:
         text = (text or "").strip()
+        if role == "assistant":
+            text = sanitize_assistant_transcript(text)
         if not text:
             return
         last = self._mirror_turns[-1] if self._mirror_turns else None
@@ -96,9 +109,9 @@ class WebMediaHandler(VoiceLiveMediaHandler):
         self._user_partial += transcript
         await self._send_transcript(
             "user",
-            self._user_partial,
+            transcript,
             final=False,
-            replace=True,
+            replace=False,
         )
 
     async def on_user_transcript_done(self, transcript: str) -> None:
@@ -111,15 +124,24 @@ class WebMediaHandler(VoiceLiveMediaHandler):
 
     async def on_assistant_transcript_delta(self, transcript: str) -> None:
         self._assistant_partial += transcript
+        display = sanitize_assistant_transcript(self._assistant_partial)
         await self._send_transcript(
             "assistant",
-            self._assistant_partial,
+            display,
             final=False,
             replace=True,
         )
 
     async def on_transcript_done(self, transcript: str) -> None:
+        transcript = sanitize_assistant_transcript(transcript)
+        if self._call_turns and self._call_turns[-1].get("role") == "assistant":
+            if transcript:
+                self._call_turns[-1]["text"] = transcript
+            else:
+                self._call_turns.pop()
         self._assistant_partial = ""
+        if not transcript:
+            return
         await self._send_transcript("assistant", transcript, final=True)
 
     def _schedule_insight_extraction(self) -> None:
@@ -216,19 +238,186 @@ class WebMediaHandler(VoiceLiveMediaHandler):
             payload["turnSeq"] = turn_seq
         await self.send_message(json.dumps(payload))
 
+    async def _emit_call_summary(
+        self,
+        *,
+        loading: bool,
+        summary: str | None = None,
+        error: str | None = None,
+    ) -> None:
+        await self.send_message(
+            json.dumps(
+                {
+                    "Kind": "CallSummary",
+                    "loading": loading,
+                    "summary": summary,
+                    "error": error,
+                }
+            )
+        )
+
+    def _turns_for_summary(self) -> list[dict]:
+        turns = self._turns_for_extract()
+        cleaned: list[dict] = []
+        for turn in turns:
+            role = turn.get("role", "")
+            text = (turn.get("text") or "").strip()
+            if role == "assistant":
+                text = sanitize_assistant_transcript(text)
+            elif role == "user":
+                text = text.strip()
+            if text:
+                cleaned.append({"role": role, "text": text})
+        return cleaned
+
+    async def _send_call_summary(self) -> None:
+        """Analyze the full transcript and send a summary to the browser."""
+        if self._summary_sent:
+            return
+
+        if not self._summary_loading_sent:
+            try:
+                await self._emit_call_summary(loading=True)
+                self._summary_loading_sent = True
+            except Exception:
+                logger.exception(
+                    "[WebMediaHandler] Failed to send call summary loading state"
+                )
+
+        self._summary_sent = True
+        turns = self._turns_for_summary()
+
+        if not turns:
+            msg = "No conversation to summarize."
+            self._call_summary_text = msg
+            await self._emit_call_summary(loading=False, summary=msg)
+            return
+
+        try:
+            summary, usage = await llm_generate_call_summary(
+                turns,
+                key_facts=self._emitted_insights or None,
+            )
+            if usage:
+                cost = self._record_usage_cost(usage, text_only=True)
+                await self.on_agent_event(
+                    {
+                        "Kind": "AgentEvent",
+                        "kind": "usage",
+                        "source": "summary",
+                        "tokens": usage,
+                        "cost": cost,
+                        "callCostUsd": self._call_cost_usd,
+                    }
+                )
+            if not (summary or "").strip():
+                await self._emit_call_summary(
+                    loading=False,
+                    error="Call summary could not be generated",
+                )
+                return
+            self._call_summary_text = summary
+            await self._emit_call_summary(loading=False, summary=summary)
+            logger.info("[WebMediaHandler] Call summary sent (%d chars)", len(summary))
+        except Exception:
+            logger.exception("[WebMediaHandler] Call summary failed")
+            await self._emit_call_summary(
+                loading=False,
+                error="Call summary failed",
+            )
+
     async def on_agent_event(self, payload: dict) -> None:
         """Forward agent metrics + event-timeline payloads to the browser."""
         await self.send_message(json.dumps(payload))
 
+    async def _cancel_extract_worker(self) -> None:
+        if self._extract_worker is None or self._extract_worker.done():
+            self._extract_worker = None
+            return
+        self._extract_worker.cancel()
+        try:
+            await asyncio.wait_for(
+                asyncio.gather(self._extract_worker, return_exceptions=True),
+                timeout=1.5,
+            )
+        except asyncio.TimeoutError:
+            logger.info(
+                "[WebMediaHandler] Extract worker still stopping; continuing finalize"
+            )
+        self._extract_worker = None
+
+    async def _ensure_voicelive_cleanup(self, *, persist: bool = True) -> None:
+        if self._voicelive_cleaned:
+            return
+        self._voicelive_cleaned = True
+        await super().cleanup(persist=persist)
+
+    async def _persist_call_record(self) -> None:
+        """Write call document to Cosmos including summary and key details."""
+        if not call_store.is_enabled():
+            return
+        if not (self._call_turns or self._call_metrics or self._call_summary_text):
+            return
+        try:
+            call_id = self.call_id or uuid.uuid4().hex
+            ended = datetime.now(timezone.utc)
+            started = self._call_started_at
+            record = {
+                "id": call_id,
+                "callId": call_id,
+                "channel": self.channel,
+                "brokerage": BROKERAGE_NAME,
+                "persona": "Maya — mortgage pre-qualification",
+                "startedAt": started.isoformat() if started else None,
+                "endedAt": ended.isoformat(),
+                "durationSec": round((ended - started).total_seconds(), 1)
+                if started
+                else None,
+                "turnCount": len(self._call_turns),
+                "transcript": self._call_turns,
+                "metrics": self._call_metrics,
+                "events": self._call_events,
+                "callSummary": self._call_summary_text,
+                "keyDetails": [
+                    {"key": k, "value": v}
+                    for k, v in (self._emitted_insights or {}).items()
+                ],
+            }
+            await call_store.save_call(record)
+        except Exception:
+            logger.exception("[WebMediaHandler] Error building call record for persistence")
+
+    async def _persist_call_record_if_needed(self) -> None:
+        if self._persist_done:
+            return
+        self._persist_done = True
+        await self._persist_call_record()
+
+    def _schedule_persist_call_record(self) -> None:
+        """Persist to Cosmos in the background so End Call is not blocked."""
+        if self._persist_done:
+            return
+        self._persist_done = True
+        asyncio.create_task(self._persist_call_record())
+
     async def _finalize_call(self) -> None:
-        """End the Voice Live session."""
-        if self._finalizing:
+        """End the Voice Live session and generate a call summary."""
+        if self._finalizing and self._finalize_task is not asyncio.current_task():
+            if self._finalize_task is not None:
+                await asyncio.gather(self._finalize_task, return_exceptions=True)
             return
         self._finalizing = True
-        if self._extract_worker is not None and not self._extract_worker.done():
-            self._extract_worker.cancel()
-            await asyncio.gather(self._extract_worker, return_exceptions=True)
-        await super().cleanup()
+        try:
+            cancel_task = asyncio.create_task(self._cancel_extract_worker())
+            await asyncio.gather(
+                self._send_call_summary(),
+                self._ensure_voicelive_cleanup(persist=False),
+                cancel_task,
+                return_exceptions=True,
+            )
+            self._schedule_persist_call_record()
+        except Exception:
+            logger.exception("[WebMediaHandler] Finalize call failed")
 
     async def _handle_control_message(self, text: str) -> bool:
         try:
@@ -238,7 +427,17 @@ class WebMediaHandler(VoiceLiveMediaHandler):
         if payload.get("Kind") != "EndCall":
             return False
         logger.info("[WebMediaHandler] EndCall received — closing session")
-        asyncio.create_task(self._finalize_call())
+        self._finalizing = True
+        if not self._summary_sent and not self._summary_loading_sent:
+            try:
+                await self._emit_call_summary(loading=True)
+                self._summary_loading_sent = True
+            except Exception:
+                logger.exception(
+                    "[WebMediaHandler] Failed to send call summary loading on EndCall"
+                )
+        if self._finalize_task is None or self._finalize_task.done():
+            self._finalize_task = asyncio.create_task(self._finalize_call())
         return True
 
     async def on_message(self, msg):
@@ -275,8 +474,14 @@ class WebMediaHandler(VoiceLiveMediaHandler):
                 return
 
     async def cleanup(self):
-        if self._extract_worker is not None and not self._extract_worker.done():
-            self._extract_worker.cancel()
-            await asyncio.gather(self._extract_worker, return_exceptions=True)
+        await self._cancel_extract_worker()
         if not self._finalizing:
-            await super().cleanup()
+            self._finalizing = True
+        if self._finalize_task is not None and not self._finalize_task.done():
+            await asyncio.gather(self._finalize_task, return_exceptions=True)
+        elif not self._summary_sent:
+            await self._send_call_summary()
+        if not self._voicelive_cleaned:
+            await self._ensure_voicelive_cleanup(persist=True)
+        elif not self._persist_done:
+            await self._persist_call_record_if_needed()
