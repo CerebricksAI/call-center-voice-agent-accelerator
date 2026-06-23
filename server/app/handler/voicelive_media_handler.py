@@ -541,11 +541,13 @@ class VoiceLiveMediaHandler:
         first_audio = ar.get("first_audio")
         audio_done = ar.get("audio_done")
         done = ar.get("done")
+        stt_done = u.get("stt_done")
         metrics = {
             "userSpeechMs": self._delta_ms(speech_started, speech_stopped),
             "sttFirstMs": self._delta_ms(speech_stopped, u.get("stt_first")),
-            "sttMs": self._delta_ms(speech_stopped, u.get("stt_done")),
-            "thinkMs": self._delta_ms(speech_stopped, created),
+            "sttMs": self._delta_ms(speech_stopped, stt_done),
+            # Segment durations (each column = time spent in that phase only).
+            "thinkMs": self._delta_ms(stt_done or speech_stopped, created),
             "ttfaMs": self._delta_ms(speech_stopped, first_audio),
             "ttsStartMs": self._delta_ms(created, first_audio),
             "ttsMs": self._delta_ms(first_audio, audio_done),
@@ -711,9 +713,10 @@ class VoiceLiveMediaHandler:
         except Exception:
             logger.exception("[VoiceLive] Error building call record for persistence")
 
-    async def cleanup(self):
+    async def cleanup(self, *, persist: bool = True):
         """Persist the call record, then cancel tasks and close the connection."""
-        await self._persist_call_record()
+        if persist:
+            await self._persist_call_record()
         if self._receiver_task:
             self._receiver_task.cancel()
             try:

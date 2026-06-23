@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sign in · Quadrant Financial Agent</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root,
+    [data-theme="light"] {
+      --qt-black: #000000;
+      --qt-white: #ffffff;
+      --qt-text: #111111;
+      --qt-text-muted: #5c6678;
+      --qt-heading: #002060;
+      --qt-primary: #8929fe;
+      --qt-primary-hover: #7420db;
+      --qt-border: #dddddd;
+      --qt-input-bg: #ffffff;
+      --qt-page-bg: #ffffff;
+      --qt-card-bg: #ffffff;
+      --qt-card-shadow: 0 8px 32px rgba(17, 17, 17, 0.08);
+      --qt-danger: #cf2e2e;
+      --qt-danger-bg: rgba(207, 46, 46, 0.08);
+      --qt-footer: #767676;
+      --qt-toggle-bg: #ffffff;
+      --qt-toggle-border: #dddddd;
+      --qt-toggle-color: #111111;
+    }
+
+    [data-theme="dark"] {
+      --qt-text: #f5f5f5;
+      --qt-text-muted: #b0b8c4;
+      --qt-heading: #ffffff;
+      --qt-border: rgba(255, 255, 255, 0.14);
+      --qt-input-bg: #111111;
+      --qt-page-bg: #090909;
+      --qt-card-bg: #111111;
+      --qt-card-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+      --qt-danger: #f87171;
+      --qt-danger-bg: rgba(248, 113, 113, 0.12);
+      --qt-footer: #8b95a5;
+      --qt-toggle-bg: #111111;
+      --qt-toggle-border: rgba(255, 255, 255, 0.14);
+      --qt-toggle-color: #ffffff;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Montserrat", "Segoe UI", system-ui, sans-serif;
+      color: var(--qt-text);
+      background: var(--qt-page-bg);
+      transition: background 0.2s ease, color 0.2s ease;
+    }
+
+    .site-header {
+      background: var(--qt-black);
+      padding: 1rem 1.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    }
+
+    .site-header img {
+      height: 34px;
+      width: auto;
+      display: block;
+    }
+
+    .theme-toggle {
+      position: fixed;
+      top: 1rem;
+      right: 1rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 38px;
+      height: 38px;
+      padding: 0;
+      border: 1px solid var(--qt-toggle-border);
+      border-radius: 4px;
+      background: var(--qt-toggle-bg);
+      color: var(--qt-toggle-color);
+      font-size: 1rem;
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+      line-height: 1;
+      z-index: 10;
+    }
+
+    .theme-toggle:hover {
+      border-color: var(--qt-primary);
+    }
+
+    .login-main {
+      min-height: calc(100vh - 66px);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 2.5rem 1.5rem 2rem;
+    }
+
+    .login-shell {
+      width: 100%;
+      max-width: 440px;
+    }
+
+    .login-card {
+      background: var(--qt-card-bg);
+      border: 1px solid var(--qt-border);
+      border-radius: 8px;
+      padding: 2.25rem 2rem 2rem;
+      box-shadow: var(--qt-card-shadow);
+      transition: background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .brand {
+      margin-bottom: 1.75rem;
+      text-align: left;
+    }
+
+    .brand h1 {
+      margin: 0 0 0.5rem;
+      font-size: 1.75rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      color: var(--qt-heading);
+      line-height: 1.2;
+    }
+
+    .brand p {
+      margin: 0;
+      font-size: 0.95rem;
+      font-weight: 400;
+      color: var(--qt-text-muted);
+      line-height: 1.55;
+    }
+
+    label {
+      display: block;
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: var(--qt-text);
+      margin-bottom: 0.45rem;
+    }
+
+    .field {
+      margin-bottom: 1.15rem;
+    }
+
+    input {
+      width: 100%;
+      padding: 0.78rem 0.9rem;
+      border-radius: 4px;
+      border: 1px solid var(--qt-border);
+      background: var(--qt-input-bg);
+      color: var(--qt-text);
+      font-family: inherit;
+      font-size: 0.95rem;
+      outline: none;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    }
+
+    input:focus {
+      border-color: var(--qt-primary);
+      box-shadow: 0 0 0 3px rgba(137, 41, 254, 0.18);
+    }
+
+    input::placeholder {
+      color: var(--qt-text-muted);
+      opacity: 0.85;
+    }
+
+    .error {
+      display: none;
+      margin-bottom: 1rem;
+      padding: 0.7rem 0.9rem;
+      border-radius: 4px;
+      background: var(--qt-danger-bg);
+      border: 1px solid rgba(207, 46, 46, 0.25);
+      color: var(--qt-danger);
+      font-size: 0.88rem;
+      line-height: 1.45;
+    }
+
+    .error.visible { display: block; }
+
+    button[type="submit"] {
+      width: 100%;
+      margin-top: 0.5rem;
+      padding: 0.85rem 1rem;
+      border: none;
+      border-radius: 4px;
+      background: var(--qt-primary);
+      color: #ffffff;
+      font-family: inherit;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s ease, transform 0.12s ease;
+    }
+
+    button[type="submit"]:hover:not(:disabled) {
+      background: var(--qt-primary-hover);
+      transform: translateY(-1px);
+    }
+
+    button[type="submit"]:disabled {
+      opacity: 0.65;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .page-footer {
+      margin-top: 1.5rem;
+      text-align: center;
+      font-size: 0.78rem;
+      color: var(--qt-footer);
+      line-height: 1.5;
+    }
+  </style>
+</head>
+<body>
+  <header class="site-header">
+    <img src="/static/quadrant-logo.png" alt="Quadrant Technologies" />
+  </header>
+
+  <button type="button" class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="Toggle light/dark theme" aria-label="Toggle theme">
+    <span id="themeIcon">☾</span>
+  </button>
+
+  <main class="login-main">
+    <div class="login-shell">
+      <div class="login-card">
+        <div class="brand">
+          <h1>Financial Agent</h1>
+          <p>Sign in to access the voice agent.</p>
+        </div>
+
+        <div id="errorBox" class="error" role="alert"></div>
+
+        <form id="loginForm" novalidate>
+          <div class="field">
+            <label for="email">Work email</label>
+            <input
+              id="email"
+              name="email"
+              type="email"
+              autocomplete="username"
+              placeholder="you@quadranttechnologies.com"
+              required
+            />
+          </div>
+          <div class="field">
+            <label for="password">Password</label>
+            <input
+              id="password"
+              name="password"
+              type="password"
+              autocomplete="current-password"
+              placeholder="Enter your password"
+              required
+            />
+          </div>
+          <button type="submit" id="submitBtn">Sign in</button>
+        </form>
+      </div>
+      <p class="page-footer">Powered by Azure Voice Live · Quadrant Technologies</p>
+    </div>
+  </main>
+
+  <script>
+    const form = document.getElementById("loginForm");
+    const errorBox = document.getElementById("errorBox");
+    const submitBtn = document.getElementById("submitBtn");
+
+    function applyTheme(theme) {
+      document.documentElement.setAttribute("data-theme", theme);
+      localStorage.setItem("quadrant-theme", theme);
+      const icon = document.getElementById("themeIcon");
+      if (icon) icon.textContent = theme === "dark" ? "☀" : "☾";
+    }
+
+    function toggleTheme() {
+      const current = document.documentElement.getAttribute("data-theme") || "light";
+      applyTheme(current === "dark" ? "light" : "dark");
+    }
+
+    function initTheme() {
+      const saved = localStorage.getItem("quadrant-theme");
+      applyTheme(saved === "dark" ? "dark" : "light");
+    }
+
+    function showError(message) {
+      errorBox.textContent = message;
+      errorBox.classList.add("visible");
+    }
+
+    function hideError() {
+      errorBox.classList.remove("visible");
+    }
+
+    async function redirectIfAuthed() {
+      try {
+        const res = await fetch("/auth/session", { credentials: "same-origin" });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.authenticated) {
+            window.location.replace("/");
+          }
+        }
+      } catch (_) {}
+    }
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      hideError();
+      submitBtn.disabled = true;
+      submitBtn.textContent = "Signing in…";
+
+      const email = document.getElementById("email").value.trim();
+      const password = document.getElementById("password").value;
+
+      try {
+        const res = await fetch("/auth/login", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, password }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          showError(data.error || "Sign in failed. Check your email and password.");
+          return;
+        }
+        window.location.replace("/");
+      } catch (_) {
+        showError("Unable to reach the server. Try again in a moment.");
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = "Sign in";
+      }
+    });
+
+    initTheme();
+    redirectIfAuthed();
+  </script>
+</body>
+</html>
