@@ -46,6 +46,8 @@ class WebMediaHandler(VoiceLiveMediaHandler):
         self._summary_loading_sent = False
         self._voicelive_cleaned = False
         self._persist_done = False
+        self._persisted_call_id: str | None = None
+        self._call_saved_notified = False
         self._call_summary_text: str | None = None
         self._finalize_task: asyncio.Task | None = None
 
@@ -63,6 +65,10 @@ class WebMediaHandler(VoiceLiveMediaHandler):
             transcription_model,
         )
         return session
+
+    async def connect_voicelive(self):
+        await self.notify_call_started()
+        await super().connect_voicelive()
 
     def _turns_for_extract(self) -> list[dict]:
         if self._mirror_turns:
@@ -238,6 +244,19 @@ class WebMediaHandler(VoiceLiveMediaHandler):
             payload["turnSeq"] = turn_seq
         await self.send_message(json.dumps(payload))
 
+    async def notify_call_started(self) -> None:
+        """Tell the browser which call id will be used for Cosmos persistence."""
+        if not self.call_id:
+            return
+        await self.send_message(
+            json.dumps({"Kind": "CallStarted", "callId": self.call_id})
+        )
+
+    async def _emit_call_saved(self, call_id: str) -> None:
+        await self.send_message(
+            json.dumps({"Kind": "CallSaved", "callId": call_id})
+        )
+
     async def _emit_call_summary(
         self,
         *,
@@ -245,16 +264,15 @@ class WebMediaHandler(VoiceLiveMediaHandler):
         summary: str | None = None,
         error: str | None = None,
     ) -> None:
-        await self.send_message(
-            json.dumps(
-                {
-                    "Kind": "CallSummary",
-                    "loading": loading,
-                    "summary": summary,
-                    "error": error,
-                }
-            )
-        )
+        payload = {
+            "Kind": "CallSummary",
+            "loading": loading,
+            "summary": summary,
+            "error": error,
+        }
+        if self.call_id:
+            payload["callId"] = self.call_id
+        await self.send_message(json.dumps(payload))
 
     def _turns_for_summary(self) -> list[dict]:
         turns = self._turns_for_extract()
@@ -352,12 +370,28 @@ class WebMediaHandler(VoiceLiveMediaHandler):
         self._voicelive_cleaned = True
         await super().cleanup(persist=persist)
 
-    async def _persist_call_record(self) -> None:
-        """Write call document to Cosmos including summary and key details."""
+    def _turns_for_persist(self) -> list[dict]:
+        if self._call_turns:
+            return list(self._call_turns)
+        return [
+            {"role": t.get("role"), "text": t.get("text"), "atMs": t.get("atMs")}
+            for t in self._mirror_turns
+            if (t.get("text") or "").strip()
+        ]
+
+    async def _persist_call_record(self) -> str | None:
+        """Write call document to Cosmos. Returns call id when saved."""
         if not call_store.is_enabled():
-            return
-        if not (self._call_turns or self._call_metrics or self._call_summary_text):
-            return
+            return None
+
+        transcript = self._turns_for_persist()
+        if not (transcript or self._call_metrics or self._call_summary_text):
+            logger.info(
+                "[WebMediaHandler] Skipping Cosmos persist for call %s — no data yet",
+                self.call_id or "?",
+            )
+            return None
+
         try:
             call_id = self.call_id or uuid.uuid4().hex
             ended = datetime.now(timezone.utc)
@@ -373,8 +407,8 @@ class WebMediaHandler(VoiceLiveMediaHandler):
                 "durationSec": round((ended - started).total_seconds(), 1)
                 if started
                 else None,
-                "turnCount": len(self._call_turns),
-                "transcript": self._call_turns,
+                "turnCount": len(transcript),
+                "transcript": transcript,
                 "metrics": self._call_metrics,
                 "events": self._call_events,
                 "callSummary": self._call_summary_text,
@@ -384,21 +418,34 @@ class WebMediaHandler(VoiceLiveMediaHandler):
                 ],
             }
             await call_store.save_call(record)
+            return call_id
         except Exception:
             logger.exception("[WebMediaHandler] Error building call record for persistence")
+            raise
 
-    async def _persist_call_record_if_needed(self) -> None:
+    async def _persist_call_record_if_needed(self) -> str | None:
         if self._persist_done:
-            return
-        self._persist_done = True
-        await self._persist_call_record()
+            return self._persisted_call_id
+        try:
+            self._persisted_call_id = await self._persist_call_record()
+        finally:
+            self._persist_done = True
+        return self._persisted_call_id
 
-    def _schedule_persist_call_record(self) -> None:
-        """Persist to Cosmos in the background so End Call is not blocked."""
-        if self._persist_done:
+    async def _await_persist_call_record(self) -> str | None:
+        return await self._persist_call_record_if_needed()
+
+    async def _try_notify_call_saved(self, saved_id: str | None) -> None:
+        if not saved_id or self._call_saved_notified:
             return
-        self._persist_done = True
-        asyncio.create_task(self._persist_call_record())
+        try:
+            await self._emit_call_saved(saved_id)
+            self._call_saved_notified = True
+        except Exception:
+            logger.exception(
+                "[WebMediaHandler] Failed to notify client call %s was saved",
+                saved_id,
+            )
 
     async def _finalize_call(self) -> None:
         """End the Voice Live session and generate a call summary."""
@@ -415,7 +462,8 @@ class WebMediaHandler(VoiceLiveMediaHandler):
                 cancel_task,
                 return_exceptions=True,
             )
-            self._schedule_persist_call_record()
+            saved_id = await self._await_persist_call_record()
+            await self._try_notify_call_saved(saved_id)
         except Exception:
             logger.exception("[WebMediaHandler] Finalize call failed")
 
@@ -482,6 +530,6 @@ class WebMediaHandler(VoiceLiveMediaHandler):
         elif not self._summary_sent:
             await self._send_call_summary()
         if not self._voicelive_cleaned:
-            await self._ensure_voicelive_cleanup(persist=True)
-        elif not self._persist_done:
-            await self._persist_call_record_if_needed()
+            await self._ensure_voicelive_cleanup(persist=False)
+        saved_id = await self._await_persist_call_record()
+        await self._try_notify_call_saved(saved_id)

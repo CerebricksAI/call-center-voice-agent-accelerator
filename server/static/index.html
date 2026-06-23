@@ -198,6 +198,15 @@
       color: #ffffff;
     }
 
+    a.nav-link:not(.disabled):not(.active) {
+      cursor: pointer;
+    }
+
+    a.nav-link:not(.disabled):not(.active):hover {
+      background: rgba(255, 255, 255, 0.08);
+      color: var(--nav-text);
+    }
+
     .nav-link.disabled {
       opacity: 0.35;
       pointer-events: none;
@@ -983,6 +992,77 @@
     .turn-table-wrap::-webkit-scrollbar-track {
       background: transparent;
     }
+
+    .call-finalize-banner {
+      display: none;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      flex-wrap: wrap;
+      margin: 0;
+      padding: 0.65rem 1.25rem;
+      background: linear-gradient(90deg, rgba(137, 41, 254, 0.12), rgba(0, 32, 96, 0.08));
+      border-bottom: 1px solid rgba(137, 41, 254, 0.25);
+      color: var(--text-primary);
+      font-size: 0.86rem;
+      line-height: 1.45;
+    }
+
+    .call-finalize-banner.visible {
+      display: flex;
+    }
+
+    .call-finalize-banner strong {
+      color: var(--qt-heading);
+      font-weight: 600;
+    }
+
+    .call-finalize-actions {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      flex-shrink: 0;
+    }
+
+    .call-finalize-link {
+      display: inline-flex;
+      align-items: center;
+      padding: 0.38rem 0.85rem;
+      border-radius: var(--radius-sm);
+      background: var(--qt-primary);
+      color: #fff;
+      font-size: 0.78rem;
+      font-weight: 600;
+      text-decoration: none;
+      transition: background 0.15s;
+    }
+
+    .call-finalize-link:hover {
+      background: var(--qt-primary-hover);
+      color: #fff;
+    }
+
+    .call-finalize-link.disabled {
+      opacity: 0.45;
+      pointer-events: none;
+    }
+
+    .call-finalize-dismiss {
+      border: 1px solid var(--border);
+      background: var(--bg-card);
+      color: var(--text-secondary);
+      border-radius: var(--radius-sm);
+      font-family: inherit;
+      font-size: 0.76rem;
+      font-weight: 600;
+      padding: 0.35rem 0.65rem;
+      cursor: pointer;
+    }
+
+    .call-finalize-dismiss:hover {
+      border-color: var(--qt-primary);
+      color: var(--qt-primary);
+    }
   </style>
 </head>
 <body>
@@ -992,8 +1072,8 @@
       <span class="nav-product">Financial Agent</span>
     </div>
     <div class="nav-links">
-      <a class="nav-link active">Pre-Qual Call</a>
-      <a class="nav-link disabled">Call History</a>
+      <a class="nav-link active" href="/">Pre-Qual Call</a>
+      <a class="nav-link" href="/history" id="navCallHistory">Call History</a>
       <a class="nav-link disabled">Analytics</a>
       <a class="nav-link disabled">Settings</a>
     </div>
@@ -1009,6 +1089,14 @@
       </div>
     </div>
   </nav>
+
+  <div id="callFinalizeBanner" class="call-finalize-banner" role="status" aria-live="polite">
+    <span id="callFinalizeBannerText"></span>
+    <div class="call-finalize-actions">
+      <a id="callHistoryLink" class="call-finalize-link disabled" href="/history">View in Call History</a>
+      <button type="button" class="call-finalize-dismiss" id="callFinalizeDismiss" onclick="dismissCallFinalizeBanner()">Dismiss</button>
+    </div>
+  </div>
 
   <main class="app-main">
   <div class="page">
@@ -1507,8 +1595,115 @@
     let callSummary = null;
     let summaryError = null;
     let waitingForSummary = false;
+    let waitingForCallSaved = false;
+    let currentCallId = null;
     let summaryCloseTimer = null;
+    let callSavedCloseTimer = null;
     const SUMMARY_CLOSE_TIMEOUT_MS = 180000;
+    const CALL_SAVED_CLOSE_MS = 2500;
+    const CALL_SAVED_WAIT_MS = 12000;
+
+    const LEAVE_DURING_FINALIZE_MSG =
+      "Call summary is still generating. Leave this page? You can view the saved call in Call History shortly.";
+
+    function isCallFinalizing() {
+      return waitingForSummary || summaryLoading || waitingForCallSaved;
+    }
+
+    function historyUrlForCall(callId) {
+      return callId ? `/history?id=${encodeURIComponent(callId)}` : "/history";
+    }
+
+    function showCallFinalizeBanner(mode, callId) {
+      const banner = document.getElementById("callFinalizeBanner");
+      const text = document.getElementById("callFinalizeBannerText");
+      const link = document.getElementById("callHistoryLink");
+      if (!banner || !text || !link) return;
+
+      if (callId) currentCallId = callId;
+      const id = currentCallId;
+      link.href = historyUrlForCall(id);
+
+      if (mode === "generating") {
+        text.innerHTML =
+          "<strong>Generating call summary…</strong> Stay on this page to see it here, or open Call History once the call is saved.";
+        link.textContent = "Call History";
+        link.classList.add("disabled");
+      } else if (mode === "saving") {
+        text.innerHTML =
+          "<strong>Summary ready.</strong> Saving call to history…";
+        link.textContent = "View in Call History";
+        link.classList.remove("disabled");
+      } else if (mode === "saved") {
+        text.innerHTML =
+          "<strong>Call saved.</strong> View the full record in Call History.";
+        link.textContent = "View in Call History";
+        link.classList.remove("disabled");
+      }
+
+      link.onclick = (e) => {
+        if (id) sessionStorage.setItem("qt-open-call-id", id);
+        if (isCallFinalizing() && mode === "generating") {
+          if (!confirm(LEAVE_DURING_FINALIZE_MSG)) {
+            e.preventDefault();
+          }
+        }
+      };
+
+      banner.classList.add("visible");
+    }
+
+    function dismissCallFinalizeBanner() {
+      const banner = document.getElementById("callFinalizeBanner");
+      if (banner) banner.classList.remove("visible");
+    }
+
+    function setupNavLeaveGuard() {
+      const historyNav = document.getElementById("navCallHistory");
+      if (historyNav) {
+        historyNav.addEventListener("click", (e) => {
+          if (!isCallFinalizing()) return;
+          if (!confirm(LEAVE_DURING_FINALIZE_MSG)) {
+            e.preventDefault();
+            return;
+          }
+          if (currentCallId) {
+            sessionStorage.setItem("qt-open-call-id", currentCallId);
+          }
+        });
+      }
+
+      window.addEventListener("beforeunload", (e) => {
+        if (!isCallFinalizing()) return;
+        e.preventDefault();
+        e.returnValue = "";
+      });
+    }
+
+    function clearCallSavedCloseTimer() {
+      if (callSavedCloseTimer) {
+        clearTimeout(callSavedCloseTimer);
+        callSavedCloseTimer = null;
+      }
+    }
+
+    function armCallSavedCloseTimer(delayMs) {
+      clearCallSavedCloseTimer();
+      callSavedCloseTimer = setTimeout(() => {
+        closeSocketAfterSummary();
+      }, delayMs);
+    }
+
+    function handleCallStartedMsg(msg) {
+      if (msg.callId) currentCallId = msg.callId;
+    }
+
+    function handleCallSavedMsg(msg) {
+      waitingForCallSaved = false;
+      if (msg.callId) currentCallId = msg.callId;
+      showCallFinalizeBanner("saved", currentCallId);
+      armCallSavedCloseTimer(CALL_SAVED_CLOSE_MS);
+    }
 
     function armSummaryCloseTimer() {
       if (summaryCloseTimer) clearTimeout(summaryCloseTimer);
@@ -1700,6 +1895,8 @@
       if (msg.loading === true) {
         summaryLoading = true;
         summaryError = null;
+        if (msg.callId) currentCallId = msg.callId;
+        showCallFinalizeBanner("generating", currentCallId);
         armSummaryCloseTimer();
         renderKeyDetails();
         scrollKeyDetailsToBottom();
@@ -1708,10 +1905,13 @@
       summaryLoading = false;
       summaryError = msg.error || null;
       callSummary = msg.summary || null;
+      if (msg.callId) currentCallId = msg.callId;
       renderKeyDetails();
       scrollKeyDetailsToBottom();
       if (waitingForSummary) {
-        closeSocketAfterSummary();
+        waitingForCallSaved = true;
+        showCallFinalizeBanner("saving", currentCallId);
+        armCallSavedCloseTimer(CALL_SAVED_WAIT_MS);
       }
     }
 
@@ -1720,7 +1920,9 @@
         clearTimeout(summaryCloseTimer);
         summaryCloseTimer = null;
       }
+      clearCallSavedCloseTimer();
       waitingForSummary = false;
+      waitingForCallSaved = false;
       if (summaryLoading && !callSummary && !summaryError) {
         summaryLoading = false;
         summaryError =
@@ -1769,10 +1971,14 @@
       callSummary = null;
       summaryError = null;
       waitingForSummary = false;
+      waitingForCallSaved = false;
+      currentCallId = null;
       if (summaryCloseTimer) {
         clearTimeout(summaryCloseTimer);
         summaryCloseTimer = null;
       }
+      clearCallSavedCloseTimer();
+      dismissCallFinalizeBanner();
       renderKeyDetails();
     }
 
@@ -2145,6 +2351,7 @@
         waitingForSummary = true;
         summaryLoading = true;
         summaryError = null;
+        showCallFinalizeBanner("generating", currentCallId);
         renderKeyDetails();
         scrollKeyDetailsToBottom();
         document.getElementById("stopBtn").disabled = true;
@@ -2195,6 +2402,12 @@
           if (msg.Kind === "CallSummary") {
             handleCallSummaryMsg(msg);
           }
+          if (msg.Kind === "CallStarted") {
+            handleCallStartedMsg(msg);
+          }
+          if (msg.Kind === "CallSaved") {
+            handleCallSavedMsg(msg);
+          }
           return;
         }
         if (event.data instanceof ArrayBuffer) {
@@ -2241,6 +2454,7 @@
     (async () => {
       const authed = await ensureAuthenticated();
       if (!authed) return;
+      setupNavLeaveGuard();
       startSessionWatcher();
       initTheme();
       renderKeyDetails();

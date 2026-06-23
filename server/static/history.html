@@ -1,0 +1,886 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Call History · Quadrant Financial Agent</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root,
+    [data-theme="light"] {
+      --qt-black: #000000;
+      --qt-primary: #8929fe;
+      --qt-primary-hover: #7420db;
+      --qt-heading: #002060;
+      --qt-border: #dddddd;
+      --bg-deep: #ffffff;
+      --bg-main: #f5f7fa;
+      --bg-panel: #ffffff;
+      --bg-card: #ffffff;
+      --bg-elevated: #f8fafc;
+      --border: #dddddd;
+      --border-subtle: #e8e8e8;
+      --text-primary: #111111;
+      --text-secondary: #5c6678;
+      --text-muted: #767676;
+      --nav-bg: #000000;
+      --nav-border: rgba(255, 255, 255, 0.06);
+      --nav-text: rgba(255, 255, 255, 0.92);
+      --nav-text-muted: rgba(255, 255, 255, 0.72);
+      --panel-shadow: 0 8px 32px rgba(17, 17, 17, 0.08);
+      --radius-sm: 4px;
+      --radius-md: 8px;
+    }
+
+    [data-theme="dark"] {
+      --qt-heading: #ffffff;
+      --bg-deep: #090909;
+      --bg-main: #090909;
+      --bg-panel: #111111;
+      --bg-card: #111111;
+      --bg-elevated: #1a1a1a;
+      --border: rgba(255, 255, 255, 0.14);
+      --border-subtle: rgba(255, 255, 255, 0.08);
+      --text-primary: #f5f5f5;
+      --text-secondary: #b0b8c4;
+      --text-muted: #8b95a5;
+      --panel-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: "Montserrat", "Segoe UI", system-ui, sans-serif;
+      background: var(--bg-deep);
+      height: 100vh;
+      overflow: hidden;
+      color: var(--text-primary);
+    }
+
+    .app-nav {
+      display: flex;
+      align-items: center;
+      gap: 1.5rem;
+      padding: 0 1.25rem;
+      height: 58px;
+      background: var(--nav-bg);
+      color: var(--nav-text);
+      border-bottom: 1px solid var(--nav-border);
+      z-index: 100;
+    }
+
+    .nav-brand {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .nav-logo { height: 34px; width: auto; }
+
+    .nav-product {
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: var(--nav-text-muted);
+      padding-left: 0.75rem;
+      border-left: 1px solid rgba(255, 255, 255, 0.12);
+    }
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 0.25rem;
+      flex: 1;
+    }
+
+    .nav-link {
+      padding: 0.42rem 0.85rem;
+      border-radius: var(--radius-sm);
+      font-size: 0.84rem;
+      font-weight: 600;
+      color: var(--nav-text-muted);
+      text-decoration: none;
+    }
+
+    .nav-link.active {
+      background: var(--qt-primary);
+      color: #ffffff;
+    }
+
+    a.nav-link:not(.disabled):not(.active):hover {
+      background: rgba(255, 255, 255, 0.08);
+      color: var(--nav-text);
+    }
+
+    .nav-link.disabled {
+      opacity: 0.35;
+      pointer-events: none;
+    }
+
+    .nav-right {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-left: auto;
+    }
+
+    .nav-user {
+      font-size: 0.78rem;
+      color: var(--nav-text-muted);
+      max-width: 11rem;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .logout-btn, .theme-toggle {
+      padding: 0.38rem 0.75rem;
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      border-radius: var(--radius-sm);
+      background: transparent;
+      color: var(--nav-text-muted);
+      font-family: inherit;
+      font-size: 0.78rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .theme-toggle { padding: 0.38rem 0.55rem; }
+
+    .history-layout {
+      display: grid;
+      grid-template-columns: 300px 1fr;
+      height: calc(100vh - 58px);
+      background: var(--bg-main);
+    }
+
+    .call-list-panel {
+      border-right: 1px solid var(--border);
+      background: var(--bg-panel);
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+
+    .call-list-header {
+      padding: 0.85rem 1rem;
+      border-bottom: 1px solid var(--border-subtle);
+      font-weight: 600;
+      font-size: 0.92rem;
+      color: var(--qt-heading);
+      background: var(--bg-elevated);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.5rem;
+    }
+
+    .refresh-btn {
+      border: 1px solid var(--border);
+      background: var(--bg-card);
+      color: var(--text-secondary);
+      border-radius: var(--radius-sm);
+      font-family: inherit;
+      font-size: 0.72rem;
+      font-weight: 600;
+      padding: 0.25rem 0.55rem;
+      cursor: pointer;
+    }
+
+    .refresh-btn:hover { border-color: var(--qt-primary); color: var(--qt-primary); }
+
+    .call-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 0.5rem;
+    }
+
+    .call-list-item {
+      width: 100%;
+      text-align: left;
+      border: 1px solid var(--border-subtle);
+      background: var(--bg-card);
+      border-radius: var(--radius-md);
+      padding: 0.75rem;
+      margin-bottom: 0.5rem;
+      cursor: pointer;
+      font-family: inherit;
+      color: inherit;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+
+    .call-list-item:hover {
+      border-color: var(--qt-primary);
+    }
+
+    .call-list-item.selected {
+      border-color: var(--qt-primary);
+      box-shadow: 0 0 0 1px var(--qt-primary);
+    }
+
+    .call-list-item .when {
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 0.25rem;
+    }
+
+    .call-list-item .meta {
+      font-size: 0.72rem;
+      color: var(--text-muted);
+      line-height: 1.4;
+    }
+
+    .call-list-item .preview {
+      font-size: 0.75rem;
+      color: var(--text-secondary);
+      margin-top: 0.35rem;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    .call-detail {
+      min-height: 0;
+      overflow-y: auto;
+      padding: 1rem;
+    }
+
+    .empty-state, .loading-state, .error-state {
+      margin: 3rem auto;
+      max-width: 28rem;
+      text-align: center;
+      color: var(--text-muted);
+      line-height: 1.5;
+      font-size: 0.92rem;
+    }
+
+    .error-state { color: #dc2626; }
+
+    .detail-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem 1.25rem;
+      padding: 0.85rem 1rem;
+      background: var(--bg-panel);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      margin-bottom: 1rem;
+      font-size: 0.8rem;
+    }
+
+    .detail-meta dt {
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      font-size: 0.68rem;
+    }
+
+    .detail-meta dd {
+      margin: 0.15rem 0 0;
+      font-weight: 600;
+      color: var(--text-primary);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .detail-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 280px;
+      gap: 1rem;
+      min-height: 320px;
+      margin-bottom: 1rem;
+    }
+
+    .panel {
+      background: var(--bg-panel);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      box-shadow: var(--panel-shadow);
+      display: flex;
+      flex-direction: column;
+      min-height: 280px;
+      max-height: 420px;
+      overflow: hidden;
+    }
+
+    .panel-header {
+      padding: 0.65rem 1rem;
+      border-bottom: 1px solid var(--border-subtle);
+      font-weight: 600;
+      font-size: 0.92rem;
+      color: var(--qt-heading);
+      background: var(--bg-elevated);
+    }
+
+    .panel-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 0.85rem 1rem;
+    }
+
+    .transcript-log {
+      display: flex;
+      flex-direction: column;
+      gap: 0.65rem;
+    }
+
+    .transcript-bubble {
+      max-width: 90%;
+      padding: 0.6rem 0.8rem;
+      border-radius: 0.75rem;
+      font-size: 0.9rem;
+      line-height: 1.45;
+      word-wrap: break-word;
+    }
+
+    .transcript-bubble.user {
+      align-self: flex-end;
+      background: var(--qt-primary);
+      color: #fff;
+    }
+
+    .transcript-bubble.assistant {
+      align-self: flex-start;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+    }
+
+    .transcript-label {
+      display: block;
+      font-size: 0.68rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      margin-bottom: 0.2rem;
+      opacity: 0.85;
+    }
+
+    .insight-item {
+      padding: 0.55rem 0;
+      border-bottom: 1px solid var(--border-subtle);
+      font-size: 0.88rem;
+      line-height: 1.45;
+    }
+
+    .insight-item:last-child { border-bottom: none; }
+
+    .summary-block {
+      margin-top: 0.75rem;
+      padding-top: 0.75rem;
+      border-top: 1px solid var(--border-subtle);
+    }
+
+    .summary-block h4 {
+      margin: 0 0 0.5rem;
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--text-muted);
+    }
+
+    .summary-block p {
+      margin: 0 0 0.5rem;
+      font-size: 0.88rem;
+      line-height: 1.5;
+      color: var(--text-primary);
+    }
+
+    .metric-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 0.55rem 0.65rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .metric-label {
+      font-size: 0.68rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--text-secondary);
+      font-weight: 600;
+    }
+
+    .metric-value {
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: var(--qt-primary);
+      margin-top: 0.2rem;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .section-panel {
+      background: var(--bg-panel);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      margin-bottom: 1rem;
+      overflow: hidden;
+    }
+
+    .section-panel .panel-header {
+      cursor: pointer;
+      user-select: none;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .section-panel .panel-body.collapsed { display: none; }
+
+    .turn-table-wrap, .events-table-wrap {
+      overflow-x: auto;
+    }
+
+    table.data-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.78rem;
+    }
+
+    table.data-table th,
+    table.data-table td {
+      padding: 0.45rem 0.55rem;
+      border-bottom: 1px solid var(--border-subtle);
+      text-align: left;
+      white-space: nowrap;
+    }
+
+    table.data-table th {
+      background: var(--bg-elevated);
+      color: var(--text-secondary);
+      font-weight: 600;
+      position: sticky;
+      top: 0;
+    }
+
+    .raw-json {
+      margin: 0;
+      padding: 1rem;
+      font-size: 0.72rem;
+      line-height: 1.45;
+      overflow-x: auto;
+      background: var(--bg-elevated);
+      color: var(--text-primary);
+      max-height: 480px;
+      overflow-y: auto;
+    }
+
+    @media (max-width: 1100px) {
+      .history-layout { grid-template-columns: 1fr; grid-template-rows: 240px 1fr; }
+      .call-list-panel { border-right: none; border-bottom: 1px solid var(--border); }
+      .detail-grid { grid-template-columns: 1fr; }
+      .panel { max-height: none; }
+    }
+  </style>
+</head>
+<body>
+  <nav class="app-nav">
+    <div class="nav-brand">
+      <img src="/static/quadrant-logo.png" alt="Quadrant" class="nav-logo" />
+      <span class="nav-product">Financial Agent</span>
+    </div>
+    <div class="nav-links">
+      <a class="nav-link" href="/">Pre-Qual Call</a>
+      <a class="nav-link active" href="/history">Call History</a>
+      <a class="nav-link disabled">Analytics</a>
+      <a class="nav-link disabled">Settings</a>
+    </div>
+    <div class="nav-right">
+      <button type="button" class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="Toggle theme">☾</button>
+      <span class="nav-user" id="navUser"></span>
+      <button type="button" class="logout-btn" onclick="logout()">Sign out</button>
+    </div>
+  </nav>
+
+  <div class="history-layout">
+    <aside class="call-list-panel">
+      <div class="call-list-header">
+        <span>Past calls</span>
+        <button type="button" class="refresh-btn" onclick="loadCallList()">Refresh</button>
+      </div>
+      <div id="callList" class="call-list">
+        <div class="loading-state">Loading call history…</div>
+      </div>
+    </aside>
+
+    <main id="callDetail" class="call-detail">
+      <div class="empty-state">Select a call to view the full record.</div>
+    </main>
+  </div>
+
+  <script>
+    let selectedCallId = null;
+    let sessionCheckTimer = null;
+
+    function toggleTheme() {
+      const html = document.documentElement;
+      const next = html.getAttribute("data-theme") === "dark" ? "light" : "dark";
+      html.setAttribute("data-theme", next);
+      localStorage.setItem("qt-theme", next);
+      document.getElementById("themeToggle").textContent = next === "dark" ? "☀" : "☾";
+    }
+
+    function applySavedTheme() {
+      const saved = localStorage.getItem("qt-theme") || "light";
+      document.documentElement.setAttribute("data-theme", saved);
+      document.getElementById("themeToggle").textContent = saved === "dark" ? "☀" : "☾";
+    }
+
+    async function ensureAuthenticated() {
+      try {
+        const res = await fetch("/auth/session", { credentials: "same-origin" });
+        if (!res.ok) {
+          window.location.replace("/login");
+          return false;
+        }
+        const data = await res.json();
+        const navUser = document.getElementById("navUser");
+        if (navUser && data.email) navUser.textContent = data.email;
+        return true;
+      } catch (_) {
+        window.location.replace("/login");
+        return false;
+      }
+    }
+
+    async function logout() {
+      try {
+        await fetch("/auth/logout", { method: "POST", credentials: "same-origin" });
+      } catch (_) {}
+      window.location.replace("/login");
+    }
+
+    function fmtDate(iso) {
+      if (!iso) return "—";
+      try {
+        return new Date(iso).toLocaleString(undefined, {
+          dateStyle: "medium",
+          timeStyle: "short",
+        });
+      } catch (_) {
+        return iso;
+      }
+    }
+
+    function fmtDuration(sec) {
+      if (sec == null || Number.isNaN(Number(sec))) return "—";
+      const s = Math.round(Number(sec));
+      const m = Math.floor(s / 60);
+      const r = s % 60;
+      return m > 0 ? `${m}m ${r}s` : `${r}s`;
+    }
+
+    function fmtMs(v) {
+      if (v == null || v === "" || Number(v) < 0) return "—";
+      const n = Number(v);
+      if (n >= 1000) return (n / 1000).toFixed(2) + "s";
+      return Math.round(n) + "ms";
+    }
+
+    function avgMetric(rows, key) {
+      const vals = rows
+        .map((r) => (r.metrics || {})[key])
+        .filter((v) => v != null && Number(v) >= 0);
+      if (!vals.length) return null;
+      return vals.reduce((a, b) => a + Number(b), 0) / vals.length;
+    }
+
+    function escapeHtml(text) {
+      return String(text)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    }
+
+    function renderCallListItem(call) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "call-list-item" + (call.id === selectedCallId ? " selected" : "");
+      btn.dataset.callId = call.id || call.callId;
+      const summaryPreview = (call.callSummary || "").trim();
+      btn.innerHTML = `
+        <div class="when">${escapeHtml(fmtDate(call.endedAt || call.startedAt))}</div>
+        <div class="meta">${escapeHtml(fmtDuration(call.durationSec))} · ${call.turnCount ?? "—"} turns · ${escapeHtml(call.channel || "web")}</div>
+        ${summaryPreview ? `<div class="preview">${escapeHtml(summaryPreview)}</div>` : ""}
+      `;
+      btn.addEventListener("click", () => loadCallDetail(btn.dataset.callId));
+      return btn;
+    }
+
+    async function loadCallList() {
+      const listEl = document.getElementById("callList");
+      listEl.innerHTML = '<div class="loading-state">Loading call history…</div>';
+
+      try {
+        const res = await fetch("/api/calls?limit=50", { credentials: "same-origin" });
+        if (res.status === 401) {
+          window.location.replace("/login");
+          return;
+        }
+        const data = await res.json();
+        if (!data.enabled) {
+          listEl.innerHTML = `<div class="empty-state">${escapeHtml(data.message || "Call history is not configured.")}</div>`;
+          document.getElementById("callDetail").innerHTML =
+            `<div class="empty-state">${escapeHtml(data.message || "Configure COSMOS_ENDPOINT to enable call history.")}</div>`;
+          return;
+        }
+
+        const calls = data.calls || [];
+        if (!calls.length) {
+          listEl.innerHTML = '<div class="empty-state">No saved calls yet. Complete a call on the Pre-Qual page to see it here.</div>';
+          return;
+        }
+
+        listEl.innerHTML = "";
+        for (const call of calls) {
+          listEl.appendChild(renderCallListItem(call));
+        }
+
+        const storedId = sessionStorage.getItem("qt-open-call-id");
+        if (storedId) {
+          sessionStorage.removeItem("qt-open-call-id");
+          await loadCallDetail(storedId, { pushState: true });
+          return;
+        }
+
+        const urlId = new URLSearchParams(window.location.search).get("id");
+        if (urlId) {
+          await loadCallDetail(urlId, { pushState: false });
+        } else if (!selectedCallId && calls[0]) {
+          await loadCallDetail(calls[0].id || calls[0].callId, { pushState: false });
+        }
+      } catch (err) {
+        listEl.innerHTML = `<div class="error-state">Failed to load calls: ${escapeHtml(err.message)}</div>`;
+      }
+    }
+
+    function renderTranscript(transcript) {
+      if (!transcript || !transcript.length) {
+        return '<div class="empty-state" style="margin:1rem 0">No transcript saved.</div>';
+      }
+      return transcript
+        .map((turn) => {
+          const role = turn.role === "user" ? "user" : "assistant";
+          const label = role === "user" ? "Caller" : "Agent";
+          return `<div class="transcript-bubble ${role}">
+            <span class="transcript-label">${label}</span>
+            ${escapeHtml(turn.text || "")}
+          </div>`;
+        })
+        .join("");
+    }
+
+    function renderKeyDetails(keyDetails, summary) {
+      let html = "";
+      if (keyDetails && keyDetails.length) {
+        html += keyDetails
+          .map((item) => `<div class="insight-item">${escapeHtml(item.value || item.key || "")}</div>`)
+          .join("");
+      } else {
+        html += '<div class="empty-state" style="margin:0;padding:0.5rem 0">No key details saved.</div>';
+      }
+      if (summary) {
+        html += `<div class="summary-block"><h4>Call summary</h4>`;
+        for (const para of String(summary).split(/\n+/).filter(Boolean)) {
+          html += `<p>${escapeHtml(para)}</p>`;
+        }
+        html += `</div>`;
+      }
+      return html;
+    }
+
+    function renderMetricsCards(metrics) {
+      if (!metrics || !metrics.length) {
+        return '<div class="empty-state" style="margin:0;padding:0.5rem 0">No metrics saved.</div>';
+      }
+      const cards = [
+        ["Response latency", avgMetric(metrics, "ttfaMs")],
+        ["Speech → Text", avgMetric(metrics, "sttMs")],
+        ["Thinking", avgMetric(metrics, "thinkMs")],
+        ["Text → Speech", avgMetric(metrics, "ttsMs")],
+        ["Response time", avgMetric(metrics, "responseMs")],
+      ];
+      return cards
+        .map(
+          ([label, val]) => `<div class="metric-card">
+            <div class="metric-label">${escapeHtml(label)}</div>
+            <div class="metric-value">${escapeHtml(fmtMs(val))}</div>
+          </div>`
+        )
+        .join("");
+    }
+
+    function renderMetricsTable(metrics) {
+      if (!metrics || !metrics.length) {
+        return '<tr><td colspan="11" class="muted" style="text-align:center">No turn metrics.</td></tr>';
+      }
+      return metrics
+        .map((row) => {
+          const m = row.metrics || {};
+          const tk = row.tokens || {};
+          const tokens = `${tk.input != null ? tk.input : "—"} / ${tk.output != null ? tk.output : "—"}`;
+          const cells = [
+            row.seq != null ? row.seq : row.turn,
+            fmtMs(m.sttMs),
+            fmtMs(m.thinkMs),
+            fmtMs(m.ttsStartMs != null ? m.ttsStartMs : m.ttfaMs),
+            fmtMs(m.ttsMs),
+            fmtMs(m.responseMs),
+            fmtMs(m.turnMs),
+            tokens,
+            row.tokensPerSec != null ? row.tokensPerSec : "—",
+          ];
+          return `<tr><td>${cells.map((c) => escapeHtml(String(c))).join("</td><td>")}</td></tr>`;
+        })
+        .join("");
+    }
+
+    function renderEventsTable(events) {
+      if (!events || !events.length) {
+        return '<tr><td colspan="4" style="text-align:center;color:var(--text-muted)">No events saved.</td></tr>';
+      }
+      return events
+        .map((ev) => {
+          const extra = { ...ev };
+          delete extra.event;
+          delete extra.turn;
+          delete extra.atMs;
+          const extraStr = Object.keys(extra).length ? JSON.stringify(extra) : "";
+          return `<tr>
+            <td>${escapeHtml(ev.event || "")}</td>
+            <td>${escapeHtml(ev.turn != null ? ev.turn : "—")}</td>
+            <td>${escapeHtml(ev.atMs != null ? ev.atMs + "ms" : "—")}</td>
+            <td style="white-space:normal;max-width:320px">${escapeHtml(extraStr)}</td>
+          </tr>`;
+        })
+        .join("");
+    }
+
+    function toggleSection(id) {
+      const body = document.getElementById(id);
+      if (!body) return;
+      body.classList.toggle("collapsed");
+    }
+
+    async function loadCallDetail(callId, { pushState = true } = {}) {
+      if (!callId) return;
+      selectedCallId = callId;
+
+      document.querySelectorAll(".call-list-item").forEach((el) => {
+        el.classList.toggle("selected", el.dataset.callId === callId);
+      });
+
+      const detailEl = document.getElementById("callDetail");
+      detailEl.innerHTML = '<div class="loading-state">Loading call details…</div>';
+
+      if (pushState) {
+        const url = new URL(window.location.href);
+        url.searchParams.set("id", callId);
+        history.replaceState({ callId }, "", url);
+      }
+
+      try {
+        const res = await fetch(`/api/calls/${encodeURIComponent(callId)}`, {
+          credentials: "same-origin",
+        });
+        if (res.status === 401) {
+          window.location.replace("/login");
+          return;
+        }
+        if (res.status === 404) {
+          detailEl.innerHTML = '<div class="error-state">Call not found.</div>';
+          return;
+        }
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          detailEl.innerHTML = `<div class="error-state">${escapeHtml(err.error || "Failed to load call.")}</div>`;
+          return;
+        }
+
+        const call = await res.json();
+        detailEl.innerHTML = `
+          <dl class="detail-meta">
+            <div><dt>Call ID</dt><dd>${escapeHtml(call.callId || call.id || "—")}</dd></div>
+            <div><dt>Started</dt><dd>${escapeHtml(fmtDate(call.startedAt))}</dd></div>
+            <div><dt>Ended</dt><dd>${escapeHtml(fmtDate(call.endedAt))}</dd></div>
+            <div><dt>Duration</dt><dd>${escapeHtml(fmtDuration(call.durationSec))}</dd></div>
+            <div><dt>Turns</dt><dd>${escapeHtml(call.turnCount != null ? call.turnCount : "—")}</dd></div>
+            <div><dt>Channel</dt><dd>${escapeHtml(call.channel || "—")}</dd></div>
+            <div><dt>Brokerage</dt><dd>${escapeHtml(call.brokerage || "—")}</dd></div>
+            <div><dt>Persona</dt><dd>${escapeHtml(call.persona || "—")}</dd></div>
+          </dl>
+
+          <div class="detail-grid">
+            <section class="panel">
+              <div class="panel-header">Transcript</div>
+              <div class="panel-body transcript-log">${renderTranscript(call.transcript)}</div>
+            </section>
+            <section class="panel">
+              <div class="panel-header">Key Details &amp; Summary</div>
+              <div class="panel-body">${renderKeyDetails(call.keyDetails, call.callSummary)}</div>
+            </section>
+            <section class="panel">
+              <div class="panel-header">Performance Metrics</div>
+              <div class="panel-body">${renderMetricsCards(call.metrics)}</div>
+            </section>
+          </div>
+
+          <section class="section-panel">
+            <div class="panel-header" onclick="toggleSection('metricsBody')">
+              <span>Per-turn Metrics</span><span>▼</span>
+            </div>
+            <div class="panel-body turn-table-wrap" id="metricsBody">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>#</th><th>STT</th><th>Think</th><th>First audio</th><th>TTS</th>
+                    <th>Response</th><th>Total</th><th>Tokens (in/out)</th><th>Tok/s</th>
+                  </tr>
+                </thead>
+                <tbody>${renderMetricsTable(call.metrics)}</tbody>
+              </table>
+            </div>
+          </section>
+
+          <section class="section-panel">
+            <div class="panel-header" onclick="toggleSection('eventsBody')">
+              <span>Event Timeline</span><span>▼</span>
+            </div>
+            <div class="panel-body events-table-wrap" id="eventsBody">
+              <table class="data-table">
+                <thead><tr><th>Event</th><th>Turn</th><th>At</th><th>Details</th></tr></thead>
+                <tbody>${renderEventsTable(call.events)}</tbody>
+              </table>
+            </div>
+          </section>
+
+          <section class="section-panel">
+            <div class="panel-header" onclick="toggleSection('rawBody')">
+              <span>Raw JSON (full record)</span><span>▼</span>
+            </div>
+            <div class="panel-body collapsed" id="rawBody">
+              <pre class="raw-json">${escapeHtml(JSON.stringify(call, null, 2))}</pre>
+            </div>
+          </section>
+        `;
+      } catch (err) {
+        detailEl.innerHTML = `<div class="error-state">Failed to load call: ${escapeHtml(err.message)}</div>`;
+      }
+    }
+
+    window.toggleSection = toggleSection;
+
+    (async function init() {
+      applySavedTheme();
+      if (!(await ensureAuthenticated())) return;
+      sessionCheckTimer = setInterval(ensureAuthenticated, 60000);
+      await loadCallList();
+    })();
+  </script>
+</body>
+</html>
