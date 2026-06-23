@@ -3,17 +3,8 @@
 Writes one document per call — metadata + full transcript + per-turn metrics +
 event timeline — when the call ends.
 
-Configuration (env):
-  COSMOS_ENDPOINT   e.g. https://<account>.documents.azure.com:443/
-  COSMOS_KEY        account key (local dev). If unset, falls back to managed
-                    identity / DefaultAzureCredential (deployed app).
-  COSMOS_DATABASE   database name   (default: voiceagent)
-  COSMOS_CONTAINER  container name  (default: calls; partition key /callId)
-  COSMOS_TIMEOUT_S  upsert timeout in seconds (default: 15)
-
-If COSMOS_ENDPOINT is not set, persistence is disabled and every call here is a
-silent no-op, so the app runs fine without Cosmos. Persistence failures are
-logged but never propagate — they must not interrupt a live call.
+Configuration is hardcoded below (same account for local and production).
+COSMOS_TIMEOUT_S can still be overridden via env if needed.
 """
 
 import asyncio
@@ -23,6 +14,7 @@ import os
 logger = logging.getLogger(__name__)
 
 _COSMOS_ENDPOINT = "https://cosmos-insva-knby9f.documents.azure.com:443/"
+_COSMOS_KEY = "omsimg0OE4xxwpQj3lA1LEUpD5zvExOZROjM515JDWRujEWcwZk5xLo5SY52raPjVIrrJ0qOlbSJACDbMhCt8g=="
 _COSMOS_DATABASE = "voiceagent"
 _COSMOS_CONTAINER = "calls"
 _COSMOS_TIMEOUT_S = float(os.getenv("COSMOS_TIMEOUT_S", "15"))
@@ -30,15 +22,11 @@ _COSMOS_TIMEOUT_S = float(os.getenv("COSMOS_TIMEOUT_S", "15"))
 
 def is_enabled() -> bool:
     """True if Cosmos persistence is configured."""
-    return bool(os.getenv("COSMOS_ENDPOINT", _COSMOS_ENDPOINT))
+    return bool(_COSMOS_ENDPOINT)
 
 
-def _cosmos_config() -> tuple[str, str, str, str | None]:
-    endpoint = os.getenv("COSMOS_ENDPOINT", _COSMOS_ENDPOINT)
-    database = os.getenv("COSMOS_DATABASE", _COSMOS_DATABASE)
-    container_name = os.getenv("COSMOS_CONTAINER", _COSMOS_CONTAINER)
-    key = os.getenv("COSMOS_KEY")
-    return endpoint, database, container_name, key
+def _cosmos_config() -> tuple[str, str, str, str]:
+    return _COSMOS_ENDPOINT, _COSMOS_DATABASE, _COSMOS_CONTAINER, _COSMOS_KEY
 
 
 async def _open_container():
@@ -49,18 +37,9 @@ async def _open_container():
 
     from azure.cosmos.aio import CosmosClient
 
-    aad_credential = None
-    if key:
-        credential = key
-    else:
-        from azure.identity.aio import DefaultAzureCredential
-
-        aad_credential = DefaultAzureCredential()
-        credential = aad_credential
-
-    client = CosmosClient(endpoint, credential=credential)
+    client = CosmosClient(endpoint, credential=key)
     container = client.get_database_client(database).get_container_client(container_name)
-    return container, client, aad_credential
+    return container, client, None
 
 
 async def _close_clients(client, aad_credential) -> None:
