@@ -18,6 +18,7 @@ from app.auth import (
 
 from app.call_loop import run_call_loop
 from app.call_manager import CallManager
+from app.call_store import get_call, is_enabled as cosmos_enabled, list_calls
 from app.config_validator import validate_config
 from app.handler.web_media_handler import WebMediaHandler
 from app.logging_config import configure_logging, new_correlation_id
@@ -227,6 +228,53 @@ async def index():
     response = await app.send_static_file("index.html")
     response.cache_control.no_store = True
     return response
+
+
+@app.route("/history")
+async def history_page():
+    """Past call history (loaded from Cosmos DB)."""
+    response = await app.send_static_file("history.html")
+    response.cache_control.no_store = True
+    return response
+
+
+@app.route("/api/calls")
+async def api_list_calls():
+    """GET recent call records from Cosmos DB."""
+    if not cosmos_enabled():
+        return jsonify(
+            {
+                "enabled": False,
+                "calls": [],
+                "message": "Cosmos DB is not configured. Set COSMOS_ENDPOINT to enable call history.",
+            }
+        ), 200
+
+    try:
+        limit = min(max(int(request.args.get("limit", 50)), 1), 100)
+        offset = max(int(request.args.get("offset", 0)), 0)
+    except ValueError:
+        return jsonify({"error": "Invalid limit or offset."}), 400
+
+    calls = await list_calls(limit=limit, offset=offset)
+    return jsonify({"enabled": True, "calls": calls, "limit": limit, "offset": offset}), 200
+
+
+@app.route("/api/calls/<call_id>")
+async def api_get_call(call_id: str):
+    """GET one full call document from Cosmos DB."""
+    if not cosmos_enabled():
+        return jsonify(
+            {
+                "enabled": False,
+                "error": "Cosmos DB is not configured. Set COSMOS_ENDPOINT to enable call history.",
+            }
+        ), 503
+
+    record = await get_call(call_id)
+    if record is None:
+        return jsonify({"error": "Call not found."}), 404
+    return jsonify(record), 200
 
 
 @app.route("/health")

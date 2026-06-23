@@ -30,16 +30,19 @@ def is_enabled() -> bool:
     return bool(os.getenv("COSMOS_ENDPOINT"))
 
 
-async def save_call(record: dict) -> None:
-    """Upsert one call document into Cosmos. No-op if not configured."""
-    endpoint = os.getenv("COSMOS_ENDPOINT")
-    if not endpoint:
-        return
-
+def _cosmos_config() -> tuple[str, str, str, str | None]:
+    endpoint = os.getenv("COSMOS_ENDPOINT", "")
     database = os.getenv("COSMOS_DATABASE", "voiceagent")
     container_name = os.getenv("COSMOS_CONTAINER", "calls")
     key = os.getenv("COSMOS_KEY")
-    call_id = record.get("id", "?")
+    return endpoint, database, container_name, key
+
+
+async def _open_container():
+    """Return (container, client, aad_credential) — caller must close client/credential."""
+    endpoint, database, container_name, key = _cosmos_config()
+    if not endpoint:
+        return None, None, None
 
     from azure.cosmos.aio import CosmosClient
 
@@ -52,7 +55,95 @@ async def save_call(record: dict) -> None:
         aad_credential = DefaultAzureCredential()
         credential = aad_credential
 
-    client = None
+    client = CosmosClient(endpoint, credential=credential)
+    container = client.get_database_client(database).get_container_client(container_name)
+    return container, client, aad_credential
+
+
+async def _close_clients(client, aad_credential) -> None:
+    if client is not None:
+        try:
+            await client.close()
+        except Exception:
+            pass
+    if aad_credential is not None:
+        try:
+            await aad_credential.close()
+        except Exception:
+            pass
+
+
+async def list_calls(*, limit: int = 50, offset: int = 0) -> list[dict]:
+    """Return recent call documents, newest first. Empty list if Cosmos is disabled."""
+    if not is_enabled():
+        return []
+
+    limit = max(1, min(limit, 100))
+    offset = max(0, offset)
+    container, client, aad_credential = await _open_container()
+    if container is None:
+        return []
+
+    query = (
+        "SELECT c.id, c.callId, c.channel, c.brokerage, c.persona, c.startedAt, "
+        "c.endedAt, c.durationSec, c.turnCount, c.callSummary "
+        "FROM c ORDER BY c.endedAt DESC OFFSET @offset LIMIT @limit"
+    )
+    parameters = [
+        {"name": "@offset", "value": offset},
+        {"name": "@limit", "value": limit},
+    ]
+
+    try:
+        items = []
+        async for doc in container.query_items(
+            query=query,
+            parameters=parameters,
+        ):
+            items.append(doc)
+        return items
+    except Exception:
+        logger.exception("[Cosmos] Failed to list calls")
+        return []
+    finally:
+        await _close_clients(client, aad_credential)
+
+
+async def get_call(call_id: str) -> dict | None:
+    """Fetch one call document by id. None if missing or Cosmos is disabled."""
+    if not is_enabled() or not call_id:
+        return None
+
+    container, client, aad_credential = await _open_container()
+    if container is None:
+        return None
+
+    try:
+        return await asyncio.wait_for(
+            container.read_item(item=call_id, partition_key=call_id),
+            timeout=_COSMOS_TIMEOUT_S,
+        )
+    except Exception:
+        logger.exception("[Cosmos] Failed to read call %s", call_id)
+        return None
+    finally:
+        await _close_clients(client, aad_credential)
+
+
+async def save_call(record: dict) -> None:
+    """Upsert one call document into Cosmos. No-op if not configured."""
+    endpoint = os.getenv("COSMOS_ENDPOINT")
+    if not endpoint:
+        return
+
+    database = os.getenv("COSMOS_DATABASE", "voiceagent")
+    container_name = os.getenv("COSMOS_CONTAINER", "calls")
+    call_id = record.get("id", "?")
+
+    container, client, aad_credential = await _open_container()
+    if container is None:
+        return
+
     logger.info(
         "[Cosmos] Saving call %s to %s/%s (timeout=%.0fs)...",
         call_id,
@@ -61,10 +152,6 @@ async def save_call(record: dict) -> None:
         _COSMOS_TIMEOUT_S,
     )
     try:
-        client = CosmosClient(endpoint, credential=credential)
-        container = client.get_database_client(database).get_container_client(
-            container_name
-        )
         await asyncio.wait_for(
             container.upsert_item(record),
             timeout=_COSMOS_TIMEOUT_S,
@@ -94,13 +181,4 @@ async def save_call(record: dict) -> None:
             container_name,
         )
     finally:
-        if client is not None:
-            try:
-                await client.close()
-            except Exception:
-                logger.debug("[Cosmos] Client close failed for call %s", call_id)
-        if aad_credential is not None:
-            try:
-                await aad_credential.close()
-            except Exception:
-                pass
+        await _close_clients(client, aad_credential)
