@@ -10,12 +10,9 @@ from azure.ai.voicelive.models import (
     RequestSession,
 )
 
-from app.conversation_extractor import (
-    extract_conversation_insights,
-    extract_new_insights,
-)
+from app.conversation_extractor import llm_extract_insights
 
-from .voicelive_media_handler import VoiceLiveMediaHandler
+from .voicelive_media_handler import VoiceLiveMediaHandler, _coerce_pcm_bytes
 
 logger = logging.getLogger(__name__)
 
@@ -33,12 +30,12 @@ class WebMediaHandler(VoiceLiveMediaHandler):
         self._assistant_partial = ""
         self._user_partial = ""
         self._mirror_turns: list[dict] = []
-        self._extract_tasks: set[asyncio.Task] = set()
         self._extract_seq = 0
         self._emitted_insights: dict[str, str] = {}
         self._last_published_seq = 0
         self._extract_publish_lock = asyncio.Lock()
-        self._final_extract_done = False
+        self._extract_run_lock = asyncio.Lock()
+        self._extract_worker: asyncio.Task | None = None
         self._finalizing = False
 
     def _session_config(self) -> RequestSession:
@@ -75,7 +72,7 @@ class WebMediaHandler(VoiceLiveMediaHandler):
     ) -> None:
         if final:
             self._record_final_turn(role, text)
-            if (text or "").strip():
+            if role == "user" and (text or "").strip():
                 self._schedule_insight_extraction()
         await self.send_message(
             json.dumps(
@@ -126,78 +123,78 @@ class WebMediaHandler(VoiceLiveMediaHandler):
         await self._send_transcript("assistant", transcript, final=True)
 
     def _schedule_insight_extraction(self) -> None:
-        """Kick off a parallel extraction for this transcript turn (non-blocking)."""
-        if self._finalizing or self._final_extract_done:
+        """Queue LLM extraction — one session at a time, coalesces rapid turns."""
+        if self._finalizing:
             return
         self._extract_seq += 1
-        seq = self._extract_seq
-        task = asyncio.create_task(self._extract_turn_parallel(seq))
-        self._extract_tasks.add(task)
-        task.add_done_callback(self._extract_tasks.discard)
+        if self._extract_worker is None or self._extract_worker.done():
+            self._extract_worker = asyncio.create_task(self._extract_worker_loop())
 
-    async def _extract_turn_parallel(self, seq: int) -> None:
-        """Extract new one-liner key details from the latest caller turn(s)."""
-        try:
-            turns = self._turns_for_extract()
-            if not turns:
-                return
-            insights = await asyncio.to_thread(
-                extract_new_insights, turns, self._emitted_insights
-            )
-            if not insights:
-                logger.debug(
-                    "[WebMediaHandler] No new insights (seq=%s, turns=%d)",
-                    seq,
-                    len(turns),
-                )
-                return
-            async with self._extract_publish_lock:
-                if seq < self._last_published_seq:
-                    return
-                self._last_published_seq = seq
-            logger.info(
-                "[WebMediaHandler] Sending %d new insight(s) to client (seq=%s)",
-                len(insights),
-                seq,
-            )
-            await self._send_insights(insights, turn_seq=seq, append=True)
-        except asyncio.CancelledError:
-            raise
-        except Exception:
-            logger.exception(
-                "[WebMediaHandler] Parallel insight extraction failed (seq=%s)", seq
-            )
+    async def _extract_worker_loop(self) -> None:
+        """Serialize LLM passes so the voice session is not starved."""
+        async with self._extract_run_lock:
+            try:
+                while not self._finalizing:
+                    seq = self._extract_seq
+                    turns = self._turns_for_extract()
+                    if not turns:
+                        return
 
-    async def _run_final_extraction(self) -> None:
-        """Full LLM extraction after the Voice Live call session closes."""
-        if self._final_extract_done:
-            return
-        turns = self._turns_for_extract()
-        if not turns:
-            return
-        self._final_extract_done = True
-        try:
-            await self._send_insights([], loading=True)
-            model = (os.getenv("EXTRACT_MODEL") or self.model).strip()
-            insights = await extract_conversation_insights(
-                turns,
-                endpoint=self.endpoint,
-                api_key=self.api_key,
-                model=model,
-                llm=True,
-                emitted_keys=self._emitted_insights,
-            )
-            await self._send_insights(insights, turn_seq=self._extract_seq, append=True)
-            logger.info(
-                "[WebMediaHandler] Final extraction sent %d insight(s)",
-                len(insights),
-            )
-        except Exception:
-            logger.exception("[WebMediaHandler] Final insight extraction failed")
-            await self._send_insights(
-                [],
-                error="Could not extract key details. Please try another call.",
-            )
+                    await self._send_insights([], turn_seq=seq, loading=True, append=True)
+
+                    try:
+                        insights, usage = await llm_extract_insights(
+                            turns, self._emitted_insights
+                        )
+                    except Exception:
+                        logger.exception(
+                            "[WebMediaHandler] LLM extract failed (seq=%s)", seq
+                        )
+                        await self._send_insights(
+                            [],
+                            turn_seq=seq,
+                            loading=False,
+                            error="Insight extraction failed",
+                            append=True,
+                        )
+                        return
+
+                    if usage:
+                        cost = self._record_usage_cost(usage, text_only=True)
+                        await self.on_agent_event(
+                            {
+                                "Kind": "AgentEvent",
+                                "kind": "usage",
+                                "source": "extract",
+                                "extractSeq": seq,
+                                "tokens": usage,
+                                "cost": cost,
+                                "callCostUsd": self._call_cost_usd,
+                            }
+                        )
+
+                    async with self._extract_publish_lock:
+                        if seq < self._last_published_seq:
+                            return
+                        self._last_published_seq = seq
+
+                    await self._send_insights(
+                        insights,
+                        turn_seq=seq,
+                        loading=False,
+                        append=True,
+                    )
+                    if insights:
+                        logger.info(
+                            "[WebMediaHandler] LLM extract sent %d insight(s) (seq=%s)",
+                            len(insights),
+                            seq,
+                        )
+
+                    if self._extract_seq == seq:
+                        return
+            except asyncio.CancelledError:
+                raise
 
     async def _send_insights(
         self,
@@ -224,18 +221,14 @@ class WebMediaHandler(VoiceLiveMediaHandler):
         await self.send_message(json.dumps(payload))
 
     async def _finalize_call(self) -> None:
-        """Close Voice Live, then run full LLM extraction while the browser ws stays open."""
+        """End the Voice Live session."""
         if self._finalizing:
             return
         self._finalizing = True
-        for task in list(self._extract_tasks):
-            if not task.done():
-                task.cancel()
-        if self._extract_tasks:
-            await asyncio.gather(*self._extract_tasks, return_exceptions=True)
-        if not self._final_extract_done:
-            await super().cleanup()
-            await self._run_final_extraction()
+        if self._extract_worker is not None and not self._extract_worker.done():
+            self._extract_worker.cancel()
+            await asyncio.gather(self._extract_worker, return_exceptions=True)
+        await super().cleanup()
 
     async def _handle_control_message(self, text: str) -> bool:
         try:
@@ -244,7 +237,7 @@ class WebMediaHandler(VoiceLiveMediaHandler):
             return False
         if payload.get("Kind") != "EndCall":
             return False
-        logger.info("[WebMediaHandler] EndCall received — finalizing call")
+        logger.info("[WebMediaHandler] EndCall received — closing session")
         asyncio.create_task(self._finalize_call())
         return True
 
@@ -257,13 +250,14 @@ class WebMediaHandler(VoiceLiveMediaHandler):
             if text and await self._handle_control_message(text):
                 return
             data = msg.get("bytes")
-            if data is None and text is not None:
-                data = text.encode("utf-8")
             if data is None:
                 return
         else:
             data = msg
-        await self.handle_audio(data)
+        pcm = _coerce_pcm_bytes(data)
+        if pcm is None:
+            return
+        await self.handle_audio(pcm)
 
     async def on_conversation_item_created(self, item) -> None:
         """Extract user transcript from conversation items when ASR events attach it."""
@@ -281,14 +275,8 @@ class WebMediaHandler(VoiceLiveMediaHandler):
                 return
 
     async def cleanup(self):
-        for task in list(self._extract_tasks):
-            if not task.done():
-                task.cancel()
-        if self._extract_tasks:
-            await asyncio.gather(*self._extract_tasks, return_exceptions=True)
-
-        if not self._finalizing and not self._final_extract_done:
-            await super().cleanup()
-            await self._run_final_extraction()
-        elif not self._finalizing:
+        if self._extract_worker is not None and not self._extract_worker.done():
+            self._extract_worker.cancel()
+            await asyncio.gather(self._extract_worker, return_exceptions=True)
+        if not self._finalizing:
             await super().cleanup()

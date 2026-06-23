@@ -3,9 +3,9 @@
 import asyncio
 import json
 import logging
+import os
 import re
 
-from azure.core.credentials import AzureKeyCredential
 from azure.ai.voicelive.aio import connect as voicelive_connect
 from azure.ai.voicelive.models import (
     InputTextContentPart,
@@ -14,26 +14,39 @@ from azure.ai.voicelive.models import (
     ServerEventType,
     UserMessageItem,
 )
+from azure.core.credentials import AzureKeyCredential
+from app.usage_cost import normalize_usage
 
 logger = logging.getLogger(__name__)
 
-_EXTRACT_SYSTEM = """You analyze voice-call transcripts for a financial services agent.
-Synthesize important facts — do NOT quote the caller verbatim.
+_EXTRACT_SYSTEM = """You analyze live voice-call transcripts for a financial services agent.
+Synthesize important facts in your own words — never quote the caller verbatim.
 
 Return JSON only:
-{"insights":[{"key":"loan_purpose|location|zip|zip_status|timeline|amount|contact|consent|property_status|next_step","value":"One analytical sentence in your own words.","confidence":0.0-1.0}]}
+{"insights":[{"key":"loan_purpose|location|zip|zip_status|timeline|amount|credit_score|employment|income|contact|consent|property_status|next_step|rate|lender|other","value":"One analytical sentence.","confidence":0.0-1.0}]}
 
 Rules:
-- ANALYZE and summarize; never copy transcript phrasing or use "Caller noted:" / "Caller said:".
-- Extract ONLY facts the CALLER stated — ignore options or examples the agent lists.
-- Correct obvious speech-to-text errors (e.g. "state of Los Angeles" → Los Angeles, California).
-- Separate distinct facts (purpose, location, ZIP availability, timeline, amount, contact preference).
-- If caller lacks a ZIP, say they have not provided one — do not repeat their exact wording.
-- Omit greetings and filler. Return {"insights":[]} if nothing substantive yet.
-- confidence: 0.9+ clear fact, 0.75–0.85 inferred, below 0.75 if uncertain."""
+- Extract ONLY facts the CALLER stated or clearly confirmed — ignore options the agent lists.
+- Include loan purpose, amounts, rates, lender names, property location, ZIP, timeline, credit score, employment, income, contact preference, consent.
+- If the caller corrects an earlier fact (e.g. timeline changed from 30 days to 7 months), return the updated fact with the SAME key so it replaces the old one.
+- Correct speech-to-text errors (e.g. "homeequity" → home equity, "7 LPA" → 7 lakh per annum).
+- Each value must be one complete sentence with specific numbers/names when mentioned.
+- Do not repeat facts listed under "Already extracted" unless correcting them.
+- Return {"insights":[]} if nothing new yet."""
 
-_extract_lock = asyncio.Lock()
-_EXTRACT_TIMEOUT_S = 25.0
+EXTRACT_SYSTEM = _EXTRACT_SYSTEM
+
+_EXTRACT_TIMEOUT_S = float(os.getenv("EXTRACT_TIMEOUT_S", "30"))
+_EXTRACT_SEMAPHORE: asyncio.Semaphore | None = None
+
+
+def _extract_semaphore() -> asyncio.Semaphore:
+    global _EXTRACT_SEMAPHORE
+    if _EXTRACT_SEMAPHORE is None:
+        limit = max(1, int(os.getenv("EXTRACT_MAX_PARALLEL", "1")))
+        _EXTRACT_SEMAPHORE = asyncio.Semaphore(limit)
+    return _EXTRACT_SEMAPHORE
+
 _SLUG_RE = re.compile(r"[^a-z0-9]+")
 
 _MONEY_RE = re.compile(
@@ -55,8 +68,8 @@ _CONTACT_RE = re.compile(
     re.I,
 )
 _CONSENT_RE = re.compile(
-    r"\b(yes|yeah|sure|that works|okay|ok|no|nope|don't|do not)\b.*"
-    r"(?:consent|works for you|recorded|contact)",
+    r"\b(yes|yeah|sure|that works|works for me|okay|ok|no|nope|don't|do not)\b.*"
+    r"(?:consent|works for you|works for me|recorded|contact|fine with)",
     re.I,
 )
 
@@ -140,12 +153,21 @@ def _dedupe_insights(items: list[dict]) -> list[dict]:
     return out
 
 
-def _user_text(turns: list[dict]) -> str:
-    return " ".join(
-        (t.get("text") or "").strip()
+def _normalize_asr(text: str) -> str:
+    """Fix common speech-to-text concatenations before heuristic matching."""
+    return re.sub(r"home\s*equity", "home equity", text, flags=re.I)
+
+
+def _user_turn_texts(turns: list[dict]) -> list[str]:
+    return [
+        _normalize_asr((t.get("text") or "").strip())
         for t in turns
         if t.get("role") == "user" and (t.get("text") or "").strip()
-    )
+    ]
+
+
+def _user_text(turns: list[dict]) -> str:
+    return " ".join(_user_turn_texts(turns))
 
 
 def _parse_location(text: str) -> str | None:
@@ -173,7 +195,10 @@ def _loan_purpose_fact(user_lower: str) -> dict | None:
     if not user_lower.strip():
         return None
 
-    if re.search(r"\bhome equity line of credit\b|\bheloc\b", user_lower):
+    if re.search(
+        r"\bhome equity line of credit\b|\bheloc\b|\bhome equity\b.*\bline of credit\b",
+        user_lower,
+    ):
         return _fact(
             "loan_purpose",
             "The caller is seeking a home equity line of credit (HELOC).",
@@ -211,6 +236,192 @@ def _loan_purpose_fact(user_lower: str) -> dict | None:
             "The caller is looking to purchase a home.",
             0.9,
         )
+    return None
+
+
+def _timeline_fact(turns: list[dict]) -> dict | None:
+    """Use the caller's most recent timeline statement (supports corrections)."""
+    for text in reversed(_user_turn_texts(turns)):
+        lower = text.lower()
+        if not re.search(
+            r"\b\d+\s*(?:days?|weeks?|months?|years?)\b|"
+            r"\bfew months\b|"
+            r"\btimeline\b|"
+            r"\bnext week\b|"
+            r"\btomorrow\b|"
+            r"\btoday\b",
+            lower,
+        ):
+            continue
+
+        m = re.search(r"\b(\d+)\s*(?:to|-)\s*(\d+)\s*months?\b", lower)
+        if m:
+            return _fact(
+                "timeline",
+                f"The caller's expected timeline is about {m.group(1)} to {m.group(2)} months.",
+                0.9,
+            )
+
+        if re.search(r"\bfew months\b", lower) and re.search(
+            r"shift|changed|later|instead|now|personal|family", lower
+        ):
+            return _fact(
+                "timeline",
+                "The caller's timeline has shifted to a few months out.",
+                0.87,
+            )
+
+        m = _DURATION_RE.search(lower)
+        if m:
+            return _fact(
+                "timeline",
+                f"The caller's expected timeline is about {m.group(1).strip()}.",
+                0.85,
+            )
+
+        m = _TIMELINE_RE.search(lower)
+        if m:
+            return _fact(
+                "timeline",
+                f"The caller's expected timeline is {m.group(1).strip()}.",
+                0.82,
+            )
+    return None
+
+
+def _credit_score_fact(turns: list[dict]) -> dict | None:
+    """Extract the caller's latest credit-score range from their own words."""
+    for text in reversed(_user_turn_texts(turns)):
+        lower = text.lower()
+        if not re.search(r"credit|\bscore\b|\b\d{3}\b", lower):
+            continue
+
+        m = re.search(
+            r"(?:now|currently|today).{0,60}"
+            r"(?:around|about|roughly|near|is|at)?\s*(\d{3})\b",
+            lower,
+        )
+        if m and 300 <= int(m.group(1)) <= 850:
+            return _fact(
+                "credit_score",
+                f"The caller's current credit score is around {m.group(1)}.",
+                0.88,
+            )
+
+        m = re.search(
+            r"(?:around|about|roughly|near|somewhat)\s*(\d{3})\b(?:\s*now)?",
+            lower,
+        )
+        if m and 300 <= int(m.group(1)) <= 850:
+            return _fact(
+                "credit_score",
+                f"The caller's credit score is around {m.group(1)}.",
+                0.86,
+            )
+
+        m = re.search(r"(?:above|over|in the)\s*(\d{3})\b", lower)
+        if m and 300 <= int(m.group(1)) <= 850:
+            qualifier = "above" if re.search(r"above|over", lower) else "around"
+            return _fact(
+                "credit_score",
+                f"The caller's credit score is {qualifier} {m.group(1)}.",
+                0.84,
+            )
+
+        m = re.search(r"\b(\d{3})s\b", lower)
+        if m and 300 <= int(m.group(1)) <= 850:
+            return _fact(
+                "credit_score",
+                f"The caller's credit score is in the {m.group(1)}s.",
+                0.84,
+            )
+    return None
+
+
+def _employment_fact(turns: list[dict]) -> dict | None:
+    """Extract employment status from the caller's most recent statement."""
+    for text in reversed(_user_turn_texts(turns)):
+        lower = text.lower()
+        if not re.search(
+            r"employ|unemploy|retired|self[- ]?employ|income|lpa|lakh",
+            lower,
+        ):
+            continue
+
+        prev_income = re.search(
+            r"(?:earlier|previous|prior|was).{0,40}"
+            r"income.{0,25}(?:around|about|roughly)?\s*(\d+)\s*(?:lpa|lakh)",
+            lower,
+        )
+        no_income = re.search(
+            r"(?:now|currently).{0,30}(?:0|zero)|income.{0,20}(?:0|zero|none)",
+            lower,
+        )
+
+        if "unemployed" in lower:
+            if prev_income and no_income:
+                return _fact(
+                    "employment",
+                    f"The caller is currently unemployed with no current income; "
+                    f"prior income was about {prev_income.group(1)} LPA.",
+                    0.91,
+                )
+            if prev_income:
+                return _fact(
+                    "employment",
+                    f"The caller is currently unemployed; prior income was about "
+                    f"{prev_income.group(1)} LPA.",
+                    0.9,
+                )
+            if no_income:
+                return _fact(
+                    "employment",
+                    "The caller is currently unemployed with no current income.",
+                    0.9,
+                )
+            return _fact(
+                "employment",
+                "The caller is currently unemployed.",
+                0.88,
+            )
+
+        if re.search(r"\bself[- ]?employed\b", lower):
+            return _fact("employment", "The caller is self-employed.", 0.88)
+
+        if re.search(r"\bretired\b", lower):
+            return _fact("employment", "The caller is retired.", 0.88)
+
+        if re.search(r"\bemployed\b", lower):
+            income = re.search(
+                r"income.{0,25}(?:around|about|roughly)?\s*(\d+)\s*(?:lpa|lakh)",
+                lower,
+            )
+            if income:
+                return _fact(
+                    "employment",
+                    f"The caller is employed with income around {income.group(1)} LPA.",
+                    0.87,
+                )
+            return _fact("employment", "The caller is employed.", 0.85)
+    return None
+
+
+def _property_status_fact(turns: list[dict]) -> dict | None:
+    """Property search status from the caller's latest relevant statement."""
+    for text in reversed(_user_turn_texts(turns)):
+        lower = text.lower()
+        if re.search(r"\bfound a property\b|\bunder contract\b|\balready own\b", lower):
+            return _fact(
+                "property_status",
+                "The caller already has or has found a property.",
+                0.88,
+            )
+        if re.search(r"\bstill looking\b|\bstill searching\b|\blooking for a property\b", lower):
+            return _fact(
+                "property_status",
+                "The caller is still searching for a property.",
+                0.9,
+            )
     return None
 
 
@@ -268,30 +479,17 @@ def analyze_conversation(turns: list[dict]) -> list[dict]:
             )
         )
 
-    duration = _DURATION_RE.search(user)
-    timeline = _TIMELINE_RE.search(user)
-    when = None
-    if duration:
-        when = duration.group(1).strip()
-    elif timeline:
-        when = timeline.group(1).strip()
-    if when:
-        if purpose and re.search(r"heloc|home equity|refinanc", user_lower):
-            found.append(
-                _fact(
-                    "timeline",
-                    f"The caller plans to move forward within the next {when}.",
-                    0.88,
-                )
-            )
-        else:
-            found.append(
-                _fact(
-                    "timeline",
-                    f"The caller's expected timeline is about {when}.",
-                    0.82,
-                )
-            )
+    timeline = _timeline_fact(turns)
+    if timeline:
+        found.append(timeline)
+
+    credit = _credit_score_fact(turns)
+    if credit:
+        found.append(credit)
+
+    employment = _employment_fact(turns)
+    if employment:
+        found.append(employment)
 
     contact = _CONTACT_RE.search(user)
     if contact:
@@ -313,14 +511,9 @@ def analyze_conversation(turns: list[dict]) -> list[dict]:
             )
         )
 
-    if re.search(r"\bstill looking\b", user_lower):
-        found.append(
-            _fact(
-                "property_status",
-                "The caller is still searching for a property.",
-                0.9,
-            )
-        )
+    property_status = _property_status_fact(turns)
+    if property_status:
+        found.append(property_status)
 
     for turn in reversed(turns):
         if turn.get("role") != "assistant":
@@ -371,13 +564,37 @@ def extract_insights_heuristic(turns: list[dict]) -> list[dict]:
     return extract_new_insights(turns, {})
 
 
-def _parse_insights(raw: str) -> list[dict]:
-    text = raw.strip()
+def _extract_json_payload(raw: str) -> str:
+    """Return the first JSON object from an LLM response."""
+    text = (raw or "").strip()
+    if not text:
+        return ""
     if text.startswith("```"):
         text = text.split("\n", 1)[-1]
         if text.endswith("```"):
             text = text.rsplit("```", 1)[0]
-    data = json.loads(text)
+        text = text.strip()
+    # Voice Live may duplicate the payload in text-done + response.output.
+    brace = 0
+    for i, ch in enumerate(text):
+        if ch == "{":
+            brace += 1
+        elif ch == "}":
+            brace -= 1
+            if brace == 0:
+                return text[: i + 1]
+    return text
+
+
+def _parse_insights(raw: str) -> list[dict]:
+    text = _extract_json_payload(raw)
+    if not text:
+        return []
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError:
+        logger.warning("[Extract] Could not parse LLM JSON: %r", (raw or "")[:240])
+        return []
     items = data.get("insights") if isinstance(data, dict) else data
     if not isinstance(items, list):
         return []
@@ -405,130 +622,139 @@ def _parse_insights(raw: str) -> list[dict]:
     return _dedupe_insights(out)
 
 
-async def _collect_text_response(conn) -> str:
-    chunks: list[str] = []
-    async for event in conn:
-        event_type = getattr(event, "type", None)
-        if event_type == ServerEventType.RESPONSE_TEXT_DELTA:
-            chunks.append(getattr(event, "delta", "") or "")
-        elif event_type == ServerEventType.RESPONSE_TEXT_DONE:
-            done_text = getattr(event, "text", None)
-            if done_text:
-                return done_text
-            break
-        elif event_type == ServerEventType.RESPONSE_AUDIO_TRANSCRIPT_DONE:
-            transcript = getattr(event, "transcript", None)
-            if transcript:
-                return transcript
-        elif event_type == ServerEventType.RESPONSE_DONE:
-            break
-        elif event_type == ServerEventType.ERROR:
-            message = getattr(event, "message", None) or getattr(event, "error", None)
-            raise RuntimeError(f"Voice Live extraction error: {message}")
-    return "".join(chunks)
-
-
-async def extract_conversation_insights_llm(
-    turns: list[dict],
-    *,
-    endpoint: str,
-    api_key: str,
-    model: str,
-) -> list[dict]:
-    """Run a text-only Voice Live session to pull key details from the transcript."""
+def build_extract_user_prompt(turns: list[dict], emitted: dict[str, str]) -> str:
+    """Build the user prompt for live LLM extraction."""
     transcript = _format_transcript(turns)
-    if not transcript.strip():
-        return []
-
-    async def _run() -> list[dict]:
-        async with voicelive_connect(
-            endpoint=endpoint,
-            credential=AzureKeyCredential(api_key),
-            model=model.strip(),
-        ) as conn:
-            await conn.session.update(
-                session=RequestSession(
-                    modalities=[Modality.TEXT],
-                    instructions=_EXTRACT_SYSTEM,
-                )
-            )
-            await conn.conversation.item.create(
-                item=UserMessageItem(
-                    role="user",
-                    content=[
-                        InputTextContentPart(
-                            text=(
-                                f"Transcript so far:\n\n{transcript}\n\n"
-                                "Analyze the conversation and extract key facts. "
-                                "Synthesize — do not quote verbatim."
-                            )
-                        )
-                    ],
-                )
-            )
-            await conn.response.create()
-            raw = await _collect_text_response(conn)
-            if not raw.strip():
-                return []
-            return _parse_insights(raw)
-
-    for attempt in range(3):
-        try:
-            async with _extract_lock:
-                insights = await asyncio.wait_for(_run(), timeout=_EXTRACT_TIMEOUT_S)
-            logger.info(
-                "[Extract] LLM extracted %d insight(s) from %d turn(s)",
-                len(insights),
-                len(turns),
-            )
-            return insights
-        except asyncio.TimeoutError:
-            logger.warning(
-                "[Extract] Timed out after %.0fs (attempt %d/3)",
-                _EXTRACT_TIMEOUT_S,
-                attempt + 1,
-            )
-        except json.JSONDecodeError:
-            logger.exception("[Extract] Failed to parse extraction JSON")
-            return []
-        except Exception:
-            logger.exception(
-                "[Extract] LLM extraction failed (attempt %d/3)",
-                attempt + 1,
-            )
-        if attempt < 2:
-            await asyncio.sleep(1.5 * (attempt + 1))
-
-    return []
-
-
-async def extract_conversation_insights(
-    turns: list[dict],
-    *,
-    endpoint: str,
-    api_key: str,
-    model: str,
-    llm: bool = True,
-    emitted_keys: dict[str, str] | None = None,
-) -> list[dict]:
-    """Heuristic during call; LLM synthesis after call ends."""
-    emitted = emitted_keys if emitted_keys is not None else {}
-    if not llm:
-        return extract_new_insights(turns, emitted)
-    llm_insights = await extract_conversation_insights_llm(
-        turns, endpoint=endpoint, api_key=api_key, model=model
+    already = (
+        "\n".join(f"- {v}" for v in emitted.values()) if emitted else "(none yet)"
     )
+    return (
+        f"Transcript so far:\n\n{transcript}\n\n"
+        f"Already extracted (do not repeat unless correcting):\n{already}\n\n"
+        "Analyze the full transcript and return ONLY new or corrected key facts as JSON."
+    )
+
+
+async def _voicelive_text_completion(
+    endpoint: str,
+    key: str,
+    model: str,
+    user_prompt: str,
+) -> tuple[str, dict | None]:
+    """Run a short text-only Voice Live session for transcript analysis."""
+    credential = AzureKeyCredential(key)
+    usage: dict | None = None
+    async with voicelive_connect(
+        endpoint=endpoint,
+        credential=credential,
+        model=model,
+    ) as conn:
+        await conn.session.update(
+            session=RequestSession(
+                modalities=[Modality.TEXT],
+                instructions=EXTRACT_SYSTEM,
+                temperature=0.1,
+            )
+        )
+        await conn.conversation.item.create(
+            item=UserMessageItem(
+                role="user",
+                content=[InputTextContentPart(text=user_prompt)],
+            )
+        )
+        await conn.response.create()
+        chunks: list[str] = []
+        async for event in conn:
+            event_type = getattr(event, "type", None)
+            if event_type == ServerEventType.RESPONSE_TEXT_DELTA:
+                delta = getattr(event, "delta", None)
+                if delta:
+                    chunks.append(delta)
+            elif event_type == ServerEventType.RESPONSE_TEXT_DONE:
+                text = getattr(event, "text", None)
+                if text:
+                    chunks = [text]
+            elif event_type == ServerEventType.RESPONSE_DONE:
+                response = getattr(event, "response", None)
+                usage = normalize_usage(response)
+                if not chunks:
+                    for item in getattr(response, "output", None) or []:
+                        for part in getattr(item, "content", None) or []:
+                            text = getattr(part, "text", None)
+                            if text:
+                                chunks.append(text)
+                return "".join(chunks).strip(), usage
+            elif event_type == ServerEventType.ERROR:
+                err = getattr(event, "error", event)
+                raise RuntimeError(str(err))
+    return "", usage
+
+
+async def llm_extract_insights(
+    turns: list[dict],
+    emitted: dict[str, str],
+) -> tuple[list[dict], dict | None]:
+    """Analyze the transcript with a dedicated Voice Live text session (parallel-safe)."""
+    endpoint = os.getenv("AZURE_VOICE_LIVE_ENDPOINT", "").rstrip("/")
+    key = os.getenv("AZURE_VOICE_LIVE_API_KEY", "")
+    model = (
+        os.getenv("EXTRACT_MODEL")
+        or os.getenv("VOICE_LIVE_MODEL", "gpt-4o-mini")
+    ).strip()
+    if not endpoint or not key:
+        logger.warning("[Extract] AZURE_VOICE_LIVE credentials missing")
+        return [], None
+    if not turns:
+        return [], None
+
+    prompt = build_extract_user_prompt(turns, emitted)
+    async with _extract_semaphore():
+        try:
+            raw, usage = await asyncio.wait_for(
+                _voicelive_text_completion(endpoint, key, model, prompt),
+                timeout=_EXTRACT_TIMEOUT_S,
+            )
+        except asyncio.TimeoutError:
+            logger.warning("[Extract] LLM timed out after %.0fs", _EXTRACT_TIMEOUT_S)
+            return [], None
+        except Exception:
+            logger.exception("[Extract] Voice Live LLM extraction failed")
+            return [], None
+
+    insights = merge_llm_insights(raw, emitted)
+    if not insights and (raw or "").strip():
+        logger.warning(
+            "[Extract] LLM returned text but 0 parsed insights (raw_len=%d)",
+            len(raw),
+        )
+    logger.info("[Extract] LLM returned %d new insight(s)", len(insights))
+    return insights, usage
+
+
+def merge_llm_insights(raw: str, emitted: dict[str, str]) -> list[dict]:
+    """Parse LLM JSON and return new/updated insight rows."""
+    if not (raw or "").strip():
+        return []
+    return _merge_new_insights(_parse_insights(raw), emitted)
+
+
+def _merge_new_insights(
+    parsed: list[dict], emitted: dict[str, str]
+) -> list[dict]:
     new: list[dict] = []
-    for item in llm_insights:
+    for item in parsed:
         key = item.get("key") or _slug(item.get("value", "")[:32])
-        value = item["value"]
+        value = (item.get("value") or "").strip()
+        if not value:
+            continue
         if emitted.get(key) == value:
             continue
-        item = dict(item)
-        item["replace"] = key in emitted
+        row = dict(item)
+        row["id"] = key
+        row["key"] = key
+        row["value"] = value
+        row["replace"] = key in emitted
         emitted[key] = value
-        new.append(item)
-    if new:
-        return new
-    return extract_new_insights(turns, emitted)
+        new.append(row)
+    return new
 

@@ -7,6 +7,7 @@ override on_message() and hook methods to implement protocol-specific behavior.
 
 import asyncio
 import base64
+import binascii
 import json
 import logging
 import time
@@ -42,6 +43,7 @@ from app.agent_persona import (
     BROKERAGE_NAME,
     LEAD_QUALIFICATION_INSTRUCTIONS,
 )
+from app.usage_cost import compute_usage_cost_usd, normalize_usage
 
 # Data type for WebSocket messages (str or bytes) sent to client
 Data = Union[str, bytes]
@@ -50,6 +52,24 @@ logger = logging.getLogger(__name__)
 
 # Default chunk size in bytes (100ms of audio at 24kHz, 16-bit mono)
 DEFAULT_CHUNK_SIZE = 4800  # 24000 samples/sec * 0.1 sec * 2 bytes
+
+
+def _coerce_pcm_bytes(data) -> bytes | None:
+    """Normalize inbound client audio to raw bytes."""
+    if data is None:
+        return None
+    if isinstance(data, memoryview):
+        return bytes(data)
+    if isinstance(data, bytearray):
+        return bytes(data)
+    if isinstance(data, bytes):
+        return data
+    if isinstance(data, str):
+        try:
+            return base64.b64decode(data, validate=True)
+        except (binascii.Error, ValueError):
+            return data.encode("latin-1")
+    return None
 
 
 class VoiceLiveMediaHandler:
@@ -109,6 +129,7 @@ class VoiceLiveMediaHandler:
         self._call_metrics = []   # [{turn, atMs, metrics, tokens, tokensPerSec}]
         self._call_events = []    # [{event, turn, atMs, ...}]
         self._metrics_seq = 0     # sequential response # for the UI table
+        self._call_cost_usd = 0.0
 
     def _session_config(self) -> RequestSession:
         """Return the typed session configuration for Voice Live."""
@@ -317,18 +338,31 @@ class VoiceLiveMediaHandler:
                             )
                             await self.on_transcript_done(transcript)
 
+                    case ServerEventType.RESPONSE_TEXT_DELTA:
+                        delta = getattr(event, "delta", None)
+                        if delta:
+                            await self.on_response_text_delta(delta)
+
+                    case ServerEventType.RESPONSE_TEXT_DONE:
+                        text = getattr(event, "text", None)
+                        await self.on_response_text_done(text)
+
                     case ServerEventType.RESPONSE_DONE:
                         response = getattr(event, "response", None)
                         response_id = getattr(response, "id", None)
                         logger.info("[VoiceLive] Response done: id=%s", response_id)
                         now = await self._mark("response_done")
                         ar = self._active_response
-                        # Only emit metrics for a response we tracked from its start
-                        # (skips stale/cancelled barge-in responses with no record).
-                        if ar is not None and ar.get("created") is not None:
+                        skip_metrics = await self.should_skip_response_metrics(response)
+                        if (
+                            not skip_metrics
+                            and ar is not None
+                            and ar.get("created") is not None
+                        ):
                             ar["done"] = now
                             await self._emit_turn_metrics(ar, self._extract_usage(response))
-                            self._active_response = None
+                        await self.on_response_done(response)
+                        self._active_response = None
 
                     case ServerEventType.ERROR:
                         logger.error("[VoiceLive] Error: %s", event.error)
@@ -421,6 +455,19 @@ class VoiceLiveMediaHandler:
     async def on_transcript_done(self, transcript: str):
         """Hook: final assistant speech transcript (web client only)."""
 
+    async def on_response_done(self, response) -> None:
+        """Hook: Voice Live response finished (web client may capture extract output)."""
+
+    async def on_response_text_delta(self, delta: str):
+        """Hook: text-only response delta (e.g. live key-detail extraction)."""
+
+    async def on_response_text_done(self, text: str | None):
+        """Hook: text-only response complete."""
+
+    async def should_skip_response_metrics(self, response) -> bool:
+        """Hook: skip per-turn metrics for non-conversation responses (e.g. extraction)."""
+        return False
+
     async def on_agent_event(self, payload: dict):
         """Hook: agent metrics + event-timeline payload (web client forwards to UI)."""
 
@@ -472,23 +519,13 @@ class VoiceLiveMediaHandler:
     @staticmethod
     def _extract_usage(response):
         """Pull token counts off a RESPONSE_DONE response.usage (None if absent)."""
-        usage_model = getattr(response, "usage", None) if response else None
-        if not usage_model:
-            return None
-        usage = {
-            "total": getattr(usage_model, "total_tokens", None),
-            "input": getattr(usage_model, "input_tokens", None),
-            "output": getattr(usage_model, "output_tokens", None),
-        }
-        out_details = getattr(usage_model, "output_token_details", None)
-        if out_details is not None:
-            usage["outputText"] = getattr(out_details, "text_tokens", None)
-            usage["outputAudio"] = getattr(out_details, "audio_tokens", None)
-        in_details = getattr(usage_model, "input_token_details", None)
-        if in_details is not None:
-            usage["inputText"] = getattr(in_details, "text_tokens", None)
-            usage["inputAudio"] = getattr(in_details, "audio_tokens", None)
-        return usage
+        return normalize_usage(response)
+
+    def _record_usage_cost(self, usage, *, text_only: bool = False) -> dict | None:
+        cost = compute_usage_cost_usd(usage, text_only=text_only)
+        if cost:
+            self._call_cost_usd = round(self._call_cost_usd + cost["usd"], 6)
+        return cost
 
     async def _emit_turn_metrics(self, ar, usage):
         """Compute one response's latencies + tokens and emit them.
@@ -526,6 +563,10 @@ class VoiceLiveMediaHandler:
         }
         if usage:
             payload["tokens"] = usage
+            cost = self._record_usage_cost(usage, text_only=False)
+            if cost:
+                payload["cost"] = cost
+            payload["callCostUsd"] = self._call_cost_usd
             output_tokens = usage.get("output")
             response_ms = metrics.get("responseMs")
             if output_tokens and response_ms:
@@ -559,15 +600,24 @@ class VoiceLiveMediaHandler:
 
         Returns (pcm_bytes | None, chunk_size). Return None for silent frames.
         """
-        return data, len(data)
+        pcm = _coerce_pcm_bytes(data)
+        if pcm is None:
+            return None, DEFAULT_CHUNK_SIZE
+        return pcm, len(pcm)
 
     async def on_message(self, msg):
         """Process one incoming WebSocket message. Override in subclasses for protocol handling."""
-        await self.handle_audio(msg)
+        pcm = _coerce_pcm_bytes(msg)
+        if pcm is None:
+            return
+        await self.handle_audio(pcm)
 
     async def handle_audio(self, data):
         """Process inbound audio: convert, mix ambient, forward to Voice Live."""
-        pcm_bytes, chunk_size = self._receive_audio_from_client(data)
+        pcm_bytes = _coerce_pcm_bytes(data)
+        if not pcm_bytes:
+            return
+        pcm_bytes, chunk_size = self._receive_audio_from_client(pcm_bytes)
         await self._send_continuous_audio(chunk_size)
         if pcm_bytes:
             audio_b64 = base64.b64encode(pcm_bytes).decode("ascii")

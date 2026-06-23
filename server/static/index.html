@@ -75,6 +75,12 @@
       border-color: rgba(15, 23, 42, 0.14);
     }
 
+    [data-theme="light"] .turn-table td,
+    [data-theme="light"] .turn-table td.cost-cell,
+    [data-theme="light"] .turn-table tfoot td {
+      color: var(--text-primary);
+    }
+
     [data-theme="light"] .transcript-bubble.assistant {
       border-color: rgba(15, 23, 42, 0.28);
     }
@@ -626,6 +632,16 @@
       font-style: italic;
     }
 
+    .fields-loading-footer {
+      color: var(--accent-cyan);
+      font-size: 0.82rem;
+      font-style: italic;
+      text-align: left;
+      padding: 0.65rem 0.25rem 0.15rem;
+      margin: 0;
+      flex-shrink: 0;
+    }
+
     .fields-error {
       color: #f87171;
     }
@@ -767,7 +783,21 @@
       background: var(--bg-elevated);
     }
 
-    .turn-table td { color: var(--accent-cyan); }
+    .turn-table td {
+      color: var(--accent-cyan);
+    }
+
+    .turn-table tfoot td {
+      font-weight: 600;
+      color: var(--text-primary);
+      border-top: 1px solid var(--border-subtle);
+      background: rgba(255, 255, 255, 0.03);
+    }
+
+    .turn-table td.cost-cell {
+      color: #a7f3d0;
+      white-space: nowrap;
+    }
 
     footer {
       margin-top: 0.35rem;
@@ -917,11 +947,23 @@
                 <th>Response</th>
                 <th>Total</th>
                 <th>Tokens&nbsp;(in/out)</th>
+                <th>Voice</th>
+                <th>Key&nbsp;details</th>
+                <th>Turn&nbsp;total</th>
               </tr>
             </thead>
             <tbody id="turnTableBody">
-              <tr id="turnTableEmpty"><td colspan="8" class="muted" style="text-align:center;">No turns yet.</td></tr>
+              <tr id="turnTableEmpty"><td colspan="11" class="muted" style="text-align:center;">No turns yet.</td></tr>
             </tbody>
+            <tfoot id="turnTableFoot" hidden>
+              <tr>
+                <td colspan="7" style="text-align:right;">Call total</td>
+                <td id="turnTotalTokens">—</td>
+                <td></td>
+                <td></td>
+                <td id="turnTotalCost" class="cost-cell">—</td>
+              </tr>
+            </tfoot>
           </table>
         </div>
       </div>
@@ -1036,168 +1078,15 @@
     }
 
     // ---------------------------------------------------------------
-    // Key details (append-only analytical one-liners)
+    // Key details (live LLM via server — client only renders)
     // ---------------------------------------------------------------
     let insightLog = [];
     let insightsLoading = false;
     let insightsError = null;
     let insightsTurnSeq = 0;
-    let transcriptTurns = [];
-    let emittedInsights = {};
-
-    const US_STATES = new Set([
-      "alabama", "alaska", "arizona", "arkansas", "california", "colorado",
-      "connecticut", "delaware", "florida", "georgia", "hawaii", "idaho",
-      "illinois", "indiana", "iowa", "kansas", "kentucky", "louisiana",
-      "maine", "maryland", "massachusetts", "michigan", "minnesota",
-      "mississippi", "missouri", "montana", "nebraska", "nevada",
-      "new hampshire", "new jersey", "new mexico", "new york",
-      "north carolina", "north dakota", "ohio", "oklahoma", "oregon",
-      "pennsylvania", "rhode island", "south carolina", "south dakota",
-      "tennessee", "texas", "utah", "vermont", "virginia", "washington",
-      "west virginia", "wisconsin", "wyoming",
-    ]);
-
-    const CITY_LABELS = {
-      "los angeles": "Los Angeles, California",
-      "san francisco": "San Francisco, California",
-      "san diego": "San Diego, California",
-      "new york city": "New York City, New York",
-      "chicago": "Chicago, Illinois",
-      "houston": "Houston, Texas",
-      "phoenix": "Phoenix, Arizona",
-      "dallas": "Dallas, Texas",
-      "austin": "Austin, Texas",
-      "seattle": "Seattle, Washington",
-      "denver": "Denver, Colorado",
-      "miami": "Miami, Florida",
-      "atlanta": "Atlanta, Georgia",
-      "boston": "Boston, Massachusetts",
-    };
 
     function normalizeInsightLine(value) {
       return (value || "").trim().toLowerCase().replace(/\s+/g, " ");
-    }
-
-    function userTextFromTurns(turns) {
-      return turns
-        .filter((t) => t.role === "user" && (t.text || "").trim())
-        .map((t) => t.text.trim())
-        .join(" ");
-    }
-
-    function parseLocation(text) {
-      const lower = text.toLowerCase();
-      for (const [city, label] of Object.entries(CITY_LABELS)) {
-        if (lower.includes(city)) return label;
-      }
-      for (const state of US_STATES) {
-        if (new RegExp("\\b" + state.replace(/ /g, "\\s+") + "\\b", "i").test(lower)) {
-          return state.replace(/\b\w/g, (c) => c.toUpperCase());
-        }
-      }
-      const match = text.match(/\b(?:in|from|live in|located in|property in|state of)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\b/);
-      if (match) {
-        const place = match[1];
-        const stop = new Set(["time", "the", "a", "an", "this", "that", "well", "state"]);
-        if (!stop.has(place.toLowerCase())) return place;
-      }
-      return null;
-    }
-
-    function loanPurposeFact(userLower) {
-      if (!userLower.trim()) return null;
-      if (/\bhome equity line of credit\b|\bheloc\b/i.test(userLower)) {
-        return { key: "loan_purpose", value: "The caller is seeking a home equity line of credit (HELOC).", confidence: 0.92 };
-      }
-      if (/cash[- ]?out/i.test(userLower)) {
-        return { key: "loan_purpose", value: "The caller wants a cash-out refinance.", confidence: 0.9 };
-      }
-      if (/\brefinanc\w*\b/i.test(userLower)) {
-        if (userLower.includes("existing mortgage")) {
-          return { key: "loan_purpose", value: "The caller wants to refinance their existing mortgage.", confidence: 0.93 };
-        }
-        return { key: "loan_purpose", value: "The caller is interested in refinancing.", confidence: 0.9 };
-      }
-      if (/home equity/i.test(userLower)) {
-        return { key: "loan_purpose", value: "The caller wants to access home equity.", confidence: 0.88 };
-      }
-      if (/(?:purchase|buy(?:ing)?)\s+(?:a\s+)?(?:home|house|property)/i.test(userLower) || /looking to purchase/i.test(userLower)) {
-        return { key: "loan_purpose", value: "The caller is looking to purchase a home.", confidence: 0.9 };
-      }
-      return null;
-    }
-
-    function analyzeConversation(turns) {
-      const user = userTextFromTurns(turns);
-      if (!user.trim()) return [];
-
-      const userLower = user.toLowerCase();
-      const found = [];
-
-      const purpose = loanPurposeFact(userLower);
-      if (purpose) found.push(purpose);
-
-      const location = parseLocation(user);
-      if (location) {
-        found.push({ key: "location", value: `The caller's property is in ${location}.`, confidence: 0.85 });
-      }
-
-      const zip = user.match(/\b(\d{5})\b/);
-      if (zip) {
-        found.push({ key: "zip", value: `The caller's ZIP code is ${zip[1]}.`, confidence: 0.92 });
-      } else if (/(?:don't|do not|dont|no|not)\s+(?:have|got)?\s*(?:any\s+)?zip/i.test(userLower) || /\bwithout a zip\b/i.test(userLower)) {
-        found.push({ key: "zip_status", value: "The caller has not provided a ZIP code yet.", confidence: 0.88 });
-      }
-
-      const money = user.match(/\$\s?\d[\d,]*(?:\.\d{2})?|\b\d[\d,]{2,}(?:\.\d{2})?\s*(?:dollars|usd)\b|\b\d+(?:\.\d+)?\s*(?:k|thousand|million)\b/i);
-      if (money) {
-        found.push({ key: "amount", value: `The caller mentioned a loan amount of ${money[0].trim()}.`, confidence: 0.85 });
-      }
-
-      const duration = user.match(/\b(\d+\s*(?:days?|weeks?|months?))\b/i);
-      const timeline = user.match(/\b(\d{1,2}(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?)|tomorrow|today|this morning|this afternoon|next week)\b/i);
-      if (duration || timeline) {
-        const when = (duration || timeline)[1].trim();
-        if (purpose && /heloc|home equity|refinanc/i.test(userLower)) {
-          found.push({ key: "timeline", value: `The caller plans to move forward within the next ${when}.`, confidence: 0.88 });
-        } else {
-          found.push({ key: "timeline", value: `The caller's expected timeline is about ${when}.`, confidence: 0.82 });
-        }
-      }
-
-      if (/\bprefer(?:s|red)?\s+(?:a\s+)?(?:phone\s+)?call\b/i.test(user)) {
-        found.push({ key: "contact", value: "The caller prefers follow-up by phone call.", confidence: 0.85 });
-      } else if (/\btext(?: message)?\b/i.test(user)) {
-        found.push({ key: "contact", value: "The caller prefers follow-up by text message.", confidence: 0.85 });
-      } else if (/\bemail\b/i.test(user)) {
-        found.push({ key: "contact", value: "The caller prefers follow-up by email.", confidence: 0.85 });
-      }
-
-      if (/\bstill looking\b/i.test(userLower)) {
-        found.push({ key: "property_status", value: "The caller is still searching for a property.", confidence: 0.9 });
-      }
-
-      for (let i = turns.length - 1; i >= 0; i--) {
-        const t = turns[i];
-        if (t.role !== "assistant") continue;
-        const txt = (t.text || "").toLowerCase();
-        if (txt.includes("loan officer") && (txt.includes("reach out") || txt.includes("follow up"))) {
-          found.push({ key: "next_step", value: "A loan officer will follow up with the caller.", confidence: 0.84 });
-          break;
-        }
-      }
-
-      const seen = new Set();
-      return found.filter((item) => {
-        if (seen.has(item.key)) return false;
-        seen.add(item.key);
-        return true;
-      });
-    }
-
-    function extractNewInsights(turns) {
-      return analyzeConversation(turns).filter((item) => emittedInsights[item.key] !== item.value);
     }
 
     function appendInsights(items) {
@@ -1210,20 +1099,21 @@
         if (/^caller noted:/i.test(value) || /^caller said:/i.test(value)) continue;
         const key = item.key || normalizeInsightLine(value).slice(0, 32);
         const norm = normalizeInsightLine(value);
-        const replace = item.replace === true || (emittedInsights[key] && emittedInsights[key] !== value);
+        const replace = item.replace === true;
 
         if (replace) {
           const idx = insightLog.findIndex((i) => i.key === key);
           if (idx >= 0) {
+            const oldNorm = normalizeInsightLine(insightLog[idx].value);
+            if (oldNorm) seen.delete(oldNorm);
             insightLog[idx] = { id: insightLog[idx].id, key, value, confidence: item.confidence };
-            emittedInsights[key] = value;
+            seen.add(norm);
             added = true;
             continue;
           }
         }
 
-        if (emittedInsights[key] === value || seen.has(norm)) continue;
-        emittedInsights[key] = value;
+        if (seen.has(norm)) continue;
         seen.add(norm);
         insightLog.push({
           id: "insight-" + insightLog.length,
@@ -1242,13 +1132,8 @@
       return added;
     }
 
-    function recordTranscriptTurn(role, text) {
-      text = (text || "").trim();
-      if (!text) return;
-      const last = transcriptTurns[transcriptTurns.length - 1];
-      if (last && last.role === role && last.text === text) return;
-      transcriptTurns.push({ role, text });
-      appendInsights(extractNewInsights(transcriptTurns));
+    function recordTranscriptTurn(_role, _text) {
+      // Key details come from server-side live LLM only.
     }
 
     function confidenceClass(conf) {
@@ -1272,23 +1157,7 @@
       const log = document.getElementById("fieldsLog");
       log.innerHTML = "";
 
-      if (insightsLoading) {
-        const loading = document.createElement("div");
-        loading.className = "fields-loading";
-        loading.textContent = "Analyzing conversation…";
-        log.appendChild(loading);
-        return;
-      }
-
-      if (insightsError) {
-        const err = document.createElement("div");
-        err.className = "fields-error";
-        err.textContent = insightsError;
-        log.appendChild(err);
-        return;
-      }
-
-      if (!insightLog.length) {
+      if (!insightLog.length && !insightsLoading && !insightsError) {
         const empty = document.createElement("div");
         empty.className = "fields-empty";
         empty.textContent = "Key details will appear here as important information is shared.";
@@ -1318,6 +1187,20 @@
 
         log.appendChild(item);
       }
+
+      if (insightsLoading) {
+        const loading = document.createElement("div");
+        loading.className = "fields-loading-footer";
+        loading.textContent = "Analyzing conversation…";
+        log.appendChild(loading);
+      }
+
+      if (insightsError) {
+        const err = document.createElement("div");
+        err.className = "fields-error";
+        err.textContent = insightsError;
+        log.appendChild(err);
+      }
     }
 
     function handleExtractedInsightsMsg(msg) {
@@ -1325,6 +1208,7 @@
         insightsLoading = true;
         insightsError = null;
         renderKeyDetails();
+        scrollKeyDetailsToBottom();
         return;
       }
       if (msg.turnSeq != null && msg.turnSeq < insightsTurnSeq) {
@@ -1341,18 +1225,14 @@
           if (!i.value && i.label) i.value = i.label;
         });
         appendInsights(items);
-      } else if (insightsError) {
+      } else {
         renderKeyDetails();
-      }
-      if (!msg.loading && socket && socket._closingAfterInsights) {
-        socket.close();
+        scrollKeyDetailsToBottom();
       }
     }
 
     function resetKeyDetails() {
       insightLog = [];
-      transcriptTurns = [];
-      emittedInsights = {};
       insightsLoading = false;
       insightsError = null;
       insightsTurnSeq = 0;
@@ -1429,12 +1309,97 @@
       setCardAvg(key);
     }
 
-    function appendTurnRow(msg) {
+    const callUsageTotals = {
+      inputTokens: 0,
+      outputTokens: 0,
+      costUsd: 0,
+    };
+
+    let pendingExtractUsage = null;
+
+    function fmtCostUsd(v) {
+      if (v == null || Number.isNaN(v)) return "—";
+      const n = Number(v);
+      if (n === 0) return "$0.0000";
+      if (n < 0.0001) return "$" + n.toFixed(6);
+      if (n < 0.01) return "$" + n.toFixed(4);
+      return "$" + n.toFixed(3);
+    }
+
+    function rowCostUsd(tr, key) {
+      const v = tr.dataset[key];
+      if (v == null || v === "") return 0;
+      const n = Number(v);
+      return Number.isNaN(n) ? 0 : n;
+    }
+
+    function updateRowTurnTotal(tr) {
+      const totalCell = tr.querySelector(".turn-total-cost-cell");
+      if (!totalCell) return;
+      const sum = rowCostUsd(tr, "voiceCostUsd") + rowCostUsd(tr, "extractCostUsd");
+      totalCell.textContent = sum > 0 ? fmtCostUsd(sum) : "—";
+    }
+
+    function applyExtractToRow(tr, msg) {
+      if (!tr || tr.dataset.extractApplied === "1") return false;
+      const cost = msg.cost && msg.cost.usd != null ? Number(msg.cost.usd) : 0;
+      const cell = tr.querySelector(".extract-cost-cell");
+      if (!cell) return false;
+      tr.dataset.extractCostUsd = String(cost);
+      tr.dataset.extractApplied = "1";
+      cell.textContent = cost > 0 ? fmtCostUsd(cost) : "—";
+      updateRowTurnTotal(tr);
+      return true;
+    }
+
+    function findVoiceRowForTurn(turn) {
+      if (turn == null) return null;
+      const rows = document.querySelectorAll("#turnTableBody tr[data-voice-row='1']");
+      for (const tr of rows) {
+        if (Number(tr.dataset.turn) === Number(turn)) return tr;
+      }
+      return null;
+    }
+
+    function applyExtractUsage(msg) {
+      const extractSeq = msg.extractSeq != null ? msg.extractSeq : null;
+      pendingExtractUsage = extractSeq != null ? msg : null;
+      const row = findVoiceRowForTurn(extractSeq);
+      if (row && applyExtractToRow(row, msg)) {
+        pendingExtractUsage = null;
+      }
+      updateCallUsageTotals(msg);
+    }
+
+    function updateCallUsageTotals(msg) {
+      const tk = msg.tokens || {};
+      if (msg.kind === "metrics" || (msg.kind === "usage" && msg.source !== "extract")) {
+        const inTok = tk.input != null ? Number(tk.input) : 0;
+        const outTok = tk.output != null ? Number(tk.output) : 0;
+        if (inTok) callUsageTotals.inputTokens += inTok;
+        if (outTok) callUsageTotals.outputTokens += outTok;
+      }
+      if (msg.callCostUsd != null) {
+        callUsageTotals.costUsd = Number(msg.callCostUsd);
+      }
+      const foot = document.getElementById("turnTableFoot");
+      const totalTokens = document.getElementById("turnTotalTokens");
+      const totalCost = document.getElementById("turnTotalCost");
+      if (foot && totalTokens && totalCost) {
+        foot.hidden = false;
+        totalTokens.textContent =
+          callUsageTotals.inputTokens + " / " + callUsageTotals.outputTokens;
+        totalCost.textContent = fmtCostUsd(callUsageTotals.costUsd);
+      }
+    }
+
+    function appendVoiceTurnRow(msg) {
       const empty = document.getElementById("turnTableEmpty");
       if (empty) empty.remove();
       const m = msg.metrics || {};
       const tk = msg.tokens || {};
       const tokensCell = `${tk.input != null ? tk.input : "—"} / ${tk.output != null ? tk.output : "—"}`;
+      const voiceCost = msg.cost && msg.cost.usd != null ? Number(msg.cost.usd) : 0;
       const cells = [
         msg.seq != null ? msg.seq : msg.turn,
         fmtMs(m.sttMs),
@@ -1444,31 +1409,58 @@
         fmtMs(m.responseMs),
         fmtMs(m.turnMs),
         tokensCell,
+        voiceCost > 0 ? fmtCostUsd(voiceCost) : "—",
+        "—",
+        "—",
       ];
       const tr = document.createElement("tr");
-      for (const c of cells) {
+      tr.dataset.voiceRow = "1";
+      tr.dataset.turn = String(msg.turn != null ? msg.turn : "");
+      tr.dataset.voiceCostUsd = String(voiceCost);
+      tr.dataset.extractCostUsd = "0";
+      tr.dataset.extractApplied = "0";
+      const costClasses = ["", "", "", "", "", "", "", "", "cost-cell", "extract-cost-cell cost-cell", "turn-total-cost-cell cost-cell"];
+      for (let i = 0; i < cells.length; i++) {
         const td = document.createElement("td");
-        td.textContent = c;
+        td.textContent = cells[i];
+        if (costClasses[i]) td.className = costClasses[i];
         tr.appendChild(td);
       }
       document.getElementById("turnTableBody").appendChild(tr);
+      updateRowTurnTotal(tr);
+      if (
+        pendingExtractUsage &&
+        pendingExtractUsage.extractSeq != null &&
+        msg.turn != null &&
+        Number(pendingExtractUsage.extractSeq) === Number(msg.turn)
+      ) {
+        applyExtractToRow(tr, pendingExtractUsage);
+        pendingExtractUsage = null;
+      }
+      updateCallUsageTotals(msg);
       const wrap = document.querySelector(".turn-table-wrap");
       if (wrap) wrap.scrollTop = wrap.scrollHeight;
     }
 
     function applyTurnMetrics(msg) {
-      const m = msg.metrics || {};
-      recordMetric("respLatency", m.ttfaMs);
-      recordMetric("stt", m.sttMs);
-      recordMetric("think", m.thinkMs);
-      recordMetric("tts", m.ttsMs);
-      recordMetric("response", m.responseMs);
-      recordMetric("outTokens", msg.tokens ? msg.tokens.output : null);
-      recordMetric("tps", msg.tokensPerSec);
-      appendTurnRow(msg);
+      if (msg.kind === "metrics") {
+        const m = msg.metrics || {};
+        recordMetric("respLatency", m.ttfaMs);
+        recordMetric("stt", m.sttMs);
+        recordMetric("think", m.thinkMs);
+        recordMetric("tts", m.ttsMs);
+        recordMetric("response", m.responseMs);
+        recordMetric("outTokens", msg.tokens ? msg.tokens.output : null);
+        recordMetric("tps", msg.tokensPerSec);
+        appendVoiceTurnRow(msg);
+      }
     }
 
     function handleAgentEvent(msg) {
+      if (msg.kind === "usage" && msg.source === "extract") {
+        applyExtractUsage(msg);
+        return;
+      }
       if (msg.kind === "metrics") {
         applyTurnMetrics(msg);
         return;
@@ -1484,8 +1476,14 @@
         setCardLatest(key, null);
         setCardAvg(key);
       }
+      callUsageTotals.inputTokens = 0;
+      callUsageTotals.outputTokens = 0;
+      callUsageTotals.costUsd = 0;
+      pendingExtractUsage = null;
       document.getElementById("turnTableBody").innerHTML =
-        '<tr id="turnTableEmpty"><td colspan="8" class="muted" style="text-align:center;">No turns yet.</td></tr>';
+        '<tr id="turnTableEmpty"><td colspan="11" class="muted" style="text-align:center;">No turns yet.</td></tr>';
+      const foot = document.getElementById("turnTableFoot");
+      if (foot) foot.hidden = true;
       document.getElementById("turnsPanel").classList.remove("open");
       const btn = document.getElementById("detailsToggle");
       btn.classList.remove("open");
@@ -1564,14 +1562,13 @@
 
     function stopStreaming() {
       if (!socket) return;
-      if (socket.readyState === WebSocket.OPEN) {
-        socket._closingAfterInsights = true;
-        socket.send(JSON.stringify({ Kind: "EndCall" }));
-      }
       stopMicrophone();
-      setTimeout(() => {
-        if (socket) socket.close();
-      }, 35000);
+      if (socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({ Kind: "EndCall" }));
+        setTimeout(() => {
+          if (socket && socket.readyState === WebSocket.OPEN) socket.close();
+        }, 500);
+      }
     }
 
     function startStreaming() {
