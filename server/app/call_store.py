@@ -22,18 +22,21 @@ import os
 
 logger = logging.getLogger(__name__)
 
+_COSMOS_ENDPOINT = "https://cosmos-insva-knby9f.documents.azure.com:443/"
+_COSMOS_DATABASE = "voiceagent"
+_COSMOS_CONTAINER = "calls"
 _COSMOS_TIMEOUT_S = float(os.getenv("COSMOS_TIMEOUT_S", "15"))
 
 
 def is_enabled() -> bool:
     """True if Cosmos persistence is configured."""
-    return bool(os.getenv("COSMOS_ENDPOINT"))
+    return bool(os.getenv("COSMOS_ENDPOINT", _COSMOS_ENDPOINT))
 
 
 def _cosmos_config() -> tuple[str, str, str, str | None]:
-    endpoint = os.getenv("COSMOS_ENDPOINT", "")
-    database = os.getenv("COSMOS_DATABASE", "voiceagent")
-    container_name = os.getenv("COSMOS_CONTAINER", "calls")
+    endpoint = os.getenv("COSMOS_ENDPOINT", _COSMOS_ENDPOINT)
+    database = os.getenv("COSMOS_DATABASE", _COSMOS_DATABASE)
+    container_name = os.getenv("COSMOS_CONTAINER", _COSMOS_CONTAINER)
     key = os.getenv("COSMOS_KEY")
     return endpoint, database, container_name, key
 
@@ -132,12 +135,10 @@ async def get_call(call_id: str) -> dict | None:
 
 async def save_call(record: dict) -> None:
     """Upsert one call document into Cosmos. No-op if not configured."""
-    endpoint = os.getenv("COSMOS_ENDPOINT")
+    endpoint, database, container_name, _ = _cosmos_config()
     if not endpoint:
         return
 
-    database = os.getenv("COSMOS_DATABASE", "voiceagent")
-    container_name = os.getenv("COSMOS_CONTAINER", "calls")
     call_id = record.get("id", "?")
 
     container, client, aad_credential = await _open_container()
