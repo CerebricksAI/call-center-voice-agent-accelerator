@@ -57,7 +57,15 @@ async def run_call_loop(
             except TimeoutError:
                 continue
             call_manager.touch(call_id)
-            await handler.on_message(msg)
+            try:
+                await handler.on_message(msg)
+            except Exception:
+                logger.exception(
+                    "Handler failed processing WebSocket message: call_id=%s",
+                    call_id,
+                )
+                if isinstance(msg, dict) and msg.get("type") == "websocket.disconnect":
+                    break
     finally:
         voicelive_task.cancel()
         try:
