@@ -51,6 +51,14 @@ async def run_call_loop(
                 break
             if call_manager.is_expired(call_id):
                 logger.warning("Call expired, disconnecting: call_id=%s", call_id)
+                request_end = getattr(handler, "request_end_call", None)
+                if callable(request_end):
+                    try:
+                        await request_end(source="timeout")
+                    except Exception:
+                        logger.exception(
+                            "Failed to auto-end expired call: call_id=%s", call_id
+                        )
                 break
             try:
                 msg = await asyncio.wait_for(ws.receive(), timeout=call_manager.receive_timeout)

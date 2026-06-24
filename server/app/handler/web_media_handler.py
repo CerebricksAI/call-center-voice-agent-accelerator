@@ -4,6 +4,8 @@ import asyncio
 import json
 import logging
 import os
+import re
+import time
 import uuid
 from datetime import datetime, timezone
 
@@ -12,8 +14,16 @@ from azure.ai.voicelive.models import (
     RequestSession,
 )
 
-from app.conversation_extractor import llm_extract_insights, llm_generate_call_summary
-from app.transcript_sanitize import sanitize_assistant_transcript
+from app.conversation_extractor import (
+    insight_detail_rows,
+    llm_extract_insights,
+    llm_generate_call_summary,
+)
+from app.transcript_sanitize import (
+    sanitize_assistant_transcript,
+    transcript_has_farewell,
+    transcript_requests_end_call,
+)
 from app import call_store
 from app.agent_persona import BROKERAGE_NAME
 
@@ -36,7 +46,7 @@ class WebMediaHandler(VoiceLiveMediaHandler):
         self._user_partial = ""
         self._mirror_turns: list[dict] = []
         self._extract_seq = 0
-        self._emitted_insights: dict[str, str] = {}
+        self._emitted_insights: dict[str, dict] = {}
         self._last_published_seq = 0
         self._extract_publish_lock = asyncio.Lock()
         self._extract_run_lock = asyncio.Lock()
@@ -50,6 +60,89 @@ class WebMediaHandler(VoiceLiveMediaHandler):
         self._call_saved_notified = False
         self._call_summary_text: str | None = None
         self._finalize_task: asyncio.Task | None = None
+        self._auto_end_task: asyncio.Task | None = None
+        self._awaiting_close_ack = False
+        self._awaiting_agent_goodbye = False
+        self._closing_phase = False
+
+    def _recent_assistant_text(self, n: int = 3) -> str:
+        texts: list[str] = []
+        turns = self._mirror_turns or self._call_turns
+        for turn in reversed(turns):
+            if turn.get("role") == "assistant":
+                chunk = (turn.get("text") or "").strip()
+                if chunk:
+                    texts.append(chunk)
+                if len(texts) >= n:
+                    break
+        return " ".join(reversed(texts))
+
+    def _assistant_end_detect_context(self, current: str = "") -> str:
+        recent = self._recent_assistant_text(3)
+        current = (current or "").strip()
+        if not current:
+            return recent
+        if recent and current in recent:
+            return recent
+        if recent:
+            return f"{recent} {current}"
+        return current
+
+    def _last_assistant_text(self) -> str:
+        for turn in reversed(self._mirror_turns or self._call_turns):
+            if turn.get("role") == "assistant":
+                return (turn.get("text") or "").strip()
+        return ""
+
+    def _user_declined_more(self, transcript: str) -> bool:
+        text = (transcript or "").strip().lower()
+        if not text:
+            return False
+        patterns = (
+            r"^no(?:[,.!\s]|$)",
+            r"^nothing(?:[,.!\s]|$)",
+            r"^nope(?:[,.!\s]|$)",
+            r"^that(?:'s| is) all",
+            r"^we(?:'re| are) good",
+            r"^thank you\.?$",
+            r"^thanks\.?$",
+            r"^no,?\s+we can",
+        )
+        return any(re.match(p, text) for p in patterns)
+
+    def _auto_end_call_delay_s(self) -> float:
+        try:
+            return max(0.0, float(os.getenv("AUTO_END_CALL_DELAY_S", "5")))
+        except ValueError:
+            return 5.0
+
+    def _schedule_auto_end_call(self) -> None:
+        """Wait briefly after the agent closes the interview, then finalize."""
+        if self._finalizing:
+            return
+        if self._auto_end_task is not None and not self._auto_end_task.done():
+            self._auto_end_task.cancel()
+        self._auto_end_task = asyncio.create_task(self._auto_end_after_delay())
+
+    async def _auto_end_after_delay(self) -> None:
+        delay = self._auto_end_call_delay_s()
+        try:
+            if delay > 0:
+                logger.info(
+                    "[WebMediaHandler] Agent finished interview — auto end-call in %.1fs",
+                    delay,
+                )
+                await asyncio.sleep(delay)
+            if not self._finalizing:
+                await self.request_end_call(source="agent")
+        except asyncio.CancelledError:
+            logger.debug("[WebMediaHandler] Auto end-call cancelled")
+            raise
+
+    def _cancel_auto_end_task(self) -> None:
+        if self._auto_end_task is not None and not self._auto_end_task.done():
+            self._auto_end_task.cancel()
+        self._auto_end_task = None
 
     def _session_config(self) -> RequestSession:
         session = super()._session_config()
@@ -127,6 +220,32 @@ class WebMediaHandler(VoiceLiveMediaHandler):
             return
         self._last_user_transcript = transcript
         await self._send_transcript("user", transcript, final=True)
+        if self._finalizing:
+            return
+        if self._awaiting_close_ack and self._user_declined_more(transcript):
+            self._awaiting_close_ack = False
+            self._awaiting_agent_goodbye = True
+            self._closing_phase = True
+            logger.info(
+                "[WebMediaHandler] Caller declined follow-up — waiting for agent goodbye"
+            )
+        agent_ctx = self._assistant_end_detect_context()
+        if agent_ctx and transcript_requests_end_call(agent_ctx):
+            logger.info(
+                "[WebMediaHandler] Caller acknowledged agent goodbye — scheduling auto end"
+            )
+            self._awaiting_agent_goodbye = False
+            self._schedule_auto_end_call()
+        elif self._awaiting_agent_goodbye and self._user_declined_more(transcript):
+            if agent_ctx and (
+                transcript_has_farewell(agent_ctx)
+                or transcript_requests_end_call(agent_ctx)
+            ):
+                logger.info(
+                    "[WebMediaHandler] Caller ack after agent close — scheduling auto end"
+                )
+                self._awaiting_agent_goodbye = False
+                self._schedule_auto_end_call()
 
     async def on_assistant_transcript_delta(self, transcript: str) -> None:
         self._assistant_partial += transcript
@@ -139,6 +258,25 @@ class WebMediaHandler(VoiceLiveMediaHandler):
         )
 
     async def on_transcript_done(self, transcript: str) -> None:
+        raw = transcript or ""
+        if re.search(r"anything else", raw, re.I):
+            self._awaiting_close_ack = True
+            self._closing_phase = True
+        agent_ctx = self._assistant_end_detect_context(raw)
+        if not self._finalizing:
+            if transcript_requests_end_call(agent_ctx):
+                self._closing_phase = True
+                self._awaiting_agent_goodbye = False
+                logger.info(
+                    "[WebMediaHandler] Agent closed interview — scheduling auto end"
+                )
+                self._schedule_auto_end_call()
+            elif self._awaiting_agent_goodbye and transcript_has_farewell(agent_ctx):
+                self._awaiting_agent_goodbye = False
+                logger.info(
+                    "[WebMediaHandler] Agent farewell after caller declined — scheduling auto end"
+                )
+                self._schedule_auto_end_call()
         transcript = sanitize_assistant_transcript(transcript)
         if self._call_turns and self._call_turns[-1].get("role") == "assistant":
             if transcript:
@@ -149,6 +287,18 @@ class WebMediaHandler(VoiceLiveMediaHandler):
         if not transcript:
             return
         await self._send_transcript("assistant", transcript, final=True)
+
+    async def on_response_text_done(self, text: str | None) -> None:
+        if not text or self._finalizing:
+            return
+        agent_ctx = self._assistant_end_detect_context(text)
+        if transcript_requests_end_call(agent_ctx):
+            self._closing_phase = True
+            self._awaiting_agent_goodbye = False
+            logger.info(
+                "[WebMediaHandler] Agent closed interview (text) — scheduling auto end"
+            )
+            self._schedule_auto_end_call()
 
     def _schedule_insight_extraction(self) -> None:
         """Queue LLM extraction — one session at a time, coalesces rapid turns."""
@@ -188,7 +338,9 @@ class WebMediaHandler(VoiceLiveMediaHandler):
                         return
 
                     if usage:
-                        cost = self._record_usage_cost(usage, text_only=True)
+                        cost = self._record_usage_cost(
+                            usage, text_only=True, category="extract"
+                        )
                         await self.on_agent_event(
                             {
                                 "Kind": "AgentEvent",
@@ -198,6 +350,7 @@ class WebMediaHandler(VoiceLiveMediaHandler):
                                 "tokens": usage,
                                 "cost": cost,
                                 "callCostUsd": self._call_cost_usd,
+                                "costBreakdown": self._cost_breakdown(),
                             }
                         )
 
@@ -308,16 +461,25 @@ class WebMediaHandler(VoiceLiveMediaHandler):
         if not turns:
             msg = "No conversation to summarize."
             self._call_summary_text = msg
+            await self._record_session_event("summary_done", summaryMs=0)
             await self._emit_call_summary(loading=False, summary=msg)
             return
 
+        t_summary = time.perf_counter()
+        await self._record_session_event("summary_started")
         try:
             summary, usage = await llm_generate_call_summary(
                 turns,
                 key_facts=self._emitted_insights or None,
             )
+            await self._record_session_event(
+                "summary_done",
+                summaryMs=self._delta_ms(t_summary, time.perf_counter()),
+            )
             if usage:
-                cost = self._record_usage_cost(usage, text_only=True)
+                cost = self._record_usage_cost(
+                    usage, text_only=True, category="summary"
+                )
                 await self.on_agent_event(
                     {
                         "Kind": "AgentEvent",
@@ -326,6 +488,7 @@ class WebMediaHandler(VoiceLiveMediaHandler):
                         "tokens": usage,
                         "cost": cost,
                         "callCostUsd": self._call_cost_usd,
+                        "costBreakdown": self._cost_breakdown(),
                     }
                 )
             if not (summary or "").strip():
@@ -339,13 +502,44 @@ class WebMediaHandler(VoiceLiveMediaHandler):
             logger.info("[WebMediaHandler] Call summary sent (%d chars)", len(summary))
         except Exception:
             logger.exception("[WebMediaHandler] Call summary failed")
+            await self._record_session_event(
+                "summary_done",
+                summaryMs=self._delta_ms(t_summary, time.perf_counter()),
+                failed=True,
+            )
             await self._emit_call_summary(
                 loading=False,
                 error="Call summary failed",
             )
 
+    def _attach_extract_cost_to_metrics(self, payload: dict) -> None:
+        """Merge key-details extraction cost onto the matching voice turn row."""
+        seq = payload.get("extractSeq")
+        if seq is None:
+            return
+        cost = payload.get("cost")
+        if not cost:
+            return
+        for row in reversed(self._call_metrics):
+            if row.get("seq") == seq or row.get("turn") == seq:
+                row["extractCost"] = cost
+                tokens = payload.get("tokens")
+                if isinstance(tokens, dict) and tokens:
+                    row["extractTokens"] = tokens
+                return
+        if self._call_metrics:
+            row = self._call_metrics[-1]
+            row["extractCost"] = cost
+            tokens = payload.get("tokens")
+            if isinstance(tokens, dict) and tokens:
+                row["extractTokens"] = tokens
+
     async def on_agent_event(self, payload: dict) -> None:
         """Forward agent metrics + event-timeline payloads to the browser."""
+        if payload.get("kind") == "usage" and payload.get("source") == "extract":
+            self._attach_extract_cost_to_metrics(payload)
+        if not payload.get("costBreakdown"):
+            payload["costBreakdown"] = self._cost_breakdown()
         await self.send_message(json.dumps(payload))
 
     async def _cancel_extract_worker(self) -> None:
@@ -363,11 +557,16 @@ class WebMediaHandler(VoiceLiveMediaHandler):
                 "[WebMediaHandler] Extract worker still stopping; continuing finalize"
             )
         self._extract_worker = None
+        try:
+            await self._send_insights([], loading=False, append=True)
+        except Exception:
+            logger.debug("[WebMediaHandler] Could not clear extract loading state on cancel")
 
     async def _ensure_voicelive_cleanup(self, *, persist: bool = True) -> None:
         if self._voicelive_cleaned:
             return
         self._voicelive_cleaned = True
+        await self._record_session_event("session_closing")
         await super().cleanup(persist=persist)
 
     def _turns_for_persist(self) -> list[dict]:
@@ -404,18 +603,17 @@ class WebMediaHandler(VoiceLiveMediaHandler):
                 "persona": "Maya — mortgage pre-qualification",
                 "startedAt": started.isoformat() if started else None,
                 "endedAt": ended.isoformat(),
-                "durationSec": round((ended - started).total_seconds(), 1)
+                "durationSec": round((ended - started).total_seconds(), 3)
                 if started
                 else None,
-                "turnCount": len(transcript),
                 "transcript": transcript,
                 "metrics": self._call_metrics,
-                "events": self._call_events,
+                "events": self._events_for_persist(started, ended),
+                **self._call_count_fields(transcript),
                 "callSummary": self._call_summary_text,
-                "keyDetails": [
-                    {"key": k, "value": v}
-                    for k, v in (self._emitted_insights or {}).items()
-                ],
+                "keyDetails": insight_detail_rows(self._emitted_insights),
+                "callCostUsd": round(self._call_cost_usd, 6) if self._call_cost_usd else None,
+                "costBreakdown": self._cost_breakdown(),
             }
             await call_store.save_call(record)
             return call_id
@@ -447,6 +645,38 @@ class WebMediaHandler(VoiceLiveMediaHandler):
                 saved_id,
             )
 
+    async def _emit_call_ended(self, *, source: str) -> None:
+        payload = {"Kind": "CallEnded", "callId": self.call_id, "source": source}
+        await self.send_message(json.dumps(payload))
+
+    async def request_end_call(self, *, source: str = "client") -> None:
+        """Start the same finalize flow as the End Call button."""
+        if self._finalizing:
+            return
+        self._cancel_auto_end_task()
+        self._finalizing = True
+        event_name = "end_call_requested" if source == "client" else "call_ended"
+        await self._record_session_event(event_name, source=source)
+        try:
+            await self._emit_call_ended(source=source)
+        except Exception:
+            logger.exception("[WebMediaHandler] Failed to notify client call ended")
+        if not self._summary_loading_sent:
+            try:
+                await self._emit_call_summary(loading=True)
+                self._summary_loading_sent = True
+            except Exception:
+                logger.exception(
+                    "[WebMediaHandler] Failed to send call summary loading on end call"
+                )
+        if self._finalize_task is None or self._finalize_task.done():
+            self._finalize_task = asyncio.create_task(self._finalize_call())
+
+    async def on_voicelive_disconnected(self, *, cancelled: bool = False) -> None:
+        if not cancelled:
+            logger.info("[WebMediaHandler] Voice Live disconnected — auto-ending call")
+            await self.request_end_call(source="voicelive_disconnect")
+
     async def _finalize_call(self) -> None:
         """End the Voice Live session and generate a call summary."""
         if self._finalizing and self._finalize_task is not asyncio.current_task():
@@ -475,17 +705,7 @@ class WebMediaHandler(VoiceLiveMediaHandler):
         if payload.get("Kind") != "EndCall":
             return False
         logger.info("[WebMediaHandler] EndCall received — closing session")
-        self._finalizing = True
-        if not self._summary_sent and not self._summary_loading_sent:
-            try:
-                await self._emit_call_summary(loading=True)
-                self._summary_loading_sent = True
-            except Exception:
-                logger.exception(
-                    "[WebMediaHandler] Failed to send call summary loading on EndCall"
-                )
-        if self._finalize_task is None or self._finalize_task.done():
-            self._finalize_task = asyncio.create_task(self._finalize_call())
+        await self.request_end_call(source="client")
         return True
 
     async def on_message(self, msg):
@@ -522,6 +742,7 @@ class WebMediaHandler(VoiceLiveMediaHandler):
                 return
 
     async def cleanup(self):
+        self._cancel_auto_end_task()
         await self._cancel_extract_worker()
         if not self._finalizing:
             self._finalizing = True

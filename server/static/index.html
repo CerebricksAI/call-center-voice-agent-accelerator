@@ -3,13 +3,15 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Quadrant Financial Agent</title>
+  <title>Sales Agent</title>
+  <link rel="icon" href="/static/sales-agent-logo.png" type="image/png">
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <style>
     :root,
     [data-theme="light"] {
+      --font-sans: 'Inter', system-ui, sans-serif;
       --qt-black: #000000;
       --qt-white: #ffffff;
       --qt-text: #111111;
@@ -32,15 +34,16 @@
       --border-subtle: #e8e8e8;
       --accent-purple: var(--qt-primary);
       --accent-purple-dark: var(--qt-primary-hover);
-      --accent-purple-light: #9d4dff;
-      --accent-purple-glow: rgba(137, 41, 254, 0.28);
+      --accent-purple-light: #a78bfa;
+      --accent-purple-glow: rgba(137, 41, 254, 0.22);
       --accent-cyan: var(--qt-heading);
       --accent-cyan-dim: rgba(0, 32, 96, 0.1);
       --text-primary: var(--qt-text);
       --text-secondary: var(--qt-text-muted);
       --text-muted: #767676;
-      --nav-bg: var(--qt-black);
-      --nav-border: rgba(255, 255, 255, 0.06);
+      --nav-bg: #0c1222;
+      --nav-accent: #a78bfa;
+      --nav-border: rgba(255, 255, 255, 0.08);
       --nav-text: rgba(255, 255, 255, 0.92);
       --nav-text-muted: rgba(255, 255, 255, 0.72);
       --panel-shadow: var(--qt-card-shadow);
@@ -54,15 +57,17 @@
     }
 
     [data-theme="dark"] {
+      --qt-primary: #8929fe;
+      --qt-primary-hover: #7420db;
       --qt-heading: #ffffff;
-      --qt-toggle-bg: #111111;
+      --qt-toggle-bg: #152238;
       --qt-toggle-border: rgba(255, 255, 255, 0.14);
       --qt-toggle-color: #ffffff;
-      --bg-deep: #090909;
-      --bg-main: #090909;
-      --bg-panel: #111111;
-      --bg-card: #111111;
-      --bg-elevated: #1a1a1a;
+      --bg-deep: #0c1222;
+      --bg-main: #0e1628;
+      --bg-panel: #152238;
+      --bg-card: #152238;
+      --bg-elevated: #1a2844;
       --border: rgba(255, 255, 255, 0.14);
       --border-subtle: rgba(255, 255, 255, 0.08);
       --accent-purple: #8929fe;
@@ -74,8 +79,9 @@
       --text-primary: #f5f5f5;
       --text-secondary: #b0b8c4;
       --text-muted: #8b95a5;
-      --nav-bg: #000000;
-      --nav-border: rgba(255, 255, 255, 0.06);
+      --nav-bg: #0c1222;
+      --nav-accent: #a78bfa;
+      --nav-border: rgba(255, 255, 255, 0.08);
       --nav-text: rgba(255, 255, 255, 0.92);
       --nav-text-muted: rgba(255, 255, 255, 0.72);
       --panel-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
@@ -121,9 +127,20 @@
 
     * { box-sizing: border-box; }
 
+    * {
+      scrollbar-width: none;
+      -ms-overflow-style: none;
+    }
+
+    *::-webkit-scrollbar {
+      display: none;
+      width: 0;
+      height: 0;
+    }
+
     body {
       margin: 0;
-      font-family: "Montserrat", "Segoe UI", system-ui, sans-serif;
+      font-family: var(--font-sans);
       background: var(--bg-deep);
       height: 100vh;
       overflow: hidden;
@@ -150,29 +167,51 @@
       position: sticky;
       top: 0;
       z-index: 100;
+      overflow: hidden;
+    }
+
+    .app-nav::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(ellipse 35% 140% at 0% 50%, rgba(137, 41, 254, 0.16) 0%, transparent 72%);
+      pointer-events: none;
+    }
+
+    .app-nav > * {
+      position: relative;
+      z-index: 1;
     }
 
     .nav-brand {
       display: flex;
       align-items: center;
-      gap: 0.75rem;
+      gap: 0.65rem;
       white-space: nowrap;
       margin-right: 0.5rem;
     }
 
-    .nav-logo {
-      height: 34px;
-      width: auto;
+    .nav-brand-icon {
+      width: 36px;
+      height: 36px;
+      flex-shrink: 0;
       display: block;
+      border-radius: 50%;
+      object-fit: cover;
     }
 
-    .nav-product {
-      font-size: 0.82rem;
+    .nav-brand-text {
+      font-size: 1.05rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      color: #ffffff;
+      line-height: 1.2;
+    }
+
+    .nav-brand-text .accent {
+      color: var(--nav-accent);
       font-weight: 600;
-      color: var(--nav-text-muted);
-      padding-left: 0.75rem;
-      border-left: 1px solid rgba(255, 255, 255, 0.12);
-      letter-spacing: 0.01em;
+      letter-spacing: 0;
     }
 
     .nav-links {
@@ -704,14 +743,79 @@
     }
 
     /* --- Extracted fields --- */
+    .fields-body {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
     .fields-log {
       flex: 1;
       min-height: 0;
       overflow-y: auto;
       overflow-x: hidden;
-      padding: 0.75rem 1rem 1rem;
+      padding: 0.75rem 1rem;
+      display: block;
+    }
+
+    .fields-legend {
+      flex-shrink: 0;
+      border-top: 1px solid var(--border-subtle);
+      background: var(--bg-panel);
+      padding: 0.55rem 1rem 0.65rem;
+      box-shadow: 0 -4px 12px rgba(15, 23, 42, 0.05);
+      z-index: 1;
+    }
+
+    .fields-legend:empty {
+      display: none;
+    }
+
+    .call-summary-panel {
+      flex-shrink: 0;
+      border-top: 1px solid var(--border-subtle);
+      background: var(--bg-elevated);
+      max-height: min(38vh, 220px);
+      min-height: 0;
+      overflow-y: auto;
+      box-shadow: 0 -6px 16px rgba(15, 23, 42, 0.06);
+      position: relative;
+      z-index: 2;
+    }
+
+    .fields-status-banner {
+      display: none;
+      align-items: center;
+      gap: 0.45rem;
+      margin: 0 1rem 0.65rem;
+      padding: 0.5rem 0.75rem;
+      border-radius: var(--radius-md);
+      background: rgba(137, 41, 254, 0.08);
+      border: 1px solid rgba(137, 41, 254, 0.2);
+      font-size: 0.78rem;
+      font-style: italic;
+      color: var(--qt-primary);
+      flex-shrink: 0;
+    }
+
+    .fields-status-banner.visible {
       display: flex;
-      flex-direction: column;
+    }
+
+    .fields-status-banner-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--qt-primary);
+      flex-shrink: 0;
+      animation: kd-pulse 1.4s ease-in-out infinite;
+    }
+
+    @keyframes kd-pulse {
+      0%, 100% { opacity: 0.35; }
+      50% { opacity: 1; }
     }
 
     .fields-empty,
@@ -731,32 +835,231 @@
     }
 
     .fields-loading-footer {
-      color: var(--qt-primary);
-      font-size: 0.82rem;
-      font-style: italic;
-      text-align: left;
-      padding: 0.65rem 0.25rem 0.15rem;
-      margin: 0;
-      flex-shrink: 0;
+      display: none;
+    }
+
+    .call-summary-panel:empty {
+      display: none;
     }
 
     .fields-error {
       color: #f87171;
     }
 
-    .call-summary-section {
-      margin-top: 0.85rem;
-      padding-top: 0.85rem;
-      border-top: 1px solid var(--border-subtle);
+    .fields-panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+    }
+
+    .fields-panel-title {
+      font-weight: 600;
+    }
+
+    .fields-header-meta {
+      display: flex;
+      align-items: center;
+      gap: 0.45rem;
+      font-size: 0.72rem;
+      font-weight: 500;
+      color: var(--text-secondary);
+    }
+
+    .fields-status-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--text-muted);
       flex-shrink: 0;
+    }
+
+    .fields-status-dot.live {
+      background: #22c55e;
+      box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.2);
+    }
+
+    .fields-status-dot.done {
+      background: var(--qt-primary);
+    }
+
+    .fields-capture-badge {
+      padding: 0.15rem 0.45rem;
+      border-radius: 999px;
+      background: rgba(137, 41, 254, 0.15);
+      color: var(--qt-primary);
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .kd-form {
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+    }
+
+    .kd-section {
+      padding: 0.85rem 0 0.65rem;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .kd-section:last-of-type {
+      border-bottom: none;
+    }
+
+    .kd-section-title {
+      font-size: 0.68rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      margin-bottom: 0.65rem;
+    }
+
+    .kd-grid {
+      display: flex;
+      flex-direction: column;
+      gap: 0.65rem;
+    }
+
+    .kd-field {
+      min-width: 0;
+      padding: 0.7rem 0.85rem;
+      border-radius: var(--radius-md, 8px);
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-subtle);
+    }
+
+    .kd-field-head {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      margin-bottom: 0.45rem;
+    }
+
+    .kd-field-icon {
+      width: 15px;
+      height: 15px;
+      flex-shrink: 0;
+      color: var(--qt-primary);
+      opacity: 0.85;
+    }
+
+    .kd-field-label {
+      font-size: 0.62rem;
+      font-weight: 700;
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+    }
+
+    .kd-field-new {
+      font-size: 0.58rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--qt-primary);
+      padding: 0.05rem 0.3rem;
+      border-radius: 999px;
+      background: rgba(137, 41, 254, 0.15);
+    }
+
+    .kd-field-value {
+      font-size: 0.9rem;
+      font-weight: 600;
+      line-height: 1.45;
+      color: var(--text-primary);
+      word-wrap: break-word;
+      font-style: normal;
+    }
+
+    .kd-field-value.muted { color: var(--text-muted); font-weight: 500; font-style: italic; }
+    .kd-field-value.captured { color: var(--text-primary); }
+    .kd-field-value.high { color: #15803d; }
+    .kd-field-value.mid { color: #b45309; }
+    .kd-field-value.low { color: #dc2626; }
+
+    .kd-field-value + .kd-bar-row {
+      margin-top: 0.45rem;
+    }
+
+    .kd-bar-row {
+      display: flex;
+      align-items: center;
+      gap: 0.45rem;
+    }
+
+    .kd-bar-track {
+      flex: 1;
+      height: 4px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.08);
+      overflow: hidden;
+    }
+
+    [data-theme="light"] .kd-bar-track {
+      background: rgba(0, 0, 0, 0.08);
+    }
+
+    .kd-bar-fill {
+      height: 100%;
+      border-radius: 999px;
+      transition: width 0.25s ease;
+    }
+
+    .kd-bar-fill.high { background: #22c55e; }
+    .kd-bar-fill.mid { background: #f59e0b; }
+    .kd-bar-fill.low { background: #ef4444; }
+    .kd-bar-fill.none { background: transparent; width: 0 !important; }
+
+    .kd-bar-pct {
+      font-size: 0.68rem;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+      color: var(--text-muted);
+      min-width: 2.2rem;
+      text-align: right;
+    }
+
+    .kd-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.65rem 1rem;
+      padding: 0;
+      margin: 0;
+      border: none;
+      font-size: 0.68rem;
+      color: var(--text-muted);
+    }
+
+    .kd-legend-item {
+      display: flex;
+      align-items: center;
+      gap: 0.3rem;
+    }
+
+    .kd-legend-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .kd-legend-dot.high { background: #22c55e; }
+    .kd-legend-dot.mid { background: #f59e0b; }
+    .kd-legend-dot.low { background: #ef4444; }
+    .kd-legend-dot.none { background: var(--text-muted); opacity: 0.45; }
+
+    .call-summary-section {
+      padding: 0.75rem 1rem;
     }
 
     .call-summary-card {
       padding: 0.7rem 0.85rem;
-      border: 1px solid var(--border);
+      border: 1px solid var(--border-subtle);
       border-radius: var(--radius-md);
       background: var(--bg-card);
-      flex-shrink: 0;
     }
 
     .call-summary-heading {
@@ -913,6 +1216,42 @@
 
     .turn-table-wrap { overflow-x: auto; }
 
+    .call-cost-breakdown {
+      margin-top: 0.65rem;
+      padding: 0.75rem 0.85rem;
+      border-top: 1px solid var(--border-subtle);
+      display: grid;
+      gap: 0.4rem;
+      max-width: 100%;
+    }
+
+    .call-cost-breakdown[hidden] { display: none; }
+
+    .call-cost-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 1rem;
+      font-size: 0.78rem;
+    }
+
+    .call-cost-row .label { color: var(--text-secondary); }
+    .call-cost-row .value {
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .call-cost-row.total {
+      margin-top: 0.25rem;
+      padding-top: 0.45rem;
+      border-top: 1px solid var(--border-subtle);
+    }
+
+    .call-cost-row.total .label,
+    .call-cost-row.total .value {
+      font-weight: 700;
+      color: var(--qt-primary);
+    }
+
     .turn-table {
       width: 100%;
       border-collapse: collapse;
@@ -970,27 +1309,11 @@
       text-align: center;
     }
 
-    .transcript-log::-webkit-scrollbar-thumb,
-    .fields-log::-webkit-scrollbar-thumb,
-    .metrics-scroll::-webkit-scrollbar-thumb,
-    .turn-table-wrap::-webkit-scrollbar-thumb {
-      background: rgba(137, 41, 254, 0.35);
-      border-radius: 3px;
-    }
-
-    .transcript-log::-webkit-scrollbar,
-    .fields-log::-webkit-scrollbar,
-    .metrics-scroll::-webkit-scrollbar,
-    .turn-table-wrap::-webkit-scrollbar {
-      width: 6px;
-      height: 6px;
-    }
-
-    .transcript-log::-webkit-scrollbar-track,
-    .fields-log::-webkit-scrollbar-track,
-    .metrics-scroll::-webkit-scrollbar-track,
-    .turn-table-wrap::-webkit-scrollbar-track {
-      background: transparent;
+    .metrics-cost-note {
+      margin: 0.35rem 0 0;
+      font-size: 0.72rem;
+      color: var(--text-muted);
+      line-height: 1.4;
     }
 
     .call-finalize-banner {
@@ -1068,8 +1391,8 @@
 <body>
   <nav class="app-nav">
     <div class="nav-brand">
-      <img src="/static/quadrant-logo.png" alt="Quadrant" class="nav-logo" />
-      <span class="nav-product">Financial Agent</span>
+      <img class="nav-brand-icon" src="/static/sales-agent-logo.png" alt="" width="36" height="36">
+      <span class="nav-brand-text">Sales <span class="accent">Agent</span></span>
     </div>
     <div class="nav-links">
       <a class="nav-link active" href="/">Pre-Qual Call</a>
@@ -1109,7 +1432,7 @@
         <div class="call-controls">
           <button id="startBtn" onclick="startStreaming()" title="Start a voice call with the agent">
             Start Call
-          </button>
+    </button>
           <button type="button" id="muteBtn" onclick="toggleMicMute()" disabled title="Mute microphone" aria-label="Mute microphone" aria-pressed="false">
             <svg class="mute-icon mute-icon-on" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 1 0-6 0v6a3 3 0 0 0 3 3z"/>
@@ -1127,7 +1450,7 @@
           </button>
           <button id="stopBtn" onclick="stopStreaming()" disabled title="End the current call">
             End Call
-          </button>
+    </button>
         </div>
       </div>
       <div id="transcriptLog" class="transcript-log">
@@ -1137,8 +1460,23 @@
 
     <!-- Middle 40%: Key Details (LLM-extracted) -->
     <div class="panel panel-fields">
-      <div class="panel-header">Key Details</div>
-      <div id="fieldsLog" class="fields-log"></div>
+      <div class="panel-header fields-panel-header">
+        <span class="fields-panel-title">Key details</span>
+        <div class="fields-header-meta">
+          <span id="fieldsStatusDot" class="fields-status-dot"></span>
+          <span id="fieldsStatusText" class="fields-status-text">Waiting</span>
+          <span id="fieldsCaptureBadge" class="fields-capture-badge" hidden></span>
+        </div>
+      </div>
+      <div id="fieldsStatusBanner" class="fields-status-banner">
+        <span class="fields-status-banner-dot"></span>
+        <span id="fieldsStatusBannerText">Analyzing conversation…</span>
+      </div>
+      <div class="fields-body">
+        <div id="fieldsLog" class="fields-log"></div>
+        <div id="fieldsLegend" class="fields-legend"></div>
+      </div>
+      <div id="callSummaryPanel" class="call-summary-panel"></div>
     </div>
 
     <!-- Right 20%: Metrics -->
@@ -1146,39 +1484,39 @@
       <div class="panel-header">Performance Metrics</div>
       <div class="metrics-scroll">
       <div class="metric-card">
-        <div class="metric-label">Response latency <span class="metric-hint">to first audio</span></div>
+        <div class="metric-label">Response latency <span class="metric-hint">model · to first audio</span></div>
         <div class="metric-value" id="m-respLatency">—</div>
-        <div class="metric-sub" id="s-respLatency">avg — · 0 turns</div>
+        <div class="metric-sub" id="s-respLatency">last — · 0 agent responses</div>
       </div>
       <div class="metric-card">
         <div class="metric-label">Speech → Text <span class="metric-hint">transcription</span></div>
         <div class="metric-value" id="m-stt">—</div>
-        <div class="metric-sub" id="s-stt">avg — · 0 turns</div>
+        <div class="metric-sub" id="s-stt">last — · 0 agent responses</div>
       </div>
       <div class="metric-card">
         <div class="metric-label">Thinking <span class="metric-hint">to response start</span></div>
         <div class="metric-value" id="m-think">—</div>
-        <div class="metric-sub" id="s-think">avg — · 0 turns</div>
+        <div class="metric-sub" id="s-think">last — · 0 agent responses</div>
       </div>
       <div class="metric-card">
         <div class="metric-label">Text → Speech <span class="metric-hint">audio playout</span></div>
         <div class="metric-value" id="m-tts">—</div>
-        <div class="metric-sub" id="s-tts">avg — · 0 turns</div>
+        <div class="metric-sub" id="s-tts">last — · 0 agent responses</div>
       </div>
       <div class="metric-card">
         <div class="metric-label">Response time <span class="metric-hint">generation</span></div>
         <div class="metric-value" id="m-response">—</div>
-        <div class="metric-sub" id="s-response">avg — · 0 turns</div>
+        <div class="metric-sub" id="s-response">last — · 0 agent responses</div>
       </div>
       <div class="metric-card">
         <div class="metric-label">Output tokens <span class="metric-hint">per response</span></div>
         <div class="metric-value" id="m-outTokens">—</div>
-        <div class="metric-sub" id="s-outTokens">avg — · 0 turns</div>
+        <div class="metric-sub" id="s-outTokens">last — · 0 agent responses</div>
       </div>
       <div class="metric-card">
         <div class="metric-label">Tokens / sec <span class="metric-hint">output rate</span></div>
         <div class="metric-value" id="m-tps">—</div>
-        <div class="metric-sub" id="s-tps">avg — · 0 turns</div>
+        <div class="metric-sub" id="s-tps">last — · 0 agent responses</div>
       </div>
       </div>
     </div>
@@ -1190,7 +1528,7 @@
         <span class="chevron">▼</span>
       </button>
       <div class="turns-panel" id="turnsPanel">
-        <div class="panel-header">Per-turn Metrics</div>
+        <div class="panel-header">Per-response Metrics</div>
         <div class="turn-table-wrap">
           <table class="turn-table">
             <thead>
@@ -1198,6 +1536,7 @@
                 <th>#</th>
                 <th>Speech&nbsp;→&nbsp;Text</th>
                 <th>Thinking</th>
+                <th>Resp.&nbsp;latency</th>
                 <th>First&nbsp;audio</th>
                 <th>Text&nbsp;→&nbsp;Speech</th>
                 <th>Response</th>
@@ -1209,11 +1548,11 @@
               </tr>
             </thead>
             <tbody id="turnTableBody">
-              <tr id="turnTableEmpty"><td colspan="11" class="muted" style="text-align:center;">No turns yet.</td></tr>
+              <tr id="turnTableEmpty"><td colspan="12" class="muted" style="text-align:center;">No agent responses yet.</td></tr>
             </tbody>
             <tfoot id="turnTableFoot" hidden>
               <tr>
-                <td colspan="7" style="text-align:right;">Call total</td>
+                <td colspan="8" style="text-align:right;">Call total</td>
                 <td id="turnTotalTokens">—</td>
                 <td></td>
                 <td></td>
@@ -1221,6 +1560,7 @@
               </tr>
             </tfoot>
           </table>
+          <div id="callCostBreakdown" class="call-cost-breakdown" hidden></div>
         </div>
       </div>
     </div>
@@ -1720,15 +2060,167 @@
       return (value || "").trim().toLowerCase().replace(/\s+/g, " ");
     }
 
+    const INSIGHT_KEY_LABELS = {
+      loan_purpose: "Loan purpose",
+      loan_type: "Loan type",
+      location: "State",
+      state: "State",
+      zip: "ZIP code",
+      zip_status: "ZIP status",
+      timeline: "Timeline",
+      purchase_timeline: "Purchase timeline",
+      amount: "Amount",
+      cash_out_amount: "Cash-out amount",
+      current_balance: "Current balance",
+      down_payment: "Down payment",
+      credit_score: "Credit score",
+      employment: "Employment status",
+      employment_status: "Employment status",
+      income: "Annual income",
+      annual_income: "Annual income",
+      contact: "Contact preference",
+      contact_preference: "Contact preference",
+      consent: "TCPA consent",
+      tcpa_consent: "TCPA consent",
+      recording_consent: "Call recording consent",
+      property_status: "Property type",
+      property_type: "Property type",
+      next_step: "Next step",
+      rate: "Current rate",
+      current_rate: "Current rate",
+      lender: "Lender",
+      other: "Other",
+    };
+
+    const KEY_ICON_HINTS = {
+      consent: "shield",
+      tcpa_consent: "shield",
+      recording_consent: "mic",
+      loan_purpose: "doc",
+      loan_type: "doc",
+      rate: "doc",
+      current_rate: "doc",
+      lender: "doc",
+      cash_out_amount: "doc",
+      current_balance: "doc",
+      amount: "doc",
+      down_payment: "doc",
+      location: "pin",
+      state: "pin",
+      zip: "pin",
+      property_status: "home",
+      property_type: "home",
+      timeline: "clock",
+      purchase_timeline: "clock",
+      contact: "clock",
+      contact_preference: "clock",
+      credit_score: "user",
+      income: "user",
+      annual_income: "user",
+      employment: "user",
+      employment_status: "user",
+    };
+
+    function iconForKey(key) {
+      return KEY_ICON_HINTS[key] || "doc";
+    }
+
+    const FIELD_ICON_SVG = {
+      shield: '<svg class="kd-field-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l8 3v6c0 5-3.5 8.5-8 9-4.5-.5-8-4-8-9V6l8-3z"/></svg>',
+      mic: '<svg class="kd-field-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 1 0-6 0v6a3 3 0 0 0 3 3z"/><path d="M19 10v1a7 7 0 0 1-14 0v-1"/><path d="M12 18v3"/></svg>',
+      doc: '<svg class="kd-field-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>',
+      pin: '<svg class="kd-field-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21s7-4.5 7-11a7 7 0 1 0-14 0c0 6.5 7 11 7 11z"/><circle cx="12" cy="10" r="2.5"/></svg>',
+      home: '<svg class="kd-field-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 10.5L12 4l8 6.5V20a1 1 0 0 1-1 1h-5v-6H10v6H5a1 1 0 0 1-1-1v-9.5z"/></svg>',
+      clock: '<svg class="kd-field-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
+      user: '<svg class="kd-field-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="3.5"/><path d="M5 20a7 7 0 0 1 14 0"/></svg>',
+    };
+
+    function stripCallerPrefix(value) {
+      return (value || "")
+        .replace(
+          /^(?:The caller|Caller)(?:\s+is|\s+was|'s|\s+has|\s+had|\s+mentioned|\s+said|\s+confirmed|\s+looking)?\s+/i,
+          ""
+        )
+        .trim();
+    }
+
+    function formatInsightLabel(item) {
+      if (item && item.label) return item.label;
+      const key = (item && item.key) || "";
+      if (INSIGHT_KEY_LABELS[key]) return INSIGHT_KEY_LABELS[key];
+      return key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()) || "Detail";
+    }
+
+    function formatInsightValue(value) {
+      let v = stripCallerPrefix(value);
+      for (let i = 0; i < 3; i++) {
+        const next = v
+          .replace(
+            /^(?:looking(?:\s+(?:to|in|at|for))?|considering(?:\s+a)?|currently|plans?\s+to|they(?:'re| are)|in the state of|the best way for the loan officer to reach the caller is)\s+/i,
+            ""
+          )
+          .replace(/\s+/g, " ")
+          .trim();
+        if (next === v) break;
+        v = next;
+      }
+      if (v) v = v.charAt(0).toUpperCase() + v.slice(1);
+      return v.replace(/\.\s*$/, "").trim() || v;
+    }
+
+    function polishFieldText(key, text) {
+      if (!text) return text;
+      if (key === "zip") {
+        const m = text.match(/\b(\d{5})\b/);
+        if (m) return m[1];
+      }
+      if (key === "property_status") {
+        text = text.replace(/^considering a /i, "").replace(/\s+for purchase\.?$/i, "");
+      }
+      if (key === "consent") {
+        text = text.replace(/^consent to be contacted by .+ regarding /i, "Agreed — ");
+      }
+      return text.trim();
+    }
+
+    function isValidInsightKey(key) {
+      if (!key || key === "zip_status") return false;
+      if (key.includes("|") || key.length > 40) return false;
+      return true;
+    }
+
+    function isPlaceholderValue(value) {
+      return /^(?:not[\s_]?provided|not[\s_]?discussed|not[\s_]?disclosed|unknown|n\/a|na|none|declined|not_provided|unspecified)$/i.test(
+        String(value || "").trim()
+      );
+    }
+
+    function hasFieldValue(insight) {
+      const v = formatInsightValue(insight && insight.value);
+      return !!(v && !isPlaceholderValue(v));
+    }
+
+    function isDisplayableInsight(insight) {
+      if (!insight || !isValidInsightKey(insight.key)) return false;
+      const label = String(insight.label || "");
+      if (label.includes("|")) return false;
+      if (insight.key === "other" && formatInsightValue(insight.value).length > 180) return false;
+      return hasFieldValue(insight);
+    }
+
     function appendInsights(items) {
       if (!Array.isArray(items) || !items.length) return false;
       const seen = new Set(insightLog.map((i) => normalizeInsightLine(i.value)));
       let added = false;
       for (const item of items) {
-        const value = (item.value || "").trim();
-        if (!value) continue;
+        const value = formatInsightValue(item.value || "");
+        if (!value || isPlaceholderValue(value)) continue;
         if (/^caller noted:/i.test(value) || /^caller said:/i.test(value)) continue;
         const key = item.key || normalizeInsightLine(value).slice(0, 32);
+        if (key.includes("|") || key.length > 40) continue;
+        const label = (item.label && String(item.label).trim())
+          ? String(item.label).trim()
+          : formatInsightLabel(item);
         const norm = normalizeInsightLine(value);
         const replace = item.replace === true;
 
@@ -1737,7 +2229,14 @@
           if (idx >= 0) {
             const oldNorm = normalizeInsightLine(insightLog[idx].value);
             if (oldNorm) seen.delete(oldNorm);
-            insightLog[idx] = { id: insightLog[idx].id, key, value, confidence: item.confidence };
+            insightLog[idx] = {
+              id: insightLog[idx].id,
+              key,
+              label,
+              value,
+              confidence: item.confidence,
+              isNew: false,
+            };
             seen.add(norm);
             added = true;
             continue;
@@ -1749,8 +2248,10 @@
         insightLog.push({
           id: "insight-" + insightLog.length,
           key,
+          label,
           value,
           confidence: item.confidence,
+          isNew: true,
         });
         added = true;
       }
@@ -1767,16 +2268,185 @@
       // Key details come from server-side live LLM only.
     }
 
+    function confidenceTier(conf) {
+      if (conf == null || Number.isNaN(Number(conf))) return "none";
+      const c = Number(conf);
+      if (c >= 0.9) return "high";
+      if (c >= 0.65) return "mid";
+      if (c >= 0.4) return "low";
+      return "low";
+    }
+
+    function effectiveConfidence(rawValue, displayText, confidence) {
+      const probe = ((rawValue || "") + " " + (displayText || "")).toLowerCase();
+      let c =
+        confidence != null && !Number.isNaN(Number(confidence))
+          ? Number(confidence)
+          : null;
+      const hedged =
+        /\b(?:approx(?:imately)?|around|roughly|about|maybe|probably|somewhat|i think|i guess|or so|give or take|between)\b/i.test(
+          probe
+        ) || /\b\d+\s*(?:to|-)\s*\d+\b/i.test(probe);
+      if (c == null) return hedged ? 0.72 : null;
+      if (hedged) return Math.min(c, 0.75);
+      return c;
+    }
+
     function confidenceClass(conf) {
-      if (conf == null) return "conf-none";
-      if (conf >= 0.8) return "conf-high";
-      if (conf >= 0.5) return "conf-mid";
-      return "conf-low";
+      return "conf-" + (confidenceTier(conf) === "none" ? "none" : confidenceTier(conf));
     }
 
     function fmtConfidence(conf) {
-      if (conf == null) return "—";
-      return Math.round(conf * 100) + "%";
+      if (conf == null || Number.isNaN(Number(conf))) return "—";
+      return fmtDecimal(Number(conf) * 100, FMT_DECIMALS) + "%";
+    }
+
+    function insightMapFromLog() {
+      const map = {};
+      for (const row of insightLog) {
+        if (row && row.key) map[row.key] = row;
+      }
+      return map;
+    }
+
+    function isDisplayableKey(key) {
+      return isValidInsightKey(key);
+    }
+
+    function countCapturedFields(_map) {
+      return insightLog.filter(isDisplayableInsight).length;
+    }
+
+    function hasAnyConfidence(map) {
+      return Object.values(map || {}).some(
+        (row) => row && row.confidence != null && !Number.isNaN(Number(row.confidence))
+      );
+    }
+
+    function displayFieldValue(fieldDef, insight, map) {
+      let text = polishFieldText(fieldDef.key, formatInsightValue(insight.value));
+      const confidence = effectiveConfidence(insight.value, text, insight.confidence);
+      const hasConf = confidence != null && !Number.isNaN(Number(confidence));
+      if (fieldDef.key === "zip") {
+        const status = map.zip_status ? formatInsightValue(map.zip_status.value) : "";
+        if (
+          status &&
+          /unverified|invalid|unknown/i.test(status) &&
+          !text.toLowerCase().includes("unverified")
+        ) {
+          text += " — unverified";
+        } else if (confidence != null && Number(confidence) < 0.5 && !text.toLowerCase().includes("unverified")) {
+          text += " — unverified";
+        }
+      }
+      const tier = hasConf ? confidenceTier(confidence) : "captured";
+      return { text, tier, confidence, isNew: !!insight.isNew, showBar: hasConf };
+    }
+
+    function updateFieldsHeaderMeta(map) {
+      const dot = document.getElementById("fieldsStatusDot");
+      const status = document.getElementById("fieldsStatusText");
+      const badge = document.getElementById("fieldsCaptureBadge");
+      const banner = document.getElementById("fieldsStatusBanner");
+      const captured = countCapturedFields(map);
+      if (badge) {
+        if (captured > 0) {
+          badge.hidden = false;
+          badge.textContent = captured + " captured";
+        } else {
+          badge.hidden = true;
+        }
+      }
+      if (banner) {
+        banner.classList.toggle("visible", !!insightsLoading);
+      }
+      if (!dot || !status) return;
+      dot.classList.remove("live", "done");
+      if (insightsLoading) {
+        dot.classList.add("live");
+        status.textContent = "Extracting live";
+      } else if (captured > 0) {
+        dot.classList.add("done");
+        status.textContent = "Captured";
+      } else {
+        status.textContent = "Waiting";
+      }
+    }
+
+    function renderKdLegend(container) {
+      const legend = document.createElement("div");
+      legend.className = "kd-legend";
+      legend.innerHTML = `
+        <span class="kd-legend-item"><span class="kd-legend-dot high"></span>90–100% stated clearly</span>
+        <span class="kd-legend-item"><span class="kd-legend-dot mid"></span>65–80% approximate</span>
+        <span class="kd-legend-item"><span class="kd-legend-dot low"></span>40–60% vague</span>
+        <span class="kd-legend-item"><span class="kd-legend-dot none"></span>Not captured</span>`;
+      container.appendChild(legend);
+    }
+
+    function renderFieldsLegend(map) {
+      const slot = document.getElementById("fieldsLegend");
+      if (!slot) return;
+      slot.innerHTML = "";
+      if (!hasAnyConfidence(map)) return;
+      renderKdLegend(slot);
+    }
+
+    function renderKdField(fieldDef, map) {
+      const insight = map[fieldDef.key];
+      const display = displayFieldValue(fieldDef, insight, map);
+      const label = insight ? formatInsightLabel(insight) : formatInsightLabel(fieldDef);
+      const icon = FIELD_ICON_SVG[fieldDef.icon] || FIELD_ICON_SVG.doc;
+      const field = document.createElement("div");
+      field.className = "kd-field";
+      const valueClass = display.tier === "none" ? "muted" : display.tier;
+      const barPct =
+        display.confidence != null
+          ? Math.max(0, Math.min(100, Number(display.confidence) * 100))
+          : 0;
+      const barHtml = display.showBar
+        ? `<div class="kd-bar-row">
+          <div class="kd-bar-track">
+            <div class="kd-bar-fill ${display.tier}" style="width:${barPct}%"></div>
+          </div>
+          <span class="kd-bar-pct">${escapeHtml(fmtConfidence(display.confidence))}</span>
+        </div>`
+        : "";
+      field.innerHTML = `
+        <div class="kd-field-head">
+          ${icon}
+          <span class="kd-field-label">${escapeHtml(label)}</span>
+          ${display.isNew ? '<span class="kd-field-new">New</span>' : ""}
+        </div>
+        <div class="kd-field-value ${valueClass}">${escapeHtml(display.text)}</div>
+        ${barHtml}`;
+      return field;
+    }
+
+    function renderKeyDetailsForm(container, map) {
+      const rows = insightLog.filter(isDisplayableInsight);
+      if (!rows.length) return false;
+
+      const form = document.createElement("div");
+      form.className = "kd-form";
+      const grid = document.createElement("div");
+      grid.className = "kd-grid";
+      for (const insight of rows) {
+        grid.appendChild(
+          renderKdField({ key: insight.key, icon: iconForKey(insight.key) }, map)
+        );
+      }
+      form.appendChild(grid);
+      container.appendChild(form);
+      return true;
+    }
+
+    function escapeHtml(str) {
+      return String(str)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
     }
 
     function scrollKeyDetailsToBottom() {
@@ -1787,51 +2457,15 @@
     function renderKeyDetails() {
       const log = document.getElementById("fieldsLog");
       log.innerHTML = "";
+      const map = insightMapFromLog();
+      updateFieldsHeaderMeta(map);
 
-      if (
-        !insightLog.length &&
-        !insightsLoading &&
-        !insightsError &&
-        !summaryLoading &&
-        !callSummary &&
-        !summaryError
-      ) {
+      const hasFields = renderKeyDetailsForm(log, map);
+      if (!hasFields && !insightsLoading && !insightsError) {
         const empty = document.createElement("div");
         empty.className = "fields-empty";
-        empty.textContent = "Key details will appear here as important information is shared.";
+        empty.textContent = "Fields will appear as the caller shares information.";
         log.appendChild(empty);
-        renderCallSummarySection(log);
-        return;
-      }
-
-      for (const insight of insightLog) {
-        const item = document.createElement("div");
-        item.className = "insight-item";
-        if (insight.id) item.id = insight.id;
-
-        const line = document.createElement("div");
-        line.className = "insight-line";
-        line.textContent = insight.value;
-        item.appendChild(line);
-
-        if (insight.confidence != null) {
-          const meta = document.createElement("div");
-          meta.className = "insight-meta";
-          const badge = document.createElement("span");
-          badge.className = "field-confidence " + confidenceClass(insight.confidence);
-          badge.textContent = fmtConfidence(insight.confidence);
-          meta.appendChild(badge);
-          item.appendChild(meta);
-        }
-
-        log.appendChild(item);
-      }
-
-      if (insightsLoading) {
-        const loading = document.createElement("div");
-        loading.className = "fields-loading-footer";
-        loading.textContent = "Analyzing conversation…";
-        log.appendChild(loading);
       }
 
       if (insightsError) {
@@ -1841,7 +2475,9 @@
         log.appendChild(err);
       }
 
-      renderCallSummarySection(log);
+      renderFieldsLegend(map);
+      renderCallSummarySection();
+      for (const row of insightLog) row.isNew = false;
     }
 
     function summaryToParagraphs(text) {
@@ -1853,7 +2489,10 @@
       return [t.replace(/\n+/g, " ")];
     }
 
-    function renderCallSummarySection(log) {
+    function renderCallSummarySection() {
+      const panel = document.getElementById("callSummaryPanel");
+      if (!panel) return;
+      panel.innerHTML = "";
       if (!summaryLoading && !callSummary && !summaryError) return;
 
       const section = document.createElement("div");
@@ -1891,7 +2530,7 @@
       }
 
       section.appendChild(card);
-      log.appendChild(section);
+      panel.appendChild(section);
     }
 
     function handleCallSummaryMsg(msg) {
@@ -1918,6 +2557,30 @@
       }
     }
 
+    function handleCallEndedMsg(msg) {
+      if (msg.callId) currentCallId = msg.callId;
+      beginCallFinalizeUI();
+    }
+
+    function beginCallFinalizeUI() {
+      if (waitingForSummary || summaryLoading) return;
+      stopMicrophone();
+      stopPlayback();
+      insightsLoading = false;
+      waitingForSummary = true;
+      summaryLoading = true;
+      summaryError = null;
+      showCallFinalizeBanner("generating", currentCallId);
+      renderKeyDetails();
+      scrollKeyDetailsToBottom();
+      const stopBtn = document.getElementById("stopBtn");
+      if (stopBtn) stopBtn.disabled = true;
+      const startBtn = document.getElementById("startBtn");
+      if (startBtn) startBtn.disabled = true;
+      setCallStatus(false);
+      armSummaryCloseTimer();
+    }
+
     function closeSocketAfterSummary() {
       if (summaryCloseTimer) {
         clearTimeout(summaryCloseTimer);
@@ -1935,6 +2598,10 @@
       if (socket && socket.readyState === WebSocket.OPEN) {
         socket.close();
       }
+      const startBtn = document.getElementById("startBtn");
+      if (startBtn) startBtn.disabled = false;
+      const stopBtn = document.getElementById("stopBtn");
+      if (stopBtn) stopBtn.disabled = true;
     }
 
     function handleExtractedInsightsMsg(msg) {
@@ -2017,19 +2684,26 @@
       respLatency: [], stt: [], think: [], tts: [], response: [], outTokens: [], tps: [],
     };
 
+    const FMT_DECIMALS = 3;
+
+    function fmtDecimal(n, places = FMT_DECIMALS) {
+      if (n == null || n === "" || Number.isNaN(Number(n))) return "—";
+      return parseFloat(Number(n).toFixed(places)).toString();
+    }
+
     function fmtMs(v) {
       if (v == null) return "—";
-      if (v >= 1000) return (v / 1000).toFixed(2) + " s";
-      return Math.round(v) + " ms";
+      if (v >= 1000) return fmtDecimal(v / 1000, FMT_DECIMALS) + " s";
+      return fmtDecimal(v, FMT_DECIMALS) + " ms";
     }
 
     function fmtVal(key, v) {
       if (v == null) return "—";
       const unit = CARDS[key].unit;
       if (unit === "ms") return fmtMs(v);
-      if (unit === "count") return String(Math.round(v));
-      if (unit === "rate") return (Math.round(v * 10) / 10).toString();
-      return String(v);
+      if (unit === "count") return fmtDecimal(v, FMT_DECIMALS);
+      if (unit === "rate") return fmtDecimal(v, FMT_DECIMALS);
+      return fmtDecimal(v, FMT_DECIMALS);
     }
 
     function mean(arr) {
@@ -2038,14 +2712,21 @@
     }
 
     function setCardLatest(key, v) {
-      const el = document.getElementById("m-" + key);
-      if (el) el.textContent = fmtVal(key, v);
+      const el = document.getElementById("s-" + key);
+      if (!el) return;
+      const arr = metricsState[key];
+      if (v == null && !arr.length) {
+        el.textContent = "last — · 0 agent responses";
+        return;
+      }
+      const latest = v != null ? v : arr[arr.length - 1];
+      el.textContent = `last ${fmtVal(key, latest)} · ${arr.length} agent response${arr.length === 1 ? "" : "s"}`;
     }
 
     function setCardAvg(key) {
       const arr = metricsState[key];
-      const el = document.getElementById("s-" + key);
-      if (el) el.textContent = `avg ${fmtVal(key, mean(arr))} · ${arr.length} turn${arr.length === 1 ? "" : "s"}`;
+      const el = document.getElementById("m-" + key);
+      if (el) el.textContent = fmtVal(key, mean(arr));
     }
 
     function recordMetric(key, v) {
@@ -2058,6 +2739,10 @@
     const callUsageTotals = {
       inputTokens: 0,
       outputTokens: 0,
+      voiceUsd: 0,
+      transcribeUsd: 0,
+      extractUsd: 0,
+      summaryUsd: 0,
       costUsd: 0,
     };
 
@@ -2065,11 +2750,7 @@
 
     function fmtCostUsd(v) {
       if (v == null || Number.isNaN(v)) return "—";
-      const n = Number(v);
-      if (n === 0) return "$0.0000";
-      if (n < 0.0001) return "$" + n.toFixed(6);
-      if (n < 0.01) return "$" + n.toFixed(4);
-      return "$" + n.toFixed(3);
+      return "$" + Number(v).toFixed(FMT_DECIMALS);
     }
 
     function rowCostUsd(tr, key) {
@@ -2117,6 +2798,40 @@
       updateCallUsageTotals(msg);
     }
 
+    function applyCostBreakdown(msg) {
+      const bd = msg && msg.costBreakdown;
+      if (bd && typeof bd === "object") {
+        callUsageTotals.voiceUsd = Number(bd.voiceUsd) || 0;
+        callUsageTotals.transcribeUsd = Number(bd.transcribeUsd) || 0;
+        callUsageTotals.extractUsd = Number(bd.extractUsd) || 0;
+        callUsageTotals.summaryUsd = Number(bd.summaryUsd) || 0;
+        callUsageTotals.costUsd =
+          Number(bd.totalUsd) || Number(msg.callCostUsd) || callUsageTotals.costUsd;
+      } else if (msg && msg.callCostUsd != null) {
+        callUsageTotals.costUsd = Number(msg.callCostUsd);
+      }
+      renderCallCostBreakdown();
+    }
+
+    function renderCallCostBreakdown() {
+      const el = document.getElementById("callCostBreakdown");
+      if (!el) return;
+      const { voiceUsd, transcribeUsd, extractUsd, summaryUsd, costUsd } = callUsageTotals;
+      if (!(costUsd > 0 || voiceUsd > 0 || transcribeUsd > 0 || extractUsd > 0 || summaryUsd > 0)) {
+        el.hidden = true;
+        el.innerHTML = "";
+        return;
+      }
+      el.hidden = false;
+      el.innerHTML = `
+        <div class="call-cost-row"><span class="label">Voice (agent responses)</span><span class="value">${fmtCostUsd(voiceUsd > 0 ? voiceUsd : null)}</span></div>
+        <div class="call-cost-row"><span class="label">Transcription (STT)</span><span class="value">${fmtCostUsd(transcribeUsd > 0 ? transcribeUsd : null)}</span></div>
+        <div class="call-cost-row"><span class="label">Key details (extraction)</span><span class="value">${fmtCostUsd(extractUsd > 0 ? extractUsd : null)}</span></div>
+        <div class="call-cost-row"><span class="label">Call summary</span><span class="value">${fmtCostUsd(summaryUsd > 0 ? summaryUsd : null)}</span></div>
+        <div class="call-cost-row total"><span class="label">Total estimated cost</span><span class="value">${fmtCostUsd(costUsd > 0 ? costUsd : null)}</span></div>
+        <p class="metrics-cost-note">Includes voice, transcription (STT), key-details extraction, and call summary when generated.</p>`;
+    }
+
     function updateCallUsageTotals(msg) {
       const tk = msg.tokens || {};
       if (msg.kind === "metrics" || (msg.kind === "usage" && msg.source !== "extract")) {
@@ -2125,9 +2840,7 @@
         if (inTok) callUsageTotals.inputTokens += inTok;
         if (outTok) callUsageTotals.outputTokens += outTok;
       }
-      if (msg.callCostUsd != null) {
-        callUsageTotals.costUsd = Number(msg.callCostUsd);
-      }
+      applyCostBreakdown(msg);
       const foot = document.getElementById("turnTableFoot");
       const totalTokens = document.getElementById("turnTotalTokens");
       const totalCost = document.getElementById("turnTotalCost");
@@ -2150,6 +2863,7 @@
         msg.seq != null ? msg.seq : msg.turn,
         fmtMs(m.sttMs),
         fmtMs(m.thinkMs),
+        fmtMs(m.ttfaMs),
         fmtMs(m.ttsStartMs != null ? m.ttsStartMs : m.ttfaMs),
         fmtMs(m.ttsMs),
         fmtMs(m.responseMs),
@@ -2165,7 +2879,7 @@
       tr.dataset.voiceCostUsd = String(voiceCost);
       tr.dataset.extractCostUsd = "0";
       tr.dataset.extractApplied = "0";
-      const costClasses = ["", "", "", "", "", "", "", "", "cost-cell", "extract-cost-cell cost-cell", "turn-total-cost-cell cost-cell"];
+      const costClasses = ["", "", "", "", "", "", "", "", "", "cost-cell", "extract-cost-cell cost-cell", "turn-total-cost-cell cost-cell"];
       for (let i = 0; i < cells.length; i++) {
         const td = document.createElement("td");
         td.textContent = cells[i];
@@ -2203,8 +2917,17 @@
     }
 
     function handleAgentEvent(msg) {
+      if (msg.event === "call_ended" || msg.event === "end_call_requested") {
+        handleCallEndedMsg({ callId: currentCallId, source: msg.event });
+        return;
+      }
       if (msg.kind === "usage" && msg.source === "extract") {
         applyExtractUsage(msg);
+        applyCostBreakdown(msg);
+        return;
+      }
+      if (msg.kind === "usage" && (msg.source === "summary" || msg.source === "transcribe")) {
+        applyCostBreakdown(msg);
         return;
       }
       if (msg.kind === "metrics") {
@@ -2231,10 +2954,15 @@
       }
       callUsageTotals.inputTokens = 0;
       callUsageTotals.outputTokens = 0;
+      callUsageTotals.voiceUsd = 0;
+      callUsageTotals.transcribeUsd = 0;
+      callUsageTotals.extractUsd = 0;
+      callUsageTotals.summaryUsd = 0;
       callUsageTotals.costUsd = 0;
+      renderCallCostBreakdown();
       pendingExtractUsage = null;
       document.getElementById("turnTableBody").innerHTML =
-        '<tr id="turnTableEmpty"><td colspan="11" class="muted" style="text-align:center;">No turns yet.</td></tr>';
+        '<tr id="turnTableEmpty"><td colspan="12" class="muted" style="text-align:center;">No agent responses yet.</td></tr>';
       const foot = document.getElementById("turnTableFoot");
       if (foot) foot.hidden = true;
       document.getElementById("turnsPanel").classList.remove("open");
@@ -2348,18 +3076,9 @@
 
     function stopStreaming() {
       if (!socket) return;
-      stopMicrophone();
-      stopPlayback();
+      beginCallFinalizeUI();
       if (socket.readyState === WebSocket.OPEN) {
-        waitingForSummary = true;
-        summaryLoading = true;
-        summaryError = null;
-        showCallFinalizeBanner("generating", currentCallId);
-        renderKeyDetails();
-        scrollKeyDetailsToBottom();
-        document.getElementById("stopBtn").disabled = true;
         socket.send(JSON.stringify({ Kind: "EndCall" }));
-        armSummaryCloseTimer();
       }
     }
 
@@ -2367,7 +3086,7 @@
       clearTranscript();
       resetDashboard();
       let wsProtocol = window.location.protocol === "https:" ? "wss" : "ws";
-      let wsHost = window.location.host;
+      let wsHost = window.location.host; 
       socket = new WebSocket(`${wsProtocol}://${wsHost}/web/ws`);
       socket.binaryType = "arraybuffer";
 
@@ -2402,6 +3121,9 @@
           if (msg.Kind === "ExtractedInsights") {
             handleExtractedInsightsMsg(msg);
           }
+          if (msg.Kind === "CallEnded") {
+            handleCallEndedMsg(msg);
+          }
           if (msg.Kind === "CallSummary") {
             handleCallSummaryMsg(msg);
           }
@@ -2424,12 +3146,14 @@
           handleAuthFailure();
           return;
         }
-        setCallStatus(false);
-        stopMicrophone();
-        stopPlayback();
-        document.getElementById("startBtn").disabled = false;
-        document.getElementById("stopBtn").disabled = true;
-        resetMicMute();
+        if (!isCallFinalizing()) {
+          setCallStatus(false);
+          stopMicrophone();
+          stopPlayback();
+          document.getElementById("startBtn").disabled = false;
+          document.getElementById("stopBtn").disabled = true;
+          resetMicMute();
+        }
         socket = null;
       };
 

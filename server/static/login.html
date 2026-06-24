@@ -1,76 +1,91 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="light">
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Sign in · Quadrant Financial Agent</title>
+  <title>Sign in · Sales Agent</title>
+  <link rel="icon" href="/static/sales-agent-logo.png" type="image/png">
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <style>
     :root,
-    [data-theme="light"] {
-      --qt-black: #000000;
-      --qt-white: #ffffff;
-      --qt-text: #111111;
-      --qt-text-muted: #5c6678;
-      --qt-heading: #002060;
-      --qt-primary: #8929fe;
-      --qt-primary-hover: #7420db;
-      --qt-border: #dddddd;
-      --qt-input-bg: #ffffff;
-      --qt-page-bg: #ffffff;
-      --qt-card-bg: #ffffff;
-      --qt-card-shadow: 0 8px 32px rgba(17, 17, 17, 0.08);
-      --qt-danger: #cf2e2e;
-      --qt-danger-bg: rgba(207, 46, 46, 0.08);
-      --qt-footer: #767676;
-      --qt-toggle-bg: #ffffff;
-      --qt-toggle-border: #dddddd;
-      --qt-toggle-color: #111111;
+    [data-theme="dark"] {
+      --font-sans: 'Inter', system-ui, sans-serif;
+      --login-page-bg: #0c1222;
+      --login-card-border: rgba(255, 255, 255, 0.08);
+      --login-card-shadow: 0 24px 80px rgba(0, 0, 0, 0.55);
+      --login-info-bg: #0c1222;
+      --login-info-gradient: radial-gradient(ellipse 80% 60% at 85% 15%, rgba(137, 41, 254, 0.22) 0%, transparent 65%);
+      --login-auth-bg: #0c1222;
+      --login-text: #f5f5f5;
+      --login-text-muted: #8b95a5;
+      --login-heading: #ffffff;
+      --login-primary: #8929fe;
+      --login-primary-soft: #a78bfa;
+      --login-border: rgba(255, 255, 255, 0.12);
+      --login-input-bg: rgba(255, 255, 255, 0.04);
+      --login-stat-border: rgba(255, 255, 255, 0.1);
+      --login-badge-border: rgba(137, 41, 254, 0.45);
+      --login-badge-bg: rgba(137, 41, 254, 0.08);
+      --login-danger: #f87171;
+      --login-danger-bg: rgba(248, 113, 113, 0.12);
+      --login-toggle-bg: rgba(255, 255, 255, 0.06);
+      --login-toggle-border: rgba(255, 255, 255, 0.14);
+      --login-toggle-color: #ffffff;
+      --login-btn-text: #ffffff;
     }
 
-    [data-theme="dark"] {
-      --qt-text: #f5f5f5;
-      --qt-text-muted: #b0b8c4;
-      --qt-heading: #ffffff;
-      --qt-border: rgba(255, 255, 255, 0.14);
-      --qt-input-bg: #111111;
-      --qt-page-bg: #090909;
-      --qt-card-bg: #111111;
-      --qt-card-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
-      --qt-danger: #f87171;
-      --qt-danger-bg: rgba(248, 113, 113, 0.12);
-      --qt-footer: #8b95a5;
-      --qt-toggle-bg: #111111;
-      --qt-toggle-border: rgba(255, 255, 255, 0.14);
-      --qt-toggle-color: #ffffff;
+    [data-theme="light"] {
+      --login-page-bg: #eef0f5;
+      --login-card-border: rgba(17, 17, 17, 0.08);
+      --login-card-shadow: 0 24px 64px rgba(17, 17, 17, 0.12);
+      --login-info-bg: #0c1222;
+      --login-info-gradient: radial-gradient(ellipse 80% 60% at 85% 15%, rgba(137, 41, 254, 0.28) 0%, transparent 65%);
+      --login-auth-bg: #ffffff;
+      --login-text: #111111;
+      --login-text-muted: #5c6678;
+      --login-heading: #002060;
+      --login-primary: #8929fe;
+      --login-primary-soft: #a78bfa;
+      --login-border: #dddddd;
+      --login-input-bg: #ffffff;
+      --login-stat-border: rgba(255, 255, 255, 0.14);
+      --login-badge-border: rgba(137, 41, 254, 0.45);
+      --login-badge-bg: rgba(137, 41, 254, 0.1);
+      --login-danger: #cf2e2e;
+      --login-danger-bg: rgba(207, 46, 46, 0.08);
+      --login-toggle-bg: #ffffff;
+      --login-toggle-border: #dddddd;
+      --login-toggle-color: #111111;
+      --login-btn-text: #ffffff;
     }
 
     * { box-sizing: border-box; }
 
+    * {
+      scrollbar-width: none;
+      -ms-overflow-style: none;
+    }
+
+    *::-webkit-scrollbar {
+      display: none;
+      width: 0;
+      height: 0;
+    }
+
+    html,
     body {
       margin: 0;
-      min-height: 100vh;
-      font-family: "Montserrat", "Segoe UI", system-ui, sans-serif;
-      color: var(--qt-text);
-      background: var(--qt-page-bg);
+      height: 100%;
+      overflow: hidden;
+    }
+
+    body {
+      font-family: var(--font-sans);
+      color: var(--login-text);
+      background: var(--login-page-bg);
       transition: background 0.2s ease, color 0.2s ease;
-    }
-
-    .site-header {
-      background: var(--qt-black);
-      padding: 1rem 1.5rem;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-    }
-
-    .site-header img {
-      height: 34px;
-      width: auto;
-      display: block;
     }
 
     .theme-toggle {
@@ -83,10 +98,10 @@
       width: 38px;
       height: 38px;
       padding: 0;
-      border: 1px solid var(--qt-toggle-border);
-      border-radius: 4px;
-      background: var(--qt-toggle-bg);
-      color: var(--qt-toggle-color);
+      border: 1px solid var(--login-toggle-border);
+      border-radius: 6px;
+      background: var(--login-toggle-bg);
+      color: var(--login-toggle-color);
       font-size: 1rem;
       cursor: pointer;
       transition: border-color 0.15s, background 0.15s;
@@ -95,73 +110,273 @@
     }
 
     .theme-toggle:hover {
-      border-color: var(--qt-primary);
+      border-color: var(--login-primary);
     }
 
     .login-main {
-      min-height: calc(100vh - 66px);
+      height: 100vh;
+      height: 100dvh;
       display: flex;
-      flex-direction: column;
-      align-items: center;
+      align-items: stretch;
       justify-content: center;
-      padding: 2.5rem 1.5rem 2rem;
+      padding: 0;
+      overflow: hidden;
     }
 
     .login-shell {
       width: 100%;
-      max-width: 440px;
+      max-width: none;
+      height: 100%;
+      min-height: 0;
     }
 
     .login-card {
-      background: var(--qt-card-bg);
-      border: 1px solid var(--qt-border);
-      border-radius: 8px;
-      padding: 2.25rem 2rem 2rem;
-      box-shadow: var(--qt-card-shadow);
-      transition: background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+      display: grid;
+      grid-template-columns: 1.08fr 0.92fr;
+      height: 100%;
+      min-height: 0;
+      border: none;
+      border-radius: 0;
+      overflow: hidden;
+      box-shadow: none;
+      background: var(--login-auth-bg);
     }
 
-    .brand {
-      margin-bottom: 1.75rem;
-      text-align: left;
+    /* --- Left info panel --- */
+    .login-info {
+      position: relative;
+      padding: clamp(1.5rem, 2.5vw, 2.25rem) clamp(1.5rem, 2.5vw, 2.25rem);
+      background: var(--login-info-bg);
+      color: #ffffff;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      min-height: 0;
     }
 
-    .brand h1 {
-      margin: 0 0 0.5rem;
-      font-size: 1.75rem;
+    .login-info::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: var(--login-info-gradient);
+      pointer-events: none;
+    }
+
+    .login-info > * {
+      position: relative;
+      z-index: 1;
+    }
+
+    .info-brand {
+      display: flex;
+      align-items: center;
+      gap: 0.65rem;
+      margin-bottom: 0.85rem;
+      flex-shrink: 0;
+    }
+
+    .info-brand-icon {
+      width: 48px;
+      height: 48px;
+      flex-shrink: 0;
+      border-radius: 50%;
+      object-fit: cover;
+    }
+
+    .info-brand-text {
+      font-size: 1.25rem;
       font-weight: 700;
-      letter-spacing: -0.02em;
-      color: var(--qt-heading);
+      letter-spacing: 0.04em;
       line-height: 1.2;
     }
 
-    .brand p {
-      margin: 0;
-      font-size: 0.95rem;
-      font-weight: 400;
-      color: var(--qt-text-muted);
+    .info-brand-text .accent {
+      color: var(--login-primary-soft);
+      font-weight: 600;
+      letter-spacing: 0;
+    }
+
+    .info-badge {
+      display: inline-flex;
+      align-self: flex-start;
+      padding: 0.35rem 0.75rem;
+      margin-bottom: 1.1rem;
+      flex-shrink: 0;
+      border: 1px solid var(--login-badge-border);
+      border-radius: 999px;
+      background: var(--login-badge-bg);
+      font-size: 0.68rem;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      color: var(--login-primary-soft);
+    }
+
+    .info-headline {
+      margin: 0 0 0.6rem;
+      font-size: clamp(1.25rem, 2vw, 1.55rem);
+      font-weight: 700;
+      line-height: 1.25;
+      letter-spacing: -0.02em;
+      color: #ffffff;
+      flex-shrink: 0;
+    }
+
+    .info-desc {
+      margin: 0 0 1.15rem;
+      font-size: 0.84rem;
       line-height: 1.55;
+      color: rgba(255, 255, 255, 0.62);
+      max-width: 42ch;
+      flex-shrink: 0;
+    }
+
+    .info-steps {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+
+    .info-step {
+      display: flex;
+      gap: 0.75rem;
+      margin-bottom: clamp(0.65rem, 1.4vh, 1rem);
+    }
+
+    .info-step:last-child {
+      margin-bottom: 0;
+    }
+
+    .step-icon {
+      flex-shrink: 0;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      border: 1px solid rgba(137, 41, 254, 0.5);
+      background: rgba(137, 41, 254, 0.12);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .step-icon svg {
+      width: 13px;
+      height: 13px;
+      color: var(--login-primary-soft);
+    }
+
+    .step-body strong {
+      display: block;
+      font-size: 0.84rem;
+      font-weight: 600;
+      color: #ffffff;
+      margin-bottom: 0.15rem;
+    }
+
+    .step-body span {
+      font-size: 0.76rem;
+      line-height: 1.45;
+      color: rgba(255, 255, 255, 0.55);
+    }
+
+    .info-stats {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.55rem;
+      margin-top: auto;
+      padding-top: 1rem;
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+      flex-shrink: 0;
+    }
+
+    .stat-box {
+      padding: 0.65rem 0.5rem;
+      border: 1px solid var(--login-stat-border);
+      border-radius: 8px;
+      text-align: center;
+    }
+
+    .stat-value {
+      font-size: 1rem;
+      font-weight: 700;
+      color: #ffffff;
+      margin-bottom: 0.15rem;
+    }
+
+    .stat-label {
+      font-size: 0.68rem;
+      line-height: 1.35;
+      color: rgba(255, 255, 255, 0.5);
+    }
+
+    /* --- Right auth panel --- */
+    .login-auth {
+      position: relative;
+      padding: clamp(1.5rem, 3vw, 2.5rem);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      min-height: 0;
+      overflow: hidden;
+      background: var(--login-auth-bg);
+    }
+
+    [data-theme="dark"] .login-auth::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(ellipse 70% 55% at 15% 20%, rgba(137, 41, 254, 0.14) 0%, transparent 65%);
+      pointer-events: none;
+    }
+
+    [data-theme="dark"] .login-auth > * {
+      position: relative;
+      z-index: 1;
+    }
+
+    .auth-header {
+      margin-bottom: 1.35rem;
+      flex-shrink: 0;
+    }
+
+    .auth-header h1 {
+      margin: 0 0 0.35rem;
+      font-size: clamp(1.35rem, 2vw, 1.55rem);
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      color: var(--login-heading);
+    }
+
+    .auth-header p {
+      margin: 0;
+      font-size: 0.88rem;
+      color: var(--login-text-muted);
+      line-height: 1.5;
     }
 
     label {
       display: block;
       font-size: 0.82rem;
       font-weight: 600;
-      color: var(--qt-text);
+      color: var(--login-text);
       margin-bottom: 0.45rem;
     }
 
     .field {
-      margin-bottom: 1.15rem;
+      margin-bottom: 1.1rem;
     }
 
     input {
       width: 100%;
       padding: 0.78rem 0.9rem;
-      border-radius: 4px;
-      border: 1px solid var(--qt-border);
-      background: var(--qt-input-bg);
-      color: var(--qt-text);
+      border-radius: 6px;
+      border: 1px solid var(--login-border);
+      background: var(--login-input-bg);
+      color: var(--login-text);
       font-family: inherit;
       font-size: 0.95rem;
       outline: none;
@@ -169,23 +384,27 @@
     }
 
     input:focus {
-      border-color: var(--qt-primary);
+      border-color: var(--login-primary);
       box-shadow: 0 0 0 3px rgba(137, 41, 254, 0.18);
     }
 
+    [data-theme="light"] input:focus {
+      box-shadow: 0 0 0 3px rgba(137, 41, 254, 0.2);
+    }
+
     input::placeholder {
-      color: var(--qt-text-muted);
-      opacity: 0.85;
+      color: var(--login-text-muted);
+      opacity: 0.75;
     }
 
     .error {
       display: none;
       margin-bottom: 1rem;
       padding: 0.7rem 0.9rem;
-      border-radius: 4px;
-      background: var(--qt-danger-bg);
+      border-radius: 6px;
+      background: var(--login-danger-bg);
       border: 1px solid rgba(207, 46, 46, 0.25);
-      color: var(--qt-danger);
+      color: var(--login-danger);
       font-size: 0.88rem;
       line-height: 1.45;
     }
@@ -194,22 +413,42 @@
 
     button[type="submit"] {
       width: 100%;
-      margin-top: 0.5rem;
+      margin-top: 0.35rem;
       padding: 0.85rem 1rem;
-      border: none;
-      border-radius: 4px;
-      background: var(--qt-primary);
-      color: #ffffff;
+      border: 1px solid var(--login-border);
+      border-radius: 6px;
+      background: transparent;
+      color: var(--login-heading);
       font-family: inherit;
       font-size: 0.95rem;
       font-weight: 600;
       cursor: pointer;
-      transition: background 0.15s ease, transform 0.12s ease;
+      transition: border-color 0.15s ease, background 0.15s ease, transform 0.12s ease;
+    }
+
+    [data-theme="dark"] button[type="submit"] {
+      color: #ffffff;
+      border-color: rgba(255, 255, 255, 0.2);
+    }
+
+    [data-theme="light"] button[type="submit"] {
+      background: var(--login-primary);
+      border-color: var(--login-primary);
+      color: #ffffff;
     }
 
     button[type="submit"]:hover:not(:disabled) {
-      background: var(--qt-primary-hover);
+      border-color: var(--login-primary);
       transform: translateY(-1px);
+    }
+
+    [data-theme="light"] button[type="submit"]:hover:not(:disabled) {
+      background: #7420db;
+      border-color: #7420db;
+    }
+
+    [data-theme="dark"] button[type="submit"]:hover:not(:disabled) {
+      background: rgba(137, 41, 254, 0.12);
     }
 
     button[type="submit"]:disabled {
@@ -224,12 +463,11 @@
       justify-content: center;
       gap: 0.65rem;
       width: 100%;
-      margin-top: 0.25rem;
       padding: 0.85rem 1rem;
-      border: 1px solid var(--qt-border);
-      border-radius: 4px;
-      background: var(--qt-input-bg);
-      color: var(--qt-text);
+      border: 1px solid var(--login-border);
+      border-radius: 6px;
+      background: var(--login-input-bg);
+      color: var(--login-text);
       font-family: inherit;
       font-size: 0.95rem;
       font-weight: 600;
@@ -239,9 +477,9 @@
     }
 
     .ms-signin-btn:hover {
-      border-color: var(--qt-primary);
+      border-color: var(--login-primary);
       transform: translateY(-1px);
-      box-shadow: 0 4px 14px rgba(137, 41, 254, 0.12);
+      box-shadow: 0 4px 14px rgba(137, 41, 254, 0.15);
     }
 
     .ms-signin-btn svg {
@@ -254,11 +492,11 @@
       display: none;
       align-items: center;
       gap: 0.75rem;
-      margin: 1.25rem 0 1rem;
-      color: var(--qt-text-muted);
-      font-size: 0.78rem;
+      margin: 1.25rem 0;
+      color: var(--login-text-muted);
+      font-size: 0.72rem;
       text-transform: uppercase;
-      letter-spacing: 0.06em;
+      letter-spacing: 0.08em;
     }
 
     .login-divider.visible { display: flex; }
@@ -268,7 +506,7 @@
       content: "";
       flex: 1;
       height: 1px;
-      background: var(--qt-border);
+      background: var(--login-border);
     }
 
     .demo-panel { display: none; }
@@ -278,76 +516,234 @@
     .entra-panel.visible { display: block; }
 
     .page-footer {
-      margin-top: 1.5rem;
+      margin-top: 1.25rem;
+      padding-top: 0;
       text-align: center;
-      font-size: 0.78rem;
-      color: var(--qt-footer);
+      font-size: 0.72rem;
+      color: var(--login-text-muted);
       line-height: 1.5;
+      flex-shrink: 0;
+    }
+
+    @media (max-height: 720px) and (min-width: 821px) {
+      .info-step {
+        margin-bottom: 0.5rem;
+      }
+
+      .info-desc {
+        margin-bottom: 0.75rem;
+      }
+
+      .info-stats {
+        padding-top: 0.75rem;
+      }
+
+      .stat-box {
+        padding: 0.5rem 0.4rem;
+      }
+
+      .auth-header {
+        margin-bottom: 1rem;
+      }
+
+      .field {
+        margin-bottom: 0.85rem;
+      }
+    }
+
+    @media (max-width: 820px) {
+      html,
+      body {
+        overflow: auto;
+      }
+
+      .login-main {
+        height: auto;
+        min-height: 100vh;
+        min-height: 100dvh;
+        overflow: visible;
+        padding: 0;
+      }
+
+      .login-shell {
+        height: auto;
+      }
+
+      .login-card {
+        grid-template-columns: 1fr;
+        height: auto;
+      }
+
+      .login-info {
+        padding: 1.75rem 1.5rem;
+      }
+
+      .info-steps {
+        justify-content: flex-start;
+      }
+
+      .info-stats {
+        margin-top: 1.25rem;
+        padding-top: 1rem;
+      }
+
+      .login-auth {
+        padding: 1.75rem 1.5rem;
+      }
+    }
+
+    @media (max-width: 480px) {
+      .info-stats {
+        grid-template-columns: 1fr;
+      }
     }
   </style>
 </head>
 <body>
-  <header class="site-header">
-    <img src="/static/quadrant-logo.png" alt="Quadrant Technologies" />
-  </header>
-
   <button type="button" class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="Toggle light/dark theme" aria-label="Toggle theme">
-    <span id="themeIcon">☾</span>
+    <span id="themeIcon">☀</span>
   </button>
 
   <main class="login-main">
     <div class="login-shell">
       <div class="login-card">
-        <div class="brand">
-          <h1>Financial Agent</h1>
-          <p>Sign in to access the voice agent.</p>
-        </div>
-
-        <div id="errorBox" class="error" role="alert"></div>
-
-        <div id="entraPanel" class="entra-panel">
-          <a id="msSignInBtn" class="ms-signin-btn" href="/auth/microsoft">
-            <svg viewBox="0 0 21 21" aria-hidden="true" focusable="false">
-              <rect x="1" y="1" width="9" height="9" fill="#f25022"/>
-              <rect x="11" y="1" width="9" height="9" fill="#7fba00"/>
-              <rect x="1" y="11" width="9" height="9" fill="#00a4ef"/>
-              <rect x="11" y="11" width="9" height="9" fill="#ffb900"/>
-            </svg>
-            Sign in with Microsoft
-          </a>
-        </div>
-
-        <div id="loginDivider" class="login-divider">or</div>
-
-        <div id="demoPanel" class="demo-panel">
-          <form id="loginForm" novalidate>
-            <div class="field">
-              <label for="email">Work email</label>
-              <input
-                id="email"
-                name="email"
-                type="email"
-                autocomplete="username"
-                placeholder="you@quadranttechnologies.com"
-                required
-              />
+        <section class="login-info" aria-label="About Sales Agent">
+          <div class="info-brand">
+            <img class="info-brand-icon" src="/static/sales-agent-logo.png" alt="" width="48" height="48">
+            <div class="info-brand-text">
+              Sales <span class="accent">Agent</span>
             </div>
-            <div class="field">
-              <label for="password">Password</label>
-              <input
-                id="password"
-                name="password"
-                type="password"
-                autocomplete="current-password"
-                placeholder="Enter your password"
-                required
-              />
+          </div>
+
+          <span class="info-badge">AI-POWERED · VOICE FIRST</span>
+
+          <h2 class="info-headline">Run voice pre-qualification calls with AI — live</h2>
+          <p class="info-desc">
+            Talk to prospects through a natural voice agent that qualifies leads in real time,
+            extracts key details into your dashboard as they speak, and saves every call with
+            metrics, cost estimates, and an AI-generated summary.
+          </p>
+
+          <ul class="info-steps">
+            <li class="info-step">
+              <div class="step-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/>
+                </svg>
+              </div>
+              <div class="step-body">
+                <strong>Start a voice session</strong>
+                <span>Connect from the browser — live transcript begins as soon as the call starts</span>
+              </div>
+            </li>
+            <li class="info-step">
+              <div class="step-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+                  <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                  <line x1="12" y1="19" x2="12" y2="23"/>
+                  <line x1="8" y1="23" x2="16" y2="23"/>
+                </svg>
+              </div>
+              <div class="step-body">
+                <strong>Natural qualification conversation</strong>
+                <span>Maya gathers loan purpose, income, credit, timeline, and consent over voice</span>
+              </div>
+            </li>
+            <li class="info-step">
+              <div class="step-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+                </svg>
+              </div>
+              <div class="step-body">
+                <strong>Key details extracted live</strong>
+                <span>LLM fills the Key Details panel after each caller turn — no manual note-taking</span>
+              </div>
+            </li>
+            <li class="info-step">
+              <div class="step-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+                  <polyline points="22 4 12 14.01 9 11.01"/>
+                </svg>
+              </div>
+              <div class="step-body">
+                <strong>Saved to Call History</strong>
+                <span>Full transcript, event timeline, per-response metrics, cost breakdown, and call summary</span>
+              </div>
+            </li>
+          </ul>
+
+          <div class="info-stats">
+            <div class="stat-box">
+              <div class="stat-value">Live</div>
+              <div class="stat-label">Key detail extraction</div>
             </div>
-            <button type="submit" id="submitBtn">Sign in</button>
-          </form>
-        </div>
+            <div class="stat-box">
+              <div class="stat-value">Per-turn</div>
+              <div class="stat-label">Latency &amp; token metrics</div>
+            </div>
+            <div class="stat-box">
+              <div class="stat-value">Saved</div>
+              <div class="stat-label">Transcript &amp; AI summary</div>
+            </div>
+          </div>
+        </section>
+
+        <section class="login-auth" aria-label="Sign in">
+          <div class="auth-header">
+            <h1>Sign in</h1>
+            <p>Access your Sales Agent dashboard</p>
+          </div>
+
+          <div id="errorBox" class="error" role="alert"></div>
+
+          <div id="demoPanel" class="demo-panel">
+            <form id="loginForm" novalidate>
+              <div class="field">
+                <label for="email">Work email</label>
+                <input
+                  id="email"
+                  name="email"
+                  type="email"
+                  autocomplete="username"
+                  placeholder="you@quadranttechnologies.com"
+                  required
+                />
+              </div>
+              <div class="field">
+                <label for="password">Password</label>
+                <input
+                  id="password"
+                  name="password"
+                  type="password"
+                  autocomplete="current-password"
+                  placeholder="Enter your password"
+                  required
+                />
+              </div>
+              <button type="submit" id="submitBtn">Sign in</button>
+            </form>
+          </div>
+
+          <div id="loginDivider" class="login-divider">or</div>
+
+          <div id="entraPanel" class="entra-panel">
+            <a id="msSignInBtn" class="ms-signin-btn" href="/auth/microsoft">
+              <svg viewBox="0 0 21 21" aria-hidden="true" focusable="false">
+                <rect x="1" y="1" width="9" height="9" fill="#f25022"/>
+                <rect x="11" y="1" width="9" height="9" fill="#7fba00"/>
+                <rect x="1" y="11" width="9" height="9" fill="#00a4ef"/>
+                <rect x="11" y="11" width="9" height="9" fill="#ffb900"/>
+              </svg>
+              Sign in with Microsoft
+            </a>
+          </div>
+
+          <p class="page-footer">Powered by Azure Voice Live · Quadrant Technologies</p>
+        </section>
       </div>
-      <p class="page-footer">Powered by Azure Voice Live · Quadrant Technologies</p>
     </div>
   </main>
 
@@ -375,13 +771,13 @@
     }
 
     function toggleTheme() {
-      const current = document.documentElement.getAttribute("data-theme") || "light";
+      const current = document.documentElement.getAttribute("data-theme") || "dark";
       applyTheme(current === "dark" ? "light" : "dark");
     }
 
     function initTheme() {
       const saved = localStorage.getItem("quadrant-theme");
-      applyTheme(saved === "dark" ? "dark" : "light");
+      applyTheme(saved === "light" ? "light" : "dark");
     }
 
     function showError(message) {

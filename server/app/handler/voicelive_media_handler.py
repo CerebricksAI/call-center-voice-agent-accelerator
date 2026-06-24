@@ -43,7 +43,13 @@ from app.agent_persona import (
     BROKERAGE_NAME,
     LEAD_QUALIFICATION_INSTRUCTIONS,
 )
-from app.usage_cost import compute_usage_cost_usd, normalize_usage
+from app.usage_cost import (
+    compute_transcribe_cost_usd,
+    compute_usage_cost_usd,
+    estimate_transcribe_usage_from_speech_ms,
+    normalize_transcription_usage,
+    normalize_usage,
+)
 
 # Data type for WebSocket messages (str or bytes) sent to client
 Data = Union[str, bytes]
@@ -130,6 +136,10 @@ class VoiceLiveMediaHandler:
         self._call_events = []    # [{event, turn, atMs, ...}]
         self._metrics_seq = 0     # sequential response # for the UI table
         self._call_cost_usd = 0.0
+        self._voice_cost_usd = 0.0
+        self._transcribe_cost_usd = 0.0
+        self._extract_cost_usd = 0.0
+        self._summary_cost_usd = 0.0
 
     def _session_config(self) -> RequestSession:
         """Return the typed session configuration for Voice Live."""
@@ -173,6 +183,10 @@ class VoiceLiveMediaHandler:
         """Connect to Azure Voice Live API using the SDK."""
         t0 = time.perf_counter()
         self._call_started_at = datetime.now(timezone.utc)
+        # Anchor the event timeline to call connect so elapsed times match durationSec.
+        self._metrics_t0 = t0
+        if not any(e.get("event") == "call_started" for e in self._call_events):
+            self._call_events.append({"event": "call_started", "turn": None, "atMs": 0})
 
         if self.client_id:
             self._credential = ManagedIdentityCredential(client_id=self.client_id)
@@ -271,6 +285,7 @@ class VoiceLiveMediaHandler:
                             ts=now,
                             sttMs=self._delta_ms(self._turn_ts.get("speech_stopped"), now),
                         )
+                        await self._record_transcribe_usage(event, transcript)
                         if transcript:
                             self._call_turns.append(
                                 {"role": "user", "text": transcript, "atMs": self._clock_ms()}
@@ -313,8 +328,10 @@ class VoiceLiveMediaHandler:
                                 await self._mark(
                                     "first_audio",
                                     ts=now,
-                                    ttfaMs=self._delta_ms(
-                                        ar["user"].get("speech_stopped"), now
+                                    ttfaMs=self._response_latency_ms(
+                                        stt_done=ar["user"].get("stt_done"),
+                                        created=ar.get("created"),
+                                        first_audio=now,
                                     ),
                                 )
                             await self.on_audio_delta(delta)
@@ -380,9 +397,13 @@ class VoiceLiveMediaHandler:
             logger.exception("[VoiceLive] Receiver loop error")
         finally:
             self._voicelive_connected = False
-            # If Voice Live dropped unexpectedly (not a normal cancellation),
-            # close the client WebSocket so the caller-side loop exits cleanly.
-            if not cancelled and self.client_ws:
+            if not cancelled:
+                try:
+                    await self.on_voicelive_disconnected(cancelled=False)
+                except Exception:
+                    logger.exception("[VoiceLive] on_voicelive_disconnected hook failed")
+            # Keep the client WebSocket open while finalize/summary runs (web client).
+            if not cancelled and self.client_ws and not getattr(self, "_finalizing", False):
                 try:
                     logger.warning("[VoiceLive] Voice Live disconnected — closing client WebSocket")
                     await self.client_ws.close(1001)  # Going Away
@@ -412,6 +433,9 @@ class VoiceLiveMediaHandler:
     # ------------------------------------------------------------------
     # Hooks — web client implementations (override in telephony subclasses)
     # ------------------------------------------------------------------
+
+    async def on_voicelive_disconnected(self, *, cancelled: bool = False) -> None:
+        """Hook: Voice Live session ended (override in web handler to auto-finalize)."""
 
     async def on_speech_started(self):
         """Barge-in: send StopAudio to client and clear TTS buffer."""
@@ -476,11 +500,50 @@ class VoiceLiveMediaHandler:
     # ------------------------------------------------------------------
 
     def _clock_ms(self, t=None):
-        """Milliseconds since the session clock origin (None until first mark)."""
+        """Milliseconds since call connect (None until the session clock is set)."""
         if self._metrics_t0 is None:
             return None
         end = t if t is not None else time.perf_counter()
         return round((end - self._metrics_t0) * 1000)
+
+    def _call_count_fields(self, transcript: list) -> dict:
+        """Explicit counts so UI can distinguish messages vs user speech rounds."""
+        messages = len(transcript)
+        return {
+            "turnCount": messages,
+            "messageCount": messages,
+            "userTurnCount": self._turn_index,
+            "agentResponseCount": len(self._call_metrics),
+        }
+
+    def _events_for_persist(self, started, ended) -> list:
+        """Return timeline events bookended with call_started / call_ended at durationSec."""
+        events = [e for e in self._call_events if e.get("event") != "call_ended"]
+        if not any(e.get("event") == "call_started" for e in events):
+            events.insert(0, {"event": "call_started", "turn": None, "atMs": 0})
+        if started and ended:
+            duration_ms = round((ended - started).total_seconds() * 1000)
+            events.append({"event": "call_ended", "turn": None, "atMs": duration_ms})
+        return events
+
+    async def _record_session_event(self, name, *, ts=None, emit=False, **info):
+        """Record a call-level timeline marker (not tied to a user turn)."""
+        now = ts if ts is not None else time.perf_counter()
+        if self._metrics_t0 is None:
+            self._metrics_t0 = now
+        at_ms = self._clock_ms(now)
+        self._call_events.append({"event": name, "turn": None, "atMs": at_ms, **info})
+        if emit:
+            payload = {
+                "Kind": "AgentEvent",
+                "kind": "event",
+                "event": name,
+                "turn": None,
+                "atMs": at_ms,
+            }
+            payload.update(info)
+            await self.on_agent_event(payload)
+        return now
 
     @staticmethod
     def _delta_ms(t_start, t_end):
@@ -493,6 +556,15 @@ class VoiceLiveMediaHandler:
         if t_start is None or t_end is None:
             return None
         ms = round((t_end - t_start) * 1000)
+        return ms if ms >= 0 else None
+
+    @staticmethod
+    def _response_latency_ms(*, stt_done, created, first_audio):
+        """Model latency to first audio: think + first-audio generation (excludes STT)."""
+        anchor = stt_done if stt_done is not None else created
+        if anchor is None or first_audio is None:
+            return None
+        ms = round((first_audio - anchor) * 1000)
         return ms if ms >= 0 else None
 
     async def _mark(self, name, *, ts=None, emit=True, **info):
@@ -521,11 +593,65 @@ class VoiceLiveMediaHandler:
         """Pull token counts off a RESPONSE_DONE response.usage (None if absent)."""
         return normalize_usage(response)
 
-    def _record_usage_cost(self, usage, *, text_only: bool = False) -> dict | None:
+    def _record_usage_cost(
+        self,
+        usage,
+        *,
+        text_only: bool = False,
+        category: str = "voice",
+    ) -> dict | None:
         cost = compute_usage_cost_usd(usage, text_only=text_only)
         if cost:
-            self._call_cost_usd = round(self._call_cost_usd + cost["usd"], 6)
+            usd = cost["usd"]
+            self._call_cost_usd = round(self._call_cost_usd + usd, 6)
+            if category == "extract":
+                self._extract_cost_usd = round(self._extract_cost_usd + usd, 6)
+            elif category == "summary":
+                self._summary_cost_usd = round(self._summary_cost_usd + usd, 6)
+            else:
+                self._voice_cost_usd = round(self._voice_cost_usd + usd, 6)
         return cost
+
+    async def _record_transcribe_usage(self, event, transcript: str | None) -> None:
+        usage = normalize_transcription_usage(event)
+        if not usage:
+            speech_ms = self._delta_ms(
+                self._turn_ts.get("speech_started"),
+                self._turn_ts.get("speech_stopped"),
+            )
+            if speech_ms and speech_ms > 0:
+                usage = estimate_transcribe_usage_from_speech_ms(
+                    speech_ms, transcript=transcript
+                )
+        if not usage:
+            return
+        cost = compute_transcribe_cost_usd(usage)
+        if not cost:
+            return
+        usd = cost["usd"]
+        self._call_cost_usd = round(self._call_cost_usd + usd, 6)
+        self._transcribe_cost_usd = round(self._transcribe_cost_usd + usd, 6)
+        await self.on_agent_event(
+            {
+                "Kind": "AgentEvent",
+                "kind": "usage",
+                "source": "transcribe",
+                "cost": cost,
+                "tokens": usage,
+                "callCostUsd": self._call_cost_usd,
+                "costBreakdown": self._cost_breakdown(),
+            }
+        )
+
+    def _cost_breakdown(self) -> dict:
+        total = round(self._call_cost_usd, 6)
+        return {
+            "voiceUsd": round(self._voice_cost_usd, 6),
+            "transcribeUsd": round(self._transcribe_cost_usd, 6),
+            "extractUsd": round(self._extract_cost_usd, 6),
+            "summaryUsd": round(self._summary_cost_usd, 6),
+            "totalUsd": total,
+        }
 
     async def _emit_turn_metrics(self, ar, usage):
         """Compute one response's latencies + tokens and emit them.
@@ -548,7 +674,9 @@ class VoiceLiveMediaHandler:
             "sttMs": self._delta_ms(speech_stopped, stt_done),
             # Segment durations (each column = time spent in that phase only).
             "thinkMs": self._delta_ms(stt_done or speech_stopped, created),
-            "ttfaMs": self._delta_ms(speech_stopped, first_audio),
+            "ttfaMs": self._response_latency_ms(
+                stt_done=stt_done, created=created, first_audio=first_audio
+            ),
             "ttsStartMs": self._delta_ms(created, first_audio),
             "ttsMs": self._delta_ms(first_audio, audio_done),
             "responseMs": self._delta_ms(created, done),
@@ -566,13 +694,14 @@ class VoiceLiveMediaHandler:
         if usage:
             payload["tokens"] = usage
             cost = self._record_usage_cost(usage, text_only=False)
-            if cost:
+            if cost is not None:
                 payload["cost"] = cost
             payload["callCostUsd"] = self._call_cost_usd
+            payload["costBreakdown"] = self._cost_breakdown()
             output_tokens = usage.get("output")
             response_ms = metrics.get("responseMs")
             if output_tokens and response_ms:
-                payload["tokensPerSec"] = round(output_tokens / (response_ms / 1000), 1)
+                payload["tokensPerSec"] = round(output_tokens / (response_ms / 1000), 3)
         self._call_metrics.append(
             {
                 "turn": payload["turn"],
@@ -581,6 +710,7 @@ class VoiceLiveMediaHandler:
                 "metrics": payload.get("metrics"),
                 "tokens": payload.get("tokens"),
                 "tokensPerSec": payload.get("tokensPerSec"),
+                "cost": payload.get("cost"),
             }
         )
         await self.on_agent_event(payload)
@@ -695,6 +825,7 @@ class VoiceLiveMediaHandler:
             call_id = self.call_id or uuid.uuid4().hex
             ended = datetime.now(timezone.utc)
             started = self._call_started_at
+            transcript = list(self._call_turns)
             record = {
                 "id": call_id,
                 "callId": call_id,
@@ -703,11 +834,11 @@ class VoiceLiveMediaHandler:
                 "persona": "Maya — mortgage pre-qualification",
                 "startedAt": started.isoformat() if started else None,
                 "endedAt": ended.isoformat(),
-                "durationSec": round((ended - started).total_seconds(), 1) if started else None,
-                "turnCount": len(self._call_turns),
-                "transcript": self._call_turns,
+                "durationSec": round((ended - started).total_seconds(), 3) if started else None,
+                "transcript": transcript,
                 "metrics": self._call_metrics,
-                "events": self._call_events,
+                "events": self._events_for_persist(started, ended),
+                **self._call_count_fields(transcript),
             }
             await call_store.save_call(record)
         except Exception:
