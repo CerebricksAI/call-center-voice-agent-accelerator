@@ -20,12 +20,14 @@ def _env_float(name: str, default: float) -> float:
 class VoiceLiveRates:
     """Per-million-token USD rates (Azure Voice Live Basic + Azure Speech Standard)."""
 
+    # Official Azure Voice Live "Standard/Basic" rates (gpt-4o-mini family).
+    # See https://azure.microsoft.com/en-us/pricing/details/speech/
     text_input: float = 0.66
     text_cached_input: float = 0.33
     text_output: float = 2.64
     audio_input: float = 15.0
     audio_cached_input: float = 0.33
-    audio_output: float = 26.0
+    audio_output: float = 33.0
 
 
 @dataclass(frozen=True)
@@ -48,7 +50,7 @@ def get_voice_live_rates() -> VoiceLiveRates:
         audio_cached_input=_env_float(
             "VOICE_LIVE_PRICE_AUDIO_CACHED_INPUT_PER_1M", 0.33
         ),
-        audio_output=_env_float("VOICE_LIVE_PRICE_AUDIO_OUTPUT_PER_1M", 26.0),
+        audio_output=_env_float("VOICE_LIVE_PRICE_AUDIO_OUTPUT_PER_1M", 33.0),
     )
 
 
