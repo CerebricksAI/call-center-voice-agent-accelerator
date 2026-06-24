@@ -1,10 +1,15 @@
-"""Demo login gate for the web client (@quadranttechnologies.com emails)."""
+"""Web client authentication — demo gate or Microsoft Entra ID (MSAL)."""
 
-import os
 import time
 
-ALLOWED_EMAIL_DOMAIN = "quadranttechnologies.com"
-DEFAULT_DEMO_PASSWORD = "Demo@123"
+from app.auth_settings import (
+    allowed_email_domain,
+    auth_demo_password,
+    auth_mode as configured_auth_mode,
+    demo_login_enabled as configured_demo_login_enabled,
+    session_timeout_minutes,
+)
+from app.msal_auth import is_entra_configured
 
 PUBLIC_EXACT_PATHS = frozenset({"/health", "/login", "/favicon.ico"})
 PUBLIC_STATIC_PATHS = frozenset({"/static/quadrant-logo.png"})
@@ -17,13 +22,24 @@ PUBLIC_PREFIX_PATHS = (
 )
 
 
+def auth_mode() -> str:
+    """Return ``demo`` or ``entra``."""
+    mode = configured_auth_mode()
+    if mode == "demo":
+        return "demo"
+    return "entra" if is_entra_configured() else "demo"
+
+
 def session_timeout_seconds() -> int:
-    minutes = int(os.getenv("SESSION_TIMEOUT_MINUTES", "30"))
-    return max(1, minutes) * 60
+    return session_timeout_minutes() * 60
+
+
+def demo_login_enabled() -> bool:
+    return configured_demo_login_enabled()
 
 
 def demo_password() -> str:
-    return os.getenv("AUTH_DEMO_PASSWORD", DEFAULT_DEMO_PASSWORD)
+    return auth_demo_password()
 
 
 def normalize_email(email: str) -> str:
@@ -32,7 +48,12 @@ def normalize_email(email: str) -> str:
 
 def is_allowed_email(email: str) -> bool:
     normalized = normalize_email(email)
-    return normalized.endswith(f"@{ALLOWED_EMAIL_DOMAIN}") and "@" in normalized
+    domain = allowed_email_domain()
+    if not normalized or "@" not in normalized:
+        return False
+    if not domain:
+        return True
+    return normalized.endswith(f"@{domain}")
 
 
 def verify_credentials(email: str, password: str) -> bool:
@@ -56,9 +77,19 @@ def is_session_valid(session) -> bool:
     return time.time() < float(expires_at)
 
 
-def establish_session(session, email: str) -> None:
+def establish_session(
+    session,
+    email: str,
+    *,
+    name: str = "",
+    oid: str = "",
+    provider: str = "demo",
+) -> None:
     session["authenticated"] = True
     session["email"] = normalize_email(email)
+    session["name"] = (name or "").strip()
+    session["oid"] = (oid or "").strip()
+    session["auth_provider"] = provider
     session["expires_at"] = time.time() + session_timeout_seconds()
     session.permanent = True
 
@@ -76,6 +107,18 @@ def session_payload(session) -> dict:
     return {
         "authenticated": is_session_valid(session),
         "email": session.get("email"),
+        "name": session.get("name"),
+        "authProvider": session.get("auth_provider"),
         "expiresAt": session.get("expires_at"),
         "timeoutMinutes": session_timeout_seconds() // 60,
+        "authMode": auth_mode(),
+    }
+
+
+def auth_config_payload() -> dict:
+    return {
+        "mode": auth_mode(),
+        "allowedEmailDomain": allowed_email_domain(),
+        "entraConfigured": is_entra_configured(),
+        "demoLoginEnabled": demo_login_enabled(),
     }

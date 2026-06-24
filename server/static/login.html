@@ -218,6 +218,65 @@
       transform: none;
     }
 
+    .ms-signin-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.65rem;
+      width: 100%;
+      margin-top: 0.25rem;
+      padding: 0.85rem 1rem;
+      border: 1px solid var(--qt-border);
+      border-radius: 4px;
+      background: var(--qt-input-bg);
+      color: var(--qt-text);
+      font-family: inherit;
+      font-size: 0.95rem;
+      font-weight: 600;
+      text-decoration: none;
+      cursor: pointer;
+      transition: border-color 0.15s ease, transform 0.12s ease, box-shadow 0.15s ease;
+    }
+
+    .ms-signin-btn:hover {
+      border-color: var(--qt-primary);
+      transform: translateY(-1px);
+      box-shadow: 0 4px 14px rgba(137, 41, 254, 0.12);
+    }
+
+    .ms-signin-btn svg {
+      width: 20px;
+      height: 20px;
+      flex-shrink: 0;
+    }
+
+    .login-divider {
+      display: none;
+      align-items: center;
+      gap: 0.75rem;
+      margin: 1.25rem 0 1rem;
+      color: var(--qt-text-muted);
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .login-divider.visible { display: flex; }
+
+    .login-divider::before,
+    .login-divider::after {
+      content: "";
+      flex: 1;
+      height: 1px;
+      background: var(--qt-border);
+    }
+
+    .demo-panel { display: none; }
+    .demo-panel.visible { display: block; }
+
+    .entra-panel { display: none; }
+    .entra-panel.visible { display: block; }
+
     .page-footer {
       margin-top: 1.5rem;
       text-align: center;
@@ -246,31 +305,47 @@
 
         <div id="errorBox" class="error" role="alert"></div>
 
-        <form id="loginForm" novalidate>
-          <div class="field">
-            <label for="email">Work email</label>
-            <input
-              id="email"
-              name="email"
-              type="email"
-              autocomplete="username"
-              placeholder="you@quadranttechnologies.com"
-              required
-            />
-          </div>
-          <div class="field">
-            <label for="password">Password</label>
-            <input
-              id="password"
-              name="password"
-              type="password"
-              autocomplete="current-password"
-              placeholder="Enter your password"
-              required
-            />
-          </div>
-          <button type="submit" id="submitBtn">Sign in</button>
-        </form>
+        <div id="entraPanel" class="entra-panel">
+          <a id="msSignInBtn" class="ms-signin-btn" href="/auth/microsoft">
+            <svg viewBox="0 0 21 21" aria-hidden="true" focusable="false">
+              <rect x="1" y="1" width="9" height="9" fill="#f25022"/>
+              <rect x="11" y="1" width="9" height="9" fill="#7fba00"/>
+              <rect x="1" y="11" width="9" height="9" fill="#00a4ef"/>
+              <rect x="11" y="11" width="9" height="9" fill="#ffb900"/>
+            </svg>
+            Sign in with Microsoft
+          </a>
+        </div>
+
+        <div id="loginDivider" class="login-divider">or</div>
+
+        <div id="demoPanel" class="demo-panel">
+          <form id="loginForm" novalidate>
+            <div class="field">
+              <label for="email">Work email</label>
+              <input
+                id="email"
+                name="email"
+                type="email"
+                autocomplete="username"
+                placeholder="you@quadranttechnologies.com"
+                required
+              />
+            </div>
+            <div class="field">
+              <label for="password">Password</label>
+              <input
+                id="password"
+                name="password"
+                type="password"
+                autocomplete="current-password"
+                placeholder="Enter your password"
+                required
+              />
+            </div>
+            <button type="submit" id="submitBtn">Sign in</button>
+          </form>
+        </div>
       </div>
       <p class="page-footer">Powered by Azure Voice Live · Quadrant Technologies</p>
     </div>
@@ -280,6 +355,17 @@
     const form = document.getElementById("loginForm");
     const errorBox = document.getElementById("errorBox");
     const submitBtn = document.getElementById("submitBtn");
+    const entraPanel = document.getElementById("entraPanel");
+    const demoPanel = document.getElementById("demoPanel");
+    const loginDivider = document.getElementById("loginDivider");
+
+    const ERROR_MESSAGES = {
+      entra_not_configured: "Microsoft sign-in is not configured on the server.",
+      invalid_state: "Sign-in session expired. Please try again.",
+      missing_code: "Microsoft sign-in did not complete. Please try again.",
+      token_exchange_failed: "Microsoft sign-in failed. Please try again.",
+      domain_not_allowed: "Your account is not allowed to access this application.",
+    };
 
     function applyTheme(theme) {
       document.documentElement.setAttribute("data-theme", theme);
@@ -307,6 +393,49 @@
       errorBox.classList.remove("visible");
     }
 
+    function showQueryError() {
+      const params = new URLSearchParams(window.location.search);
+      const code = params.get("error");
+      if (!code) return;
+      const message = ERROR_MESSAGES[code] || decodeURIComponent(code.replace(/\+/g, " "));
+      showError(message);
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+
+    async function loadAuthConfig() {
+      try {
+        const res = await fetch("/auth/config", { credentials: "same-origin" });
+        const data = await res.json();
+        const domain = data.allowedEmailDomain || "quadranttechnologies.com";
+        const showEntra = data.mode === "entra" && data.entraConfigured;
+        const showDemo = data.demoLoginEnabled !== false;
+
+        if (showEntra) {
+          entraPanel.classList.add("visible");
+        } else {
+          entraPanel.classList.remove("visible");
+        }
+
+        if (showDemo) {
+          demoPanel.classList.add("visible");
+          const emailInput = document.getElementById("email");
+          if (emailInput) {
+            emailInput.placeholder = `you@${domain}`;
+          }
+        } else {
+          demoPanel.classList.remove("visible");
+        }
+
+        if (showEntra && showDemo) {
+          loginDivider.classList.add("visible");
+        } else {
+          loginDivider.classList.remove("visible");
+        }
+      } catch (_) {
+        demoPanel.classList.add("visible");
+      }
+    }
+
     async function redirectIfAuthed() {
       try {
         const res = await fetch("/auth/session", { credentials: "same-origin" });
@@ -319,7 +448,7 @@
       } catch (_) {}
     }
 
-    form.addEventListener("submit", async (e) => {
+    form?.addEventListener("submit", async (e) => {
       e.preventDefault();
       hideError();
       submitBtn.disabled = true;
@@ -350,6 +479,8 @@
     });
 
     initTheme();
+    showQueryError();
+    loadAuthConfig();
     redirectIfAuthed();
   </script>
 </body>

@@ -1,21 +1,37 @@
 import asyncio
 import logging
 import os
+import secrets
 from datetime import timedelta
+from urllib.parse import quote
 
 from dotenv import load_dotenv
 from quart import Quart, jsonify, redirect, request, session, websocket
 
 from app.auth import (
+    auth_config_payload,
+    auth_mode,
     clear_session,
+    demo_login_enabled,
     establish_session,
+    is_allowed_email,
     is_public_path,
     is_session_valid,
     session_payload,
     touch_session,
     verify_credentials,
 )
+from app.msal_auth import (
+    EntraAuthError,
+    build_auth_url,
+    build_logout_url,
+    exchange_code,
+    is_entra_configured,
+    resolve_redirect_uri,
+    user_from_token_result,
+)
 
+from app.auth_settings import secret_key, session_cookie_secure, session_timeout_minutes
 from app.call_loop import run_call_loop
 from app.call_manager import CallManager
 from app.call_store import get_call, is_enabled as cosmos_enabled, list_calls
@@ -39,14 +55,12 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 app = Quart(__name__)
-app.config["SECRET_KEY"] = os.getenv(
-    "SECRET_KEY", "dev-only-change-me-in-production"
-)
-app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(
-    minutes=int(os.getenv("SESSION_TIMEOUT_MINUTES", "30"))
-)
+app.config["SECRET_KEY"] = secret_key()
+app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(minutes=session_timeout_minutes())
 app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+if session_cookie_secure():
+    app.config["SESSION_COOKIE_SECURE"] = True
 app.config["AZURE_VOICE_LIVE_API_KEY"] = os.getenv("AZURE_VOICE_LIVE_API_KEY", "")
 app.config["AZURE_VOICE_LIVE_ENDPOINT"] = os.getenv("AZURE_VOICE_LIVE_ENDPOINT")
 app.config["VOICE_LIVE_MODEL"] = os.getenv("VOICE_LIVE_MODEL", "gpt-4o-mini")
@@ -118,6 +132,16 @@ if _provider_ready and _provider_info:
 else:
     logger.warning("Telephony routes not registered — only web client available")
 
+logger.info("Auth mode: %s (entra configured=%s)", auth_mode(), is_entra_configured())
+
+
+def _request_app_base() -> str:
+    """Public URL base (HTTPS behind Container Apps ingress)."""
+    proto = request.headers.get("X-Forwarded-Proto", request.scheme)
+    host = request.headers.get("X-Forwarded-Host") or request.headers.get("Host") or request.host
+    return f"{proto}://{host}".rstrip("/")
+
+
 # ---------------------------------------------------------------------------
 # Auth middleware (web client + static assets; telephony webhooks stay public)
 # ---------------------------------------------------------------------------
@@ -153,9 +177,85 @@ async def login_page():
     return response
 
 
+@app.route("/auth/config")
+async def auth_config():
+    """Tell the login page which sign-in method is active."""
+    return jsonify(auth_config_payload()), 200
+
+
+@app.route("/auth/microsoft")
+async def auth_microsoft():
+    """Start Microsoft Entra sign-in (authorization code redirect)."""
+    if auth_mode() != "entra":
+        return redirect("/login")
+    if not is_entra_configured():
+        return redirect("/login?error=entra_not_configured")
+
+    state = secrets.token_urlsafe(32)
+    session["oauth_state"] = state
+    app_base = _request_app_base()
+    callback_uri = resolve_redirect_uri(app_base)
+    if not callback_uri:
+        return redirect("/login?error=entra_not_configured")
+    session["oauth_redirect_uri"] = callback_uri
+    try:
+        return redirect(build_auth_url(state, redirect_uri_value=callback_uri))
+    except EntraAuthError as exc:
+        logger.exception("[Auth] Failed to build Entra login URL")
+        return redirect(f"/login?error={quote(str(exc))}")
+
+
+@app.route("/auth/callback")
+async def auth_callback():
+    """Entra OAuth redirect target — exchange code and establish session."""
+    oauth_error = request.args.get("error")
+    if oauth_error:
+        description = request.args.get("error_description") or oauth_error
+        logger.warning("[Auth] Entra OAuth error: %s", description)
+        return redirect(f"/login?error={quote(description)}")
+
+    state = request.args.get("state", "")
+    expected = session.pop("oauth_state", None)
+    if not expected or state != expected:
+        logger.warning("[Auth] Entra callback state mismatch")
+        return redirect("/login?error=invalid_state")
+
+    code = request.args.get("code", "")
+    if not code:
+        return redirect("/login?error=missing_code")
+
+    try:
+        callback_uri = session.pop("oauth_redirect_uri", None) or resolve_redirect_uri(
+            _request_app_base()
+        )
+        token_result = exchange_code(code, redirect_uri_value=callback_uri)
+        user = user_from_token_result(token_result)
+    except EntraAuthError:
+        logger.exception("[Auth] Entra token exchange failed")
+        return redirect("/login?error=token_exchange_failed")
+
+    email = user.get("email", "")
+    if not email or not is_allowed_email(email):
+        logger.warning("[Auth] Entra sign-in rejected for email domain: %s", email)
+        return redirect("/login?error=domain_not_allowed")
+
+    establish_session(
+        session,
+        email,
+        name=user.get("name", ""),
+        oid=user.get("oid", ""),
+        provider="entra",
+    )
+    logger.info("[Auth] Entra user signed in: %s", session.get("email"))
+    return redirect("/")
+
+
 @app.route("/auth/login", methods=["POST"])
 async def auth_login():
-    """Validate demo credentials and start a session."""
+    """Validate demo credentials and start a session (works alongside Entra)."""
+    if not demo_login_enabled():
+        return jsonify({"error": "Email/password sign-in is disabled."}), 403
+
     payload = await request.get_json(silent=True) or {}
     email = payload.get("email") or (await request.form).get("email", "")
     password = payload.get("password") or (await request.form).get("password", "")
@@ -163,8 +263,8 @@ async def auth_login():
     if not verify_credentials(str(email), str(password)):
         return jsonify({"error": "Invalid email or password."}), 401
 
-    establish_session(session, str(email))
-    logger.info("[Auth] User signed in: %s", session.get("email"))
+    establish_session(session, str(email), provider="demo")
+    logger.info("[Auth] Demo user signed in: %s", session.get("email"))
     return jsonify(session_payload(session)), 200
 
 
@@ -172,10 +272,17 @@ async def auth_login():
 async def auth_logout():
     """End the current session."""
     email = session.get("email")
+    provider = session.get("auth_provider")
     clear_session(session)
     if email:
         logger.info("[Auth] User signed out: %s", email)
-    return jsonify({"authenticated": False}), 200
+
+    payload = {"authenticated": False}
+    if provider == "entra":
+        logout_url = build_logout_url(app_base=_request_app_base())
+        if logout_url:
+            payload["logoutUrl"] = logout_url
+    return jsonify(payload), 200
 
 
 @app.route("/auth/session")
