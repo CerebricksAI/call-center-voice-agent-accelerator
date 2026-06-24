@@ -12,7 +12,7 @@ from app.auth_settings import (
 from app.msal_auth import is_entra_configured
 
 PUBLIC_EXACT_PATHS = frozenset({"/health", "/login", "/favicon.ico"})
-PUBLIC_STATIC_PATHS = frozenset({"/static/quadrant-logo.png"})
+PUBLIC_STATIC_PATHS = frozenset({"/static/sales-agent-logo.png", "/static/quadrant-logo.png"})
 PUBLIC_PREFIX_PATHS = (
     "/auth/",
     "/acs/",

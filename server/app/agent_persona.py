@@ -179,7 +179,8 @@ everything. Is there anything else you'd like me to pass along to them?"
 → Call capture_borrower_field for any outstanding fields
 → Call schedule_callback with the preferred time
 → End warmly: "Thank you so much{_CLOSE_NAME}. Have a great day."
-→ Call end_call with reason: completed
+→ Then append this exact internal marker on its own (not spoken to the borrower):
+  [Call end_call with reason: completed]
 
 {_DIVIDER}
 HOW TO HANDLE ANSWERS — CONVERSATION INTELLIGENCE RULES

@@ -38,6 +38,7 @@ from app.call_store import get_call, is_enabled as cosmos_enabled, list_calls
 from app.config_validator import validate_config
 from app.handler.web_media_handler import WebMediaHandler
 from app.logging_config import configure_logging, new_correlation_id
+from app.usage_cost import enrich_call_record
 from app.provider_registry import detect_provider, get_configured_providers, get_provider
 
 load_dotenv()
@@ -301,7 +302,6 @@ async def web_ws():
     if not is_session_valid(session):
         await websocket.close(4401, "Unauthorized")
         return
-    touch_session(session)
     cid = new_correlation_id()
     logger.info("Incoming Web WebSocket connection")
 
@@ -364,6 +364,8 @@ async def api_list_calls():
         return jsonify({"error": "Invalid limit or offset."}), 400
 
     calls = await list_calls(limit=limit, offset=offset)
+    for i, call in enumerate(calls):
+        calls[i] = enrich_call_record(call, include_timeline=False)
     return jsonify({"enabled": True, "calls": calls, "limit": limit, "offset": offset}), 200
 
 
@@ -381,7 +383,7 @@ async def api_get_call(call_id: str):
     record = await get_call(call_id)
     if record is None:
         return jsonify({"error": "Call not found."}), 404
-    return jsonify(record), 200
+    return jsonify(enrich_call_record(record)), 200
 
 
 @app.route("/health")

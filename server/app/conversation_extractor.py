@@ -18,33 +18,47 @@ from azure.ai.voicelive.models import (
 from azure.core.credentials import AzureKeyCredential
 from azure.identity.aio import ManagedIdentityCredential
 from app.usage_cost import normalize_usage
+from app.transcript_sanitize import normalize_insight_value
 
 logger = logging.getLogger(__name__)
 
 _EXTRACT_SYSTEM = """You analyze live voice-call transcripts for a financial services agent.
-Synthesize important facts in your own words — never quote the caller verbatim.
+Extract structured field values — not narrative sentences. Use labels and keys that match what was actually discussed.
 
 Return JSON only:
-{"insights":[{"key":"loan_purpose|location|zip|zip_status|timeline|amount|credit_score|employment|income|contact|consent|property_status|next_step|rate|lender|other","value":"One analytical sentence.","confidence":0.0-1.0}]}
+{"insights":[{"key":"snake_case_slug","label":"Short field label","value":"Brief value","confidence":0.0-1.0}]}
 
 Rules:
 - Extract ONLY facts the CALLER stated or clearly confirmed — ignore options the agent lists.
-- Include loan purpose, amounts, rates, lender names, property location, ZIP, timeline, credit score, employment, income, contact preference, consent.
-- If the caller corrects an earlier fact (e.g. timeline changed from 30 days to 7 months), return the updated fact with the SAME key so it replaces the old one.
-- Correct speech-to-text errors (e.g. "homeequity" → home equity, "7 LPA" → 7 lakh per annum).
-- Each value must be one complete sentence with specific numbers/names when mentioned.
+- REQUIRED label: human-readable name for THIS fact in context (e.g. "Cash-out amount", "Current balance", "Current rate", "Lender", "Loan purpose", "Contact preference", "TCPA consent"). Never use purchase-only labels like "Down payment" or "Purchase timeline" unless the caller is buying a home.
+- key: snake_case slug (e.g. loan_purpose, cash_out_amount, current_balance, current_rate, lender, contact_preference, tcpa_consent, recording_consent, credit_score, state, zip, down_payment, purchase_timeline, property_type, annual_income, employment_status). Pick keys that match the call type (purchase, refinance, cash-out, HELOC).
+- value: brief phrase only (e.g. "Cash-out refinance", "$30,000", "Company Zeta", "~$100,000"). Never full sentences. Never start with "The caller".
+- NEVER emit placeholder values: do not return "not provided", "unknown", "N/A", "not discussed", or similar — omit the field entirely if the caller did not state it.
+- If the caller corrects an earlier fact, return the updated value with the SAME key.
+- Correct speech-to-text errors when obvious.
 - Do not repeat facts listed under "Already extracted" unless correcting them.
-- Return {"insights":[]} if nothing new yet."""
+- Return {"insights":[]} if nothing new yet.
+- confidence (0.0–1.0) reflects how clearly the CALLER stated the fact:
+  - 0.9–1.0: stated clearly and directly, no hedging
+  - 0.65–0.8: approximate ("around", "roughly", "about", "approximately", ranges)
+  - 0.4–0.6: vague or uncertain
+  - omit field if not stated — do not use low confidence as a substitute for missing data"""
 
-SUMMARY_SYSTEM = """Summarize this mortgage pre-qual call in 2 short prose paragraphs (about 4–6 sentences total). No bullets, lists, or markdown. Separate paragraphs with one blank line."""
+SUMMARY_SYSTEM = """You summarize mortgage pre-qualification phone calls for loan-officer handoff.
+
+Read the ENTIRE transcript. Your summary must reflect everything material the caller stated — do not omit names, companies, numbers, rates, balances, amounts, or preferences.
+
+Include when present: loan purpose/type, current rate and lender, remaining balance, cash-out or loan amount, property location, credit/income/employment, purchase or refi timeline, TCPA/recording consent, contact preference, and next steps.
+
+Write 2–3 concise prose paragraphs (no bullets, no markdown). Be complete and factual. Separate paragraphs with one blank line."""
 
 EXTRACT_SYSTEM = _EXTRACT_SYSTEM
 
 _EXTRACT_TIMEOUT_S = float(os.getenv("EXTRACT_TIMEOUT_S", "30"))
 _SUMMARY_TIMEOUT_S = float(os.getenv("SUMMARY_TIMEOUT_S", "20"))
-_SUMMARY_MAX_CHARS = int(os.getenv("SUMMARY_MAX_CHARS", "4000"))
-_SUMMARY_MAX_TURNS = int(os.getenv("SUMMARY_MAX_TURNS", "24"))
-_SUMMARY_MAX_OUTPUT_TOKENS = int(os.getenv("SUMMARY_MAX_OUTPUT_TOKENS", "200"))
+_SUMMARY_MAX_CHARS = int(os.getenv("SUMMARY_MAX_CHARS", "8000"))
+_SUMMARY_MAX_TURNS = int(os.getenv("SUMMARY_MAX_TURNS", "48"))
+_SUMMARY_MAX_OUTPUT_TOKENS = int(os.getenv("SUMMARY_MAX_OUTPUT_TOKENS", "350"))
 _EXTRACT_SEMAPHORE: asyncio.Semaphore | None = None
 _SUMMARY_SEMAPHORE: asyncio.Semaphore | None = None
 
@@ -75,6 +89,108 @@ def _build_extract_credential() -> AzureKeyCredential | ManagedIdentityCredentia
     return None
 
 _SLUG_RE = re.compile(r"[^a-z0-9]+")
+
+_INSIGHT_KEY_LABELS = {
+    "loan_purpose": "Loan purpose",
+    "loan_type": "Loan type",
+    "location": "State",
+    "state": "State",
+    "zip": "ZIP code",
+    "zip_status": "ZIP status",
+    "timeline": "Timeline",
+    "purchase_timeline": "Purchase timeline",
+    "amount": "Amount",
+    "cash_out_amount": "Cash-out amount",
+    "current_balance": "Current balance",
+    "down_payment": "Down payment",
+    "credit_score": "Credit score",
+    "employment": "Employment status",
+    "employment_status": "Employment status",
+    "income": "Annual income",
+    "annual_income": "Annual income",
+    "contact": "Contact preference",
+    "contact_preference": "Contact preference",
+    "consent": "TCPA consent",
+    "tcpa_consent": "TCPA consent",
+    "recording_consent": "Call recording consent",
+    "property_status": "Property type",
+    "property_type": "Property type",
+    "next_step": "Next step",
+    "rate": "Current rate",
+    "current_rate": "Current rate",
+    "lender": "Lender",
+    "other": "Other",
+}
+
+_PLACEHOLDER_VALUE_RE = re.compile(
+    r"^(?:not[\s_]?provided|not[\s_]?discussed|not[\s_]?disclosed|unknown|n/a|na|none|"
+    r"declined|not_provided|no(?:ne)?(?:\s+provided)?|unspecified)$",
+    re.I,
+)
+
+
+def _is_placeholder_value(value: str) -> bool:
+    cleaned = (value or "").strip().strip(" .")
+    if not cleaned:
+        return True
+    return bool(_PLACEHOLDER_VALUE_RE.match(cleaned))
+
+
+def _insight_label(key: str, explicit: str | None = None) -> str:
+    label = (explicit or "").strip()
+    if label:
+        return label
+    if key in _INSIGHT_KEY_LABELS:
+        return _INSIGHT_KEY_LABELS[key]
+    return (key or "Detail").replace("_", " ").strip().title()
+
+
+def _normalize_insight_row(item: dict) -> dict:
+    row = dict(item)
+    raw_value = str(row.get("value") or "").strip()
+    if _is_placeholder_value(raw_value):
+        return {}
+    value = normalize_insight_value(raw_value)
+    if not value or _is_placeholder_value(value):
+        return {}
+    key = row.get("key") or _slug(value[:32])
+    if "|" in key or len(key) > 40:
+        return {}
+    row["key"] = key
+    row["label"] = _insight_label(key, row.get("label"))
+    row["value"] = value
+    row["id"] = key
+    conf = row.get("confidence")
+    try:
+        conf = float(conf) if conf is not None else None
+        if conf is not None:
+            conf = max(0.0, min(1.0, conf))
+    except (TypeError, ValueError):
+        conf = None
+    row["confidence"] = _adjust_confidence(
+        str(item.get("value") or value), conf
+    )
+    return row
+
+_CONFIDENCE_HEDGE_RE = re.compile(
+    r"\b(?:approx(?:imately)?|around|roughly|about|maybe|probably|somewhat|"
+    r"i think|i guess|or so|give or take|between)\b",
+    re.I,
+)
+_CONFIDENCE_RANGE_RE = re.compile(r"\b\d+\s*(?:to|-)\s*\d+\b", re.I)
+
+
+def _adjust_confidence(raw_value: str, conf: float | None) -> float | None:
+    """Cap overconfident scores when the caller hedged or gave a range."""
+    text = (raw_value or "").strip()
+    hedged = bool(
+        _CONFIDENCE_HEDGE_RE.search(text) or _CONFIDENCE_RANGE_RE.search(text)
+    )
+    if conf is None:
+        return 0.72 if hedged else None
+    if hedged:
+        return min(conf, 0.75)
+    return conf
 
 _MONEY_RE = re.compile(
     r"\$\s?\d[\d,]*(?:\.\d{2})?"
@@ -150,17 +266,14 @@ def _format_transcript(turns: list[dict]) -> str:
 
 
 def _trim_turns_for_summary(turns: list[dict]) -> list[dict]:
-    """Keep prompt size bounded so end-of-call summary stays fast."""
+    """Keep prompt bounded while preserving the full conversation when possible."""
     if not turns:
         return []
     kept = list(turns)
-    if len(kept) > _SUMMARY_MAX_TURNS:
-        head = min(2, len(kept))
-        tail = max(0, _SUMMARY_MAX_TURNS - head)
-        kept = kept[:head] + kept[-tail:]
-    while len(kept) > 2 and len(_format_transcript(kept)) > _SUMMARY_MAX_CHARS:
-        drop_at = 2 if len(kept) > 3 else 1
-        kept.pop(drop_at)
+    while len(kept) > 4 and len(_format_transcript(kept)) > _SUMMARY_MAX_CHARS:
+        kept.pop(len(kept) // 2)
+    while len(kept) > _SUMMARY_MAX_TURNS:
+        kept.pop(len(kept) // 2)
     return kept
 
 
@@ -178,20 +291,17 @@ def _dedupe_insights(items: list[dict]) -> list[dict]:
     seen_keys = set()
     seen_values = set()
     for item in items:
-        value = (item.get("value") or "").strip()
-        if not value:
+        normalized = _normalize_insight_row(item)
+        if not normalized:
             continue
-        key = item.get("key") or _slug(value[:32])
+        value = normalized["value"]
+        key = normalized["key"]
         norm = value.lower()
         if key in seen_keys or norm in seen_values:
             continue
         seen_keys.add(key)
         seen_values.add(norm)
-        item = dict(item)
-        item["id"] = key
-        item["key"] = key
-        item["value"] = value
-        out.append(item)
+        out.append(normalized)
     return out
 
 
@@ -576,20 +686,27 @@ def analyze_conversation(turns: list[dict]) -> list[dict]:
 
 
 def extract_new_insights(
-    turns: list[dict], emitted: dict[str, str]
+    turns: list[dict], emitted: dict
 ) -> list[dict]:
     """Return new or corrected analytical facts for the client."""
     analyzed = analyze_conversation(turns)
     new: list[dict] = []
     for item in analyzed:
-        key = item.get("key") or _slug(item.get("value", "")[:32])
-        value = item["value"]
-        if emitted.get(key) == value:
+        row = _normalize_insight_row(item)
+        if not row:
             continue
-        item = dict(item)
-        item["replace"] = key in emitted
-        emitted[key] = value
-        new.append(item)
+        key = row["key"]
+        value = row["value"]
+        if _emitted_value(emitted.get(key)) == value:
+            continue
+        row["replace"] = key in emitted
+        emitted[key] = {
+            "key": key,
+            "label": row.get("label"),
+            "value": value,
+            "confidence": row.get("confidence"),
+        }
+        new.append(row)
     return new
 
 
@@ -645,31 +762,38 @@ def _parse_insights(raw: str) -> list[dict]:
     for item in items:
         if not isinstance(item, dict):
             continue
-        value = str(item.get("value") or "").strip()
-        if not value:
-            continue
-        if value.lower().startswith("caller noted:") or value.lower().startswith(
-            "caller said:"
-        ):
-            continue
-        key = str(item.get("key") or "").strip() or _slug(value[:32])
-        conf = item.get("confidence")
-        try:
-            conf = float(conf) if conf is not None else None
-            if conf is not None:
-                conf = max(0.0, min(1.0, conf))
-        except (TypeError, ValueError):
-            conf = None
-        out.append({"id": key, "key": key, "value": value, "confidence": conf})
+        row = _normalize_insight_row(item)
+        if row:
+            out.append(row)
     return _dedupe_insights(out)
 
 
-def build_extract_user_prompt(turns: list[dict], emitted: dict[str, str]) -> str:
+def _emitted_value(entry: dict | str | None) -> str:
+    if isinstance(entry, dict):
+        return str(entry.get("value") or "").strip()
+    return str(entry or "").strip()
+
+
+def _emitted_label(key: str, entry: dict | str | None) -> str:
+    if isinstance(entry, dict):
+        label = (entry.get("label") or "").strip()
+        if label:
+            return label
+    return _insight_label(key, None)
+
+
+def build_extract_user_prompt(turns: list[dict], emitted: dict) -> str:
     """Build the user prompt for live LLM extraction."""
     transcript = _format_transcript(turns)
-    already = (
-        "\n".join(f"- {v}" for v in emitted.values()) if emitted else "(none yet)"
-    )
+    if emitted:
+        already_lines = [
+            f"- [{_emitted_label(k, v)}] {_emitted_value(v)}"
+            for k, v in emitted.items()
+            if _emitted_value(v)
+        ]
+        already = "\n".join(already_lines) if already_lines else "(none yet)"
+    else:
+        already = "(none yet)"
     return (
         f"Transcript so far:\n\n{transcript}\n\n"
         f"Already extracted (do not repeat unless correcting):\n{already}\n\n"
@@ -792,22 +916,26 @@ async def llm_extract_insights(
 
 def build_call_summary_prompt(
     turns: list[dict],
-    key_facts: dict[str, str] | None = None,
+    key_facts: dict | None = None,
 ) -> str:
-    """Build the user prompt for end-of-call summary."""
-    trimmed = _trim_turns_for_summary(turns)
-    if key_facts and len(trimmed) > 10:
-        trimmed = trimmed[:2] + trimmed[-10:]
-    elif key_facts and len(trimmed) > 6:
-        trimmed = trimmed[:1] + trimmed[-8:]
-    transcript = _format_transcript(trimmed)
-    parts = []
+    """Build the user prompt for end-of-call summary from the full transcript."""
+    transcript = _format_transcript(turns)
+    parts = [f"Full call transcript:\n\n{transcript}\n"]
     if key_facts:
-        facts = "\n".join(f"- {v}" for v in key_facts.values())
-        parts.append(f"Key facts already captured:\n{facts}\n")
-    parts.append(f"Call transcript:\n\n{transcript}\n")
+        facts = "\n".join(
+            f"- [{_emitted_label(k, v)}] {_emitted_value(v)}"
+            for k, v in key_facts.items()
+            if _emitted_value(v)
+        )
+        if facts:
+            parts.append(
+                "Extracted key facts (cross-check against transcript; include all in summary):\n"
+                f"{facts}\n"
+            )
     parts.append(
-        "Summarize outcome, loan intent, timeline, and next steps in two short paragraphs."
+        "Summarize this entire call from the transcript above. Include every specific fact "
+        "the caller stated — loan type, amounts, rates, lender/company names, balance, contact "
+        "preference, consent, and next steps. Do not skip proper nouns or numbers."
     )
     return "\n".join(parts)
 
@@ -909,7 +1037,25 @@ async def llm_generate_call_summary(
     return summary, usage
 
 
-def merge_llm_insights(raw: str, emitted: dict[str, str]) -> list[dict]:
+def insight_detail_rows(emitted: dict) -> list[dict]:
+    """Build persisted key-detail rows with labels for call history."""
+    rows: list[dict] = []
+    for key, entry in (emitted or {}).items():
+        payload = entry if isinstance(entry, dict) else {"key": key, "value": entry}
+        normalized = _normalize_insight_row({**payload, "key": key})
+        if normalized:
+            row = {
+                "key": normalized["key"],
+                "label": normalized["label"],
+                "value": normalized["value"],
+            }
+            if normalized.get("confidence") is not None:
+                row["confidence"] = normalized["confidence"]
+            rows.append(row)
+    return rows
+
+
+def merge_llm_insights(raw: str, emitted: dict) -> list[dict]:
     """Parse LLM JSON and return new/updated insight rows."""
     if not (raw or "").strip():
         return []
@@ -917,22 +1063,24 @@ def merge_llm_insights(raw: str, emitted: dict[str, str]) -> list[dict]:
 
 
 def _merge_new_insights(
-    parsed: list[dict], emitted: dict[str, str]
+    parsed: list[dict], emitted: dict
 ) -> list[dict]:
     new: list[dict] = []
     for item in parsed:
-        key = item.get("key") or _slug(item.get("value", "")[:32])
-        value = (item.get("value") or "").strip()
-        if not value:
+        row = _normalize_insight_row(item)
+        if not row:
             continue
-        if emitted.get(key) == value:
+        key = row["key"]
+        value = row["value"]
+        if _emitted_value(emitted.get(key)) == value:
             continue
-        row = dict(item)
-        row["id"] = key
-        row["key"] = key
-        row["value"] = value
         row["replace"] = key in emitted
-        emitted[key] = value
+        emitted[key] = {
+            "key": key,
+            "label": row.get("label"),
+            "value": value,
+            "confidence": row.get("confidence"),
+        }
         new.append(row)
     return new
 

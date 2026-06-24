@@ -68,7 +68,8 @@ async def list_calls(*, limit: int = 50, offset: int = 0) -> list[dict]:
 
     query = (
         "SELECT c.id, c.callId, c.channel, c.brokerage, c.persona, c.startedAt, "
-        "c.endedAt, c.durationSec, c.turnCount, c.callSummary "
+        "c.endedAt, c.durationSec, c.turnCount, c.messageCount, c.userTurnCount, "
+        "c.agentResponseCount, c.callSummary "
         "FROM c ORDER BY c.endedAt DESC OFFSET @offset LIMIT @limit"
     )
     parameters = [

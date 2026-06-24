@@ -3,13 +3,15 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Call History · Quadrant Financial Agent</title>
+  <title>Call History · Sales Agent</title>
+  <link rel="icon" href="/static/sales-agent-logo.png" type="image/png">
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <style>
     :root,
     [data-theme="light"] {
+      --font-sans: 'Inter', system-ui, sans-serif;
       --qt-black: #000000;
       --qt-primary: #8929fe;
       --qt-primary-hover: #7420db;
@@ -25,8 +27,9 @@
       --text-primary: #111111;
       --text-secondary: #5c6678;
       --text-muted: #767676;
-      --nav-bg: #000000;
-      --nav-border: rgba(255, 255, 255, 0.06);
+      --nav-bg: #0c1222;
+      --nav-accent: #a78bfa;
+      --nav-border: rgba(255, 255, 255, 0.08);
       --nav-text: rgba(255, 255, 255, 0.92);
       --nav-text-muted: rgba(255, 255, 255, 0.72);
       --panel-shadow: 0 8px 32px rgba(17, 17, 17, 0.08);
@@ -35,12 +38,14 @@
     }
 
     [data-theme="dark"] {
+      --qt-primary: #8929fe;
+      --qt-primary-hover: #7420db;
       --qt-heading: #ffffff;
-      --bg-deep: #090909;
-      --bg-main: #090909;
-      --bg-panel: #111111;
-      --bg-card: #111111;
-      --bg-elevated: #1a1a1a;
+      --bg-deep: #0c1222;
+      --bg-main: #0e1628;
+      --bg-panel: #152238;
+      --bg-card: #152238;
+      --bg-elevated: #1a2844;
       --border: rgba(255, 255, 255, 0.14);
       --border-subtle: rgba(255, 255, 255, 0.08);
       --text-primary: #f5f5f5;
@@ -51,9 +56,20 @@
 
     * { box-sizing: border-box; }
 
+    * {
+      scrollbar-width: none;
+      -ms-overflow-style: none;
+    }
+
+    *::-webkit-scrollbar {
+      display: none;
+      width: 0;
+      height: 0;
+    }
+
     body {
       margin: 0;
-      font-family: "Montserrat", "Segoe UI", system-ui, sans-serif;
+      font-family: var(--font-sans);
       background: var(--bg-deep);
       height: 100vh;
       overflow: hidden;
@@ -70,22 +86,51 @@
       color: var(--nav-text);
       border-bottom: 1px solid var(--nav-border);
       z-index: 100;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .app-nav::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(ellipse 35% 140% at 0% 50%, rgba(137, 41, 254, 0.16) 0%, transparent 72%);
+      pointer-events: none;
+    }
+
+    .app-nav > * {
+      position: relative;
+      z-index: 1;
     }
 
     .nav-brand {
       display: flex;
       align-items: center;
-      gap: 0.75rem;
+      gap: 0.65rem;
     }
 
-    .nav-logo { height: 34px; width: auto; }
+    .nav-brand-icon {
+      width: 36px;
+      height: 36px;
+      flex-shrink: 0;
+      display: block;
+      border-radius: 50%;
+      object-fit: cover;
+    }
 
-    .nav-product {
-      font-size: 0.82rem;
+    .nav-brand-text {
+      font-size: 1.05rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      color: #ffffff;
+      line-height: 1.2;
+      white-space: nowrap;
+    }
+
+    .nav-brand-text .accent {
+      color: var(--nav-accent);
       font-weight: 600;
-      color: var(--nav-text-muted);
-      padding-left: 0.75rem;
-      border-left: 1px solid rgba(255, 255, 255, 0.12);
+      letter-spacing: 0;
     }
 
     .nav-links {
@@ -233,16 +278,6 @@
       line-height: 1.4;
     }
 
-    .call-list-item .preview {
-      font-size: 0.75rem;
-      color: var(--text-secondary);
-      margin-top: 0.35rem;
-      display: -webkit-box;
-      -webkit-line-clamp: 2;
-      -webkit-box-orient: vertical;
-      overflow: hidden;
-    }
-
     .call-detail {
       min-height: 0;
       overflow-y: auto;
@@ -359,34 +394,232 @@
       opacity: 0.85;
     }
 
-    .insight-item {
-      padding: 0.55rem 0;
+    .kd-meta-row {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 0.5rem;
+      margin-bottom: 0.75rem;
+      padding-bottom: 0.65rem;
       border-bottom: 1px solid var(--border-subtle);
-      font-size: 0.88rem;
-      line-height: 1.45;
+      font-size: 0.72rem;
+      font-weight: 500;
+      color: var(--text-secondary);
     }
 
-    .insight-item:last-child { border-bottom: none; }
+    .fields-status-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--qt-primary);
+      flex-shrink: 0;
+    }
+
+    .fields-capture-badge {
+      padding: 0.15rem 0.45rem;
+      border-radius: 999px;
+      background: rgba(137, 41, 254, 0.15);
+      color: var(--qt-primary);
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .kd-form {
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+    }
+
+    .kd-section {
+      padding: 0.85rem 0 0.65rem;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .kd-section:last-of-type {
+      border-bottom: none;
+    }
+
+    .kd-section-title {
+      font-size: 0.68rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      margin-bottom: 0.65rem;
+    }
+
+    .kd-grid {
+      display: flex;
+      flex-direction: column;
+      gap: 0.65rem;
+    }
+
+    .kd-field {
+      min-width: 0;
+      padding: 0.7rem 0.85rem;
+      border-radius: var(--radius-md, 8px);
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-subtle);
+    }
+
+    .kd-field-head {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      margin-bottom: 0.45rem;
+    }
+
+    .kd-field-icon {
+      width: 15px;
+      height: 15px;
+      flex-shrink: 0;
+      color: var(--qt-primary);
+      opacity: 0.85;
+    }
+
+    .kd-field-label {
+      font-size: 0.62rem;
+      font-weight: 700;
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+    }
+
+    .kd-field-value {
+      font-size: 0.9rem;
+      font-weight: 600;
+      line-height: 1.45;
+      color: var(--text-primary);
+      word-wrap: break-word;
+      font-style: normal;
+    }
+
+    .kd-field-value.muted { color: var(--text-muted); font-weight: 500; font-style: italic; }
+    .kd-field-value.captured { color: var(--text-primary); }
+    .kd-field-value.high { color: #15803d; }
+    .kd-field-value.mid { color: #b45309; }
+    .kd-field-value.low { color: #dc2626; }
+
+    .kd-field-value + .kd-bar-row {
+      margin-top: 0.45rem;
+    }
+
+    .kd-bar-row {
+      display: flex;
+      align-items: center;
+      gap: 0.45rem;
+    }
+
+    .kd-bar-track {
+      flex: 1;
+      height: 4px;
+      border-radius: 999px;
+      background: rgba(0, 0, 0, 0.08);
+      overflow: hidden;
+    }
+
+    [data-theme="dark"] .kd-bar-track {
+      background: rgba(255, 255, 255, 0.08);
+    }
+
+    .kd-bar-fill {
+      height: 100%;
+      border-radius: 999px;
+    }
+
+    .kd-bar-fill.high { background: #22c55e; }
+    .kd-bar-fill.mid { background: #f59e0b; }
+    .kd-bar-fill.low { background: #ef4444; }
+    .kd-bar-fill.none { background: transparent; width: 0 !important; }
+
+    .kd-bar-pct {
+      font-size: 0.68rem;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+      color: var(--text-muted);
+      min-width: 2.2rem;
+      text-align: right;
+    }
+
+    .panel-key-details .panel-body {
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      padding: 0;
+      min-height: 0;
+    }
+
+    .kd-panel-scroll {
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
+      overflow-x: hidden;
+      padding: 0.85rem 1rem;
+    }
+
+    .kd-panel-legend {
+      flex-shrink: 0;
+      border-top: 1px solid var(--border-subtle);
+      background: var(--bg-panel);
+      padding: 0.55rem 1rem 0.65rem;
+      box-shadow: 0 -4px 12px rgba(15, 23, 42, 0.05);
+    }
+
+    .kd-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.65rem 1rem;
+      padding: 0;
+      margin: 0;
+      border: none;
+      font-size: 0.68rem;
+      color: var(--text-muted);
+    }
+
+    .kd-legend-item {
+      display: flex;
+      align-items: center;
+      gap: 0.3rem;
+    }
+
+    .kd-legend-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .kd-legend-dot.high { background: #22c55e; }
+    .kd-legend-dot.mid { background: #f59e0b; }
+    .kd-legend-dot.low { background: #ef4444; }
+    .kd-legend-dot.none { background: var(--text-muted); opacity: 0.45; }
+
+    .metrics-cost-note {
+      margin-top: 0.65rem;
+      font-size: 0.72rem;
+      color: var(--text-muted);
+    }
 
     .summary-block {
-      margin-top: 0.75rem;
-      padding-top: 0.75rem;
+      margin-top: 1rem;
+      padding-top: 1rem;
       border-top: 1px solid var(--border-subtle);
     }
 
     .summary-block h4 {
-      margin: 0 0 0.5rem;
-      font-size: 0.78rem;
+      margin: 0 0 0.65rem;
+      font-size: 0.68rem;
+      font-weight: 700;
       text-transform: uppercase;
-      letter-spacing: 0.04em;
+      letter-spacing: 0.08em;
       color: var(--text-muted);
     }
 
     .summary-block p {
-      margin: 0 0 0.5rem;
+      margin: 0 0 0.65rem;
       font-size: 0.88rem;
-      line-height: 1.5;
-      color: var(--text-primary);
+      line-height: 1.55;
+      color: var(--text-secondary);
     }
 
     .metric-card {
@@ -411,6 +644,61 @@
       color: var(--qt-primary);
       margin-top: 0.2rem;
       font-variant-numeric: tabular-nums;
+    }
+
+    .metric-sub {
+      font-size: 0.68rem;
+      color: var(--text-muted);
+      margin-top: 0.15rem;
+    }
+
+    .cost-cell {
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+
+    .cost-breakdown {
+      display: grid;
+      gap: 0.45rem;
+      max-width: 420px;
+    }
+
+    .cost-breakdown-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 1rem;
+      font-size: 0.84rem;
+    }
+
+    .cost-breakdown-row .label {
+      color: var(--text-secondary);
+    }
+
+    .cost-breakdown-row .value {
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+      color: var(--text-primary);
+    }
+
+    .cost-breakdown-row.total {
+      margin-top: 0.35rem;
+      padding-top: 0.55rem;
+      border-top: 1px solid var(--border);
+      font-size: 0.92rem;
+    }
+
+    .cost-breakdown-row.total .label,
+    .cost-breakdown-row.total .value {
+      font-weight: 700;
+      color: var(--qt-primary);
+    }
+
+    .cost-breakdown-note {
+      margin-top: 0.35rem;
+      font-size: 0.68rem;
+      color: var(--text-muted);
+      line-height: 1.45;
     }
 
     .section-panel {
@@ -457,16 +745,30 @@
       top: 0;
     }
 
-    .raw-json {
-      margin: 0;
-      padding: 1rem;
+    table.data-table tr.timeline-bookend td {
+      background: color-mix(in srgb, var(--accent) 8%, transparent);
+      font-weight: 600;
+    }
+
+    table.data-table tr.timeline-wrap td {
+      background: color-mix(in srgb, var(--accent) 4%, transparent);
+      font-style: italic;
+      color: var(--text-secondary);
+    }
+
+    table.data-table tr.timeline-gap td {
+      background: var(--bg-elevated);
+      color: var(--text-muted);
       font-size: 0.72rem;
       line-height: 1.45;
-      overflow-x: auto;
-      background: var(--bg-elevated);
-      color: var(--text-primary);
-      max-height: 480px;
-      overflow-y: auto;
+      white-space: normal;
+    }
+
+    .timeline-note {
+      margin: 0.65rem 0 0;
+      font-size: 0.72rem;
+      line-height: 1.45;
+      color: var(--text-muted);
     }
 
     @media (max-width: 1100px) {
@@ -480,8 +782,8 @@
 <body>
   <nav class="app-nav">
     <div class="nav-brand">
-      <img src="/static/quadrant-logo.png" alt="Quadrant" class="nav-logo" />
-      <span class="nav-product">Financial Agent</span>
+      <img class="nav-brand-icon" src="/static/sales-agent-logo.png" alt="" width="36" height="36">
+      <span class="nav-brand-text">Sales <span class="accent">Agent</span></span>
     </div>
     <div class="nav-links">
       <a class="nav-link" href="/">Pre-Qual Call</a>
@@ -569,19 +871,178 @@
       }
     }
 
+    const FMT_DECIMALS = 3;
+
+    function fmtDecimal(n, places = FMT_DECIMALS) {
+      if (n == null || n === "" || Number.isNaN(Number(n))) return "—";
+      return parseFloat(Number(n).toFixed(places)).toString();
+    }
+
     function fmtDuration(sec) {
       if (sec == null || Number.isNaN(Number(sec))) return "—";
-      const s = Math.round(Number(sec));
+      const s = Number(sec);
       const m = Math.floor(s / 60);
-      const r = s % 60;
-      return m > 0 ? `${m}m ${r}s` : `${r}s`;
+      const r = s - m * 60;
+      return m > 0 ? `${m}m ${fmtDecimal(r, FMT_DECIMALS)}s` : `${fmtDecimal(s, FMT_DECIMALS)}s`;
     }
 
     function fmtMs(v) {
       if (v == null || v === "" || Number(v) < 0) return "—";
       const n = Number(v);
-      if (n >= 1000) return (n / 1000).toFixed(2) + "s";
-      return Math.round(n) + "ms";
+      if (n >= 1000) return fmtDecimal(n / 1000, FMT_DECIMALS) + "s";
+      return fmtDecimal(n, FMT_DECIMALS) + "ms";
+    }
+
+    function fmtTimelineAt(ms) {
+      if (ms == null || isNaN(ms)) return "—";
+      const totalMs = Math.max(0, Number(ms));
+      const hours = Math.floor(totalMs / 3600000);
+      const minutes = Math.floor((totalMs % 3600000) / 60000);
+      const seconds = Math.floor((totalMs % 60000) / 1000);
+      const millis = totalMs % 1000;
+      const pad2 = (n) => String(n).padStart(2, "0");
+      return `${pad2(hours)}:${pad2(minutes)}:${pad2(seconds)}:${fmtDecimal(millis, FMT_DECIMALS)}`;
+    }
+
+    function callStats(call) {
+      const messages =
+        call && call.messageCount != null
+          ? Number(call.messageCount)
+          : call && call.turnCount != null
+            ? Number(call.turnCount)
+            : call && Array.isArray(call.transcript)
+              ? call.transcript.length
+              : null;
+      const userTurns =
+        call && call.userTurnCount != null
+          ? Number(call.userTurnCount)
+          : null;
+      const agentResponses =
+        call && call.agentResponseCount != null
+          ? Number(call.agentResponseCount)
+          : call && Array.isArray(call.metrics)
+            ? call.metrics.length
+            : null;
+      return {
+        messages: messages != null && !Number.isNaN(messages) ? messages : null,
+        userTurns: userTurns != null && !Number.isNaN(userTurns) ? userTurns : null,
+        agentResponses:
+          agentResponses != null && !Number.isNaN(agentResponses) ? agentResponses : null,
+      };
+    }
+
+    function fmtCallListMeta(call) {
+      const { messages, userTurns } = callStats(call);
+      const parts = [fmtDuration(call.durationSec)];
+      if (userTurns != null) parts.push(`${userTurns} user turn${userTurns === 1 ? "" : "s"}`);
+      if (messages != null) parts.push(`${messages} message${messages === 1 ? "" : "s"}`);
+      parts.push(call.channel || "web");
+      return parts.join(" · ");
+    }
+
+    function fmtDurationMs(ms) {
+      if (ms == null || Number.isNaN(Number(ms))) return "—";
+      return fmtDuration(Number(ms) / 1000);
+    }
+
+    const TIMELINE_EVENT_LABELS = {
+      call_started: "Call started",
+      call_ended: "Call ended",
+      end_call_requested: "End call requested",
+      summary_started: "Summary generation started",
+      summary_done: "Summary generation finished",
+      session_closing: "Voice session closing",
+      speech_started: "Caller started speaking",
+      speech_stopped: "Caller stopped speaking",
+      stt_done: "Speech-to-text finished",
+      response_created: "Agent response started",
+      first_audio: "First agent audio",
+      audio_done: "Agent audio finished",
+      response_done: "Agent response finished",
+    };
+
+    const WRAP_UP_EVENTS = new Set([
+      "end_call_requested",
+      "summary_started",
+      "summary_done",
+      "session_closing",
+    ]);
+
+    function timelineEventLabel(name) {
+      return TIMELINE_EVENT_LABELS[name] || name || "";
+    }
+
+    function insertTimelineGapRows(events) {
+      if (!events || !events.length) return [];
+      const rows = [];
+      for (let i = 0; i < events.length; i++) {
+        const ev = events[i];
+        rows.push(ev);
+        const next = events[i + 1];
+        if (!next || ev.synthetic || next.synthetic) continue;
+        const fromMs = ev.atMs != null ? Number(ev.atMs) : null;
+        const toMs = next.atMs != null ? Number(next.atMs) : null;
+        if (fromMs == null || toMs == null || toMs <= fromMs) continue;
+        const gapMs = toMs - fromMs;
+        if (gapMs < 2000) continue;
+
+        const afterVoice =
+          ev.event === "response_done" || ev.event === "audio_done";
+        const beforeEnd =
+          next.event === "call_ended" ||
+          WRAP_UP_EVENTS.has(next.event) ||
+          next.event === "end_call_requested";
+        const wrapBetween = events
+          .slice(i + 1, events.indexOf(next))
+          .some((e) => WRAP_UP_EVENTS.has(e.event));
+
+        if (afterVoice && beforeEnd && !wrapBetween && next.event === "call_ended") {
+          rows.push({
+            synthetic: true,
+            event: "gap",
+            gapMs,
+            gapFromMs: fromMs,
+            gapToMs: toMs,
+          });
+        }
+      }
+      return rows;
+    }
+
+    function describeTimelineGap(gapMs) {
+      const duration = fmtDurationMs(gapMs);
+      return `Unlogged period · ${duration} · Time on the line after the last agent reply (silence / caller listening), then end-call, summary generation, and save. Voice pipeline events are not recorded during this period.`;
+    }
+
+    function timelineNote(call, events) {
+      const durationMs =
+        call && call.durationSec != null ? Number(call.durationSec) * 1000 : null;
+      const voiceEvents = (events || []).filter(
+        (e) =>
+          e &&
+          !e.synthetic &&
+          e.event !== "call_started" &&
+          e.event !== "call_ended" &&
+          !WRAP_UP_EVENTS.has(e.event)
+      );
+      const lastVoiceMs = voiceEvents.length
+        ? Math.max(
+            ...voiceEvents
+              .map((e) => (e.atMs != null ? Number(e.atMs) : null))
+              .filter((v) => v != null && !Number.isNaN(v))
+          )
+        : null;
+      const parts = [
+        "Call elapsed runs from connect to save. Voice events (speech, STT, agent audio) only cover active conversation.",
+      ];
+      if (lastVoiceMs != null && durationMs != null && durationMs - lastVoiceMs >= 2000) {
+        parts.push(
+          `After the last agent response (${fmtTimelineAt(lastVoiceMs)}), ${fmtDurationMs(durationMs - lastVoiceMs)} was spent off the voice pipeline before call ended (${fmtTimelineAt(durationMs)}).`
+        );
+      } else if (durationMs != null) {
+        parts.push(`Total duration: ${fmtDuration(call.durationSec)}.`);
+      }
+      return parts.join(" ");
     }
 
     function avgMetric(rows, key) {
@@ -590,6 +1051,53 @@
         .filter((v) => v != null && Number(v) >= 0);
       if (!vals.length) return null;
       return vals.reduce((a, b) => a + Number(b), 0) / vals.length;
+    }
+
+    function fmtCostUsd(v) {
+      if (v == null || Number.isNaN(Number(v))) return "—";
+      return "$" + Number(v).toFixed(FMT_DECIMALS);
+    }
+
+    function rowVoiceCostUsd(row) {
+      const c = row.cost && row.cost.usd != null ? Number(row.cost.usd) : 0;
+      return Number.isNaN(c) ? 0 : c;
+    }
+
+    function rowExtractCostUsd(row) {
+      const c = row.extractCost && row.extractCost.usd != null ? Number(row.extractCost.usd) : 0;
+      return Number.isNaN(c) ? 0 : c;
+    }
+
+    function rowTurnCostUsd(row) {
+      const sum = rowVoiceCostUsd(row) + rowExtractCostUsd(row);
+      return sum > 0 ? sum : null;
+    }
+
+    function avgTokensPerSec(rows) {
+      const vals = rows
+        .map((r) => r.tokensPerSec)
+        .filter((v) => v != null && Number(v) >= 0);
+      if (!vals.length) return null;
+      return vals.reduce((a, b) => a + Number(b), 0) / vals.length;
+    }
+
+    function avgOutputTokens(rows) {
+      const vals = rows
+        .map((r) => (r.tokens || {}).output)
+        .filter((v) => v != null && Number(v) >= 0);
+      if (!vals.length) return null;
+      return vals.reduce((a, b) => a + Number(b), 0) / vals.length;
+    }
+
+    function sumMetricTokens(metrics) {
+      let input = 0;
+      let output = 0;
+      for (const row of metrics || []) {
+        const tk = row.tokens || {};
+        if (tk.input != null) input += Number(tk.input) || 0;
+        if (tk.output != null) output += Number(tk.output) || 0;
+      }
+      return { input, output };
     }
 
     function escapeHtml(text) {
@@ -605,11 +1113,9 @@
       btn.type = "button";
       btn.className = "call-list-item" + (call.id === selectedCallId ? " selected" : "");
       btn.dataset.callId = call.id || call.callId;
-      const summaryPreview = (call.callSummary || "").trim();
       btn.innerHTML = `
         <div class="when">${escapeHtml(fmtDate(call.endedAt || call.startedAt))}</div>
-        <div class="meta">${escapeHtml(fmtDuration(call.durationSec))} · ${call.turnCount ?? "—"} turns · ${escapeHtml(call.channel || "web")}</div>
-        ${summaryPreview ? `<div class="preview">${escapeHtml(summaryPreview)}</div>` : ""}
+        <div class="meta">${escapeHtml(fmtCallListMeta(call))}</div>
       `;
       btn.addEventListener("click", () => loadCallDetail(btn.dataset.callId));
       return btn;
@@ -678,86 +1184,464 @@
         .join("");
     }
 
-    function renderKeyDetails(keyDetails, summary) {
-      let html = "";
-      if (keyDetails && keyDetails.length) {
-        html += keyDetails
-          .map((item) => `<div class="insight-item">${escapeHtml(item.value || item.key || "")}</div>`)
-          .join("");
-      } else {
-        html += '<div class="empty-state" style="margin:0;padding:0.5rem 0">No key details saved.</div>';
+    const INSIGHT_KEY_LABELS = {
+      loan_purpose: "Loan purpose",
+      loan_type: "Loan type",
+      location: "State",
+      state: "State",
+      zip: "ZIP code",
+      zip_status: "ZIP status",
+      timeline: "Timeline",
+      purchase_timeline: "Purchase timeline",
+      amount: "Amount",
+      cash_out_amount: "Cash-out amount",
+      current_balance: "Current balance",
+      down_payment: "Down payment",
+      credit_score: "Credit score",
+      employment: "Employment status",
+      employment_status: "Employment status",
+      income: "Annual income",
+      annual_income: "Annual income",
+      contact: "Contact preference",
+      contact_preference: "Contact preference",
+      consent: "TCPA consent",
+      tcpa_consent: "TCPA consent",
+      recording_consent: "Call recording consent",
+      property_status: "Property type",
+      property_type: "Property type",
+      next_step: "Next step",
+      rate: "Current rate",
+      current_rate: "Current rate",
+      lender: "Lender",
+      other: "Other",
+    };
+
+    const KEY_ICON_HINTS = {
+      consent: "shield",
+      tcpa_consent: "shield",
+      recording_consent: "mic",
+      loan_purpose: "doc",
+      loan_type: "doc",
+      rate: "doc",
+      current_rate: "doc",
+      lender: "doc",
+      cash_out_amount: "doc",
+      current_balance: "doc",
+      amount: "doc",
+      down_payment: "doc",
+      location: "pin",
+      state: "pin",
+      zip: "pin",
+      property_status: "home",
+      property_type: "home",
+      timeline: "clock",
+      purchase_timeline: "clock",
+      contact: "clock",
+      contact_preference: "clock",
+      credit_score: "user",
+      income: "user",
+      annual_income: "user",
+      employment: "user",
+      employment_status: "user",
+    };
+
+    function iconForKey(key) {
+      return KEY_ICON_HINTS[key] || "doc";
+    }
+
+    const FIELD_ICON_SVG = {
+      shield: '<svg class="kd-field-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l8 3v6c0 5-3.5 8.5-8 9-4.5-.5-8-4-8-9V6l8-3z"/></svg>',
+      mic: '<svg class="kd-field-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 1 0-6 0v6a3 3 0 0 0 3 3z"/><path d="M19 10v1a7 7 0 0 1-14 0v-1"/><path d="M12 18v3"/></svg>',
+      doc: '<svg class="kd-field-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>',
+      pin: '<svg class="kd-field-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21s7-4.5 7-11a7 7 0 1 0-14 0c0 6.5 7 11 7 11z"/><circle cx="12" cy="10" r="2.5"/></svg>',
+      home: '<svg class="kd-field-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 10.5L12 4l8 6.5V20a1 1 0 0 1-1 1h-5v-6H10v6H5a1 1 0 0 1-1-1v-9.5z"/></svg>',
+      clock: '<svg class="kd-field-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
+      user: '<svg class="kd-field-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="3.5"/><path d="M5 20a7 7 0 0 1 14 0"/></svg>',
+    };
+
+    function stripCallerPrefix(value) {
+      return String(value || "")
+        .replace(
+          /^(?:The caller|Caller)(?:\s+is|\s+was|'s|\s+has|\s+had|\s+mentioned|\s+said|\s+confirmed|\s+looking)?\s+/i,
+          ""
+        )
+        .trim();
+    }
+
+    function formatInsightValue(value) {
+      let v = stripCallerPrefix(value);
+      for (let i = 0; i < 3; i++) {
+        const next = v
+          .replace(
+            /^(?:looking(?:\s+(?:to|in|at|for))?|considering(?:\s+a)?|currently|plans?\s+to|they(?:'re| are)|in the state of|the best way for the loan officer to reach the caller is)\s+/i,
+            ""
+          )
+          .replace(/\s+/g, " ")
+          .trim();
+        if (next === v) break;
+        v = next;
       }
-      if (summary) {
-        html += `<div class="summary-block"><h4>Call summary</h4>`;
-        for (const para of String(summary).split(/\n+/).filter(Boolean)) {
-          html += `<p>${escapeHtml(para)}</p>`;
+      if (v) v = v.charAt(0).toUpperCase() + v.slice(1);
+      return v.replace(/\.\s*$/, "").trim() || v;
+    }
+
+    function polishFieldText(key, text) {
+      if (!text) return text;
+      if (key === "zip") {
+        const m = text.match(/\b(\d{5})\b/);
+        if (m) return m[1];
+      }
+      if (key === "property_status") {
+        text = text.replace(/^considering a /i, "").replace(/\s+for purchase\.?$/i, "");
+      }
+      if (key === "consent") {
+        text = text.replace(/^consent to be contacted by .+ regarding /i, "Agreed — ");
+      }
+      return text.trim();
+    }
+
+    function isValidInsightKey(key) {
+      if (!key || key === "zip_status") return false;
+      if (key.includes("|") || key.length > 40) return false;
+      return true;
+    }
+
+    function isPlaceholderValue(value) {
+      return /^(?:not[\s_]?provided|not[\s_]?discussed|not[\s_]?disclosed|unknown|n\/a|na|none|declined|not_provided|unspecified)$/i.test(
+        String(value || "").trim()
+      );
+    }
+
+    function hasFieldValue(insight) {
+      const v = formatInsightValue(insight && insight.value);
+      return !!(v && !isPlaceholderValue(v));
+    }
+
+    function isDisplayableInsight(insight) {
+      if (!insight || !isValidInsightKey(insight.key)) return false;
+      const label = String(insight.label || "");
+      if (label.includes("|")) return false;
+      if (insight.key === "other" && formatInsightValue(insight.value).length > 180) return false;
+      return hasFieldValue(insight);
+    }
+
+    function formatInsightLabel(item) {
+      if (item && item.label) return item.label;
+      const key = (item && item.key) || "";
+      if (INSIGHT_KEY_LABELS[key]) return INSIGHT_KEY_LABELS[key];
+      return key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()) || "Detail";
+    }
+
+    function confidenceTier(conf) {
+      if (conf == null || Number.isNaN(Number(conf))) return "none";
+      const c = Number(conf);
+      if (c >= 0.9) return "high";
+      if (c >= 0.65) return "mid";
+      if (c >= 0.4) return "low";
+      return "low";
+    }
+
+    function effectiveConfidence(rawValue, displayText, confidence) {
+      const probe = ((rawValue || "") + " " + (displayText || "")).toLowerCase();
+      let c =
+        confidence != null && !Number.isNaN(Number(confidence))
+          ? Number(confidence)
+          : null;
+      const hedged =
+        /\b(?:approx(?:imately)?|around|roughly|about|maybe|probably|somewhat|i think|i guess|or so|give or take|between)\b/i.test(
+          probe
+        ) || /\b\d+\s*(?:to|-)\s*\d+\b/i.test(probe);
+      if (c == null) return hedged ? 0.72 : null;
+      if (hedged) return Math.min(c, 0.75);
+      return c;
+    }
+
+    function fmtConfidence(conf) {
+      if (conf == null || Number.isNaN(Number(conf))) return "—";
+      return fmtDecimal(Number(conf) * 100, FMT_DECIMALS) + "%";
+    }
+
+    function insightMapFromRows(rows) {
+      const map = {};
+      for (const row of rows || []) {
+        if (row && row.key) map[row.key] = row;
+      }
+      return map;
+    }
+
+    function countCapturedFields(map) {
+      let n = 0;
+      for (const row of Object.values(map || {})) {
+        if (isDisplayableInsight(row)) n += 1;
+      }
+      return n;
+    }
+
+    function hasAnyConfidence(map) {
+      return Object.values(map || {}).some(
+        (row) => row && row.confidence != null && !Number.isNaN(Number(row.confidence))
+      );
+    }
+
+    function displayFieldValue(fieldDef, insight, map) {
+      let text = polishFieldText(fieldDef.key, formatInsightValue(insight.value));
+      const confidence = effectiveConfidence(insight.value, text, insight.confidence);
+      const hasConf = confidence != null && !Number.isNaN(Number(confidence));
+      if (fieldDef.key === "zip") {
+        const status = map.zip_status ? stripCallerPrefix(map.zip_status.value) : "";
+        if (
+          status &&
+          /unverified|invalid|unknown/i.test(status) &&
+          !text.toLowerCase().includes("unverified")
+        ) {
+          text += " — unverified";
+        } else if (confidence != null && Number(confidence) < 0.5 && !text.toLowerCase().includes("unverified")) {
+          text += " — unverified";
         }
-        html += `</div>`;
       }
+      return { text, tier: hasConf ? confidenceTier(confidence) : "captured", confidence, showBar: hasConf };
+    }
+
+    function renderKdFieldHtml(fieldDef, map) {
+      const insight = map[fieldDef.key];
+      const display = displayFieldValue(fieldDef, insight, map);
+      const label = insight ? formatInsightLabel(insight) : formatInsightLabel(fieldDef);
+      const icon = FIELD_ICON_SVG[fieldDef.icon] || FIELD_ICON_SVG.doc;
+      const valueClass = display.tier === "none" ? "muted" : display.tier;
+      const barPct =
+        display.confidence != null
+          ? Math.max(0, Math.min(100, Number(display.confidence) * 100))
+          : 0;
+      const barHtml = display.showBar
+        ? `<div class="kd-bar-row">
+          <div class="kd-bar-track">
+            <div class="kd-bar-fill ${display.tier}" style="width:${barPct}%"></div>
+          </div>
+          <span class="kd-bar-pct">${escapeHtml(fmtConfidence(display.confidence))}</span>
+        </div>`
+        : "";
+      return `<div class="kd-field">
+        <div class="kd-field-head">
+          ${icon}
+          <span class="kd-field-label">${escapeHtml(label)}</span>
+        </div>
+        <div class="kd-field-value ${valueClass}">${escapeHtml(display.text)}</div>
+        ${barHtml}
+      </div>`;
+    }
+
+    function renderKdLegendHtml() {
+      return `<div class="kd-legend">
+        <span class="kd-legend-item"><span class="kd-legend-dot high"></span>90–100% stated clearly</span>
+        <span class="kd-legend-item"><span class="kd-legend-dot mid"></span>65–80% approximate</span>
+        <span class="kd-legend-item"><span class="kd-legend-dot low"></span>40–60% vague</span>
+        <span class="kd-legend-item"><span class="kd-legend-dot none"></span>Not captured</span>
+      </div>`;
+    }
+
+    function renderKeyDetailsFormHtml(map, rows) {
+      const displayRows = (rows || []).filter(isDisplayableInsight);
+      if (!displayRows.length) return "";
+
+      let html = '<div class="kd-form"><div class="kd-grid">';
+      for (const insight of displayRows) {
+        html += renderKdFieldHtml(
+          { key: insight.key, icon: iconForKey(insight.key) },
+          map
+        );
+      }
+      html += "</div></div>";
       return html;
     }
 
-    function renderMetricsCards(metrics) {
+    function renderKeyDetails(keyDetails, summary) {
+      const rows = keyDetails || [];
+      const map = insightMapFromRows(rows);
+      const captured = countCapturedFields(map);
+      let scrollHtml = "";
+
+      if (captured > 0) {
+        scrollHtml += `<div class="kd-meta-row">
+          <span class="fields-status-dot"></span>
+          <span>Captured</span>
+          <span class="fields-capture-badge">${captured} captured</span>
+        </div>`;
+        scrollHtml += renderKeyDetailsFormHtml(map, rows);
+      } else {
+        scrollHtml += '<div class="empty-state" style="margin:0;padding:0.5rem 0">No key details captured for this call.</div>';
+      }
+
+      if (summary) {
+        scrollHtml += `<div class="summary-block"><h4>Call summary</h4>`;
+        for (const para of String(summary).split(/\n+/).filter(Boolean)) {
+          scrollHtml += `<p>${escapeHtml(para)}</p>`;
+        }
+        scrollHtml += `</div>`;
+      }
+
+      const legendHtml = captured > 0 && hasAnyConfidence(map) ? renderKdLegendHtml() : "";
+      return `<div class="kd-panel-scroll">${scrollHtml}</div>${
+        legendHtml ? `<div class="kd-panel-legend">${legendHtml}</div>` : ""
+      }`;
+    }
+
+    function getCostBreakdown(call) {
+      const bd = call && call.costBreakdown && typeof call.costBreakdown === "object"
+        ? call.costBreakdown
+        : {};
+      const voice = Number(bd.voiceUsd) || 0;
+      const transcribe = Number(bd.transcribeUsd) || 0;
+      const extract = Number(bd.extractUsd) || 0;
+      const summary = Number(bd.summaryUsd) || 0;
+      let total = Number(bd.totalUsd);
+      if (!total || Number.isNaN(total)) {
+        total = Number(call && call.callCostUsd);
+      }
+      if (!total || Number.isNaN(total)) {
+        total = voice + transcribe + extract + summary;
+      }
+      return { voice, transcribe, extract, summary, total };
+    }
+
+    function renderCostBreakdown(call) {
+      const { voice, transcribe, extract, summary, total } = getCostBreakdown(call);
+      if (!(total > 0 || voice > 0 || transcribe > 0 || extract > 0 || summary > 0)) {
+        return '<div class="empty-state" style="margin:0;padding:0.5rem 0">No cost data saved for this call.</div>';
+      }
+      return `<div class="cost-breakdown">
+        <div class="cost-breakdown-row">
+          <span class="label">Voice (agent responses)</span>
+          <span class="value">${escapeHtml(fmtCostUsd(voice > 0 ? voice : null))}</span>
+        </div>
+        <div class="cost-breakdown-row">
+          <span class="label">Transcription (STT)</span>
+          <span class="value">${escapeHtml(fmtCostUsd(transcribe > 0 ? transcribe : null))}</span>
+        </div>
+        <div class="cost-breakdown-row">
+          <span class="label">Key details (extraction)</span>
+          <span class="value">${escapeHtml(fmtCostUsd(extract > 0 ? extract : null))}</span>
+        </div>
+        <div class="cost-breakdown-row">
+          <span class="label">Call summary</span>
+          <span class="value">${escapeHtml(fmtCostUsd(summary > 0 ? summary : null))}</span>
+        </div>
+        <div class="cost-breakdown-row total">
+          <span class="label">Total estimated cost</span>
+          <span class="value">${escapeHtml(fmtCostUsd(total > 0 ? total : null))}</span>
+        </div>
+        <p class="cost-breakdown-note">Estimated from token usage × configured Azure rates (Voice Live + transcribe). Actual billing may differ slightly.</p>
+      </div>`;
+    }
+
+    function metricsAvgLabel(metrics, call) {
+      const measured = (metrics || []).length;
+      const { messages, agentResponses } = callStats(call);
+      if (agentResponses != null && messages != null && messages > agentResponses) {
+        return `avg · ${agentResponses} agent response${agentResponses === 1 ? "" : "s"} · ${messages} transcript message${messages === 1 ? "" : "s"}`;
+      }
+      return `avg · ${measured} agent response${measured === 1 ? "" : "s"}`;
+    }
+
+    function renderMetricsCards(metrics, call) {
       if (!metrics || !metrics.length) {
         return '<div class="empty-state" style="margin:0;padding:0.5rem 0">No metrics saved.</div>';
       }
+      const turnLabel = metricsAvgLabel(metrics, call);
+      const tokenTotals = sumMetricTokens(metrics);
       const cards = [
-        ["Response latency", avgMetric(metrics, "ttfaMs")],
+        ["Response latency · model", avgMetric(metrics, "ttfaMs")],
         ["Speech → Text", avgMetric(metrics, "sttMs")],
         ["Thinking", avgMetric(metrics, "thinkMs")],
         ["Text → Speech", avgMetric(metrics, "ttsMs")],
         ["Response time", avgMetric(metrics, "responseMs")],
+        ["Output tokens", avgOutputTokens(metrics)],
+        ["Tokens / sec", avgTokensPerSec(metrics)],
       ];
-      return cards
-        .map(
-          ([label, val]) => `<div class="metric-card">
+      let html = cards
+        .map(([label, val]) => {
+          const display =
+            label === "Output tokens"
+              ? val != null ? fmtDecimal(val, FMT_DECIMALS) : "—"
+              : label === "Tokens / sec"
+                ? val != null ? fmtDecimal(val, FMT_DECIMALS) : "—"
+                : fmtMs(val);
+          return `<div class="metric-card">
             <div class="metric-label">${escapeHtml(label)}</div>
-            <div class="metric-value">${escapeHtml(fmtMs(val))}</div>
-          </div>`
-        )
+            <div class="metric-value">${escapeHtml(String(display))}</div>
+            <div class="metric-sub">${escapeHtml(turnLabel)}</div>
+          </div>`;
+        })
         .join("");
+      return html;
     }
 
-    function renderMetricsTable(metrics) {
+    function renderMetricsTable(metrics, call) {
       if (!metrics || !metrics.length) {
-        return '<tr><td colspan="11" class="muted" style="text-align:center">No turn metrics.</td></tr>';
+        return { body: '<tr><td colspan="12" class="muted" style="text-align:center">No turn metrics.</td></tr>', foot: "" };
       }
-      return metrics
+      const body = metrics
         .map((row) => {
           const m = row.metrics || {};
           const tk = row.tokens || {};
           const tokens = `${tk.input != null ? tk.input : "—"} / ${tk.output != null ? tk.output : "—"}`;
+          const extractCost = rowExtractCostUsd(row);
           const cells = [
             row.seq != null ? row.seq : row.turn,
             fmtMs(m.sttMs),
             fmtMs(m.thinkMs),
+            fmtMs(m.ttfaMs),
             fmtMs(m.ttsStartMs != null ? m.ttsStartMs : m.ttfaMs),
             fmtMs(m.ttsMs),
             fmtMs(m.responseMs),
             fmtMs(m.turnMs),
             tokens,
-            row.tokensPerSec != null ? row.tokensPerSec : "—",
+            rowVoiceCostUsd(row) > 0 ? fmtCostUsd(rowVoiceCostUsd(row)) : "—",
+            extractCost > 0 ? fmtCostUsd(extractCost) : "—",
+            rowTurnCostUsd(row) != null ? fmtCostUsd(rowTurnCostUsd(row)) : "—",
           ];
           return `<tr><td>${cells.map((c) => escapeHtml(String(c))).join("</td><td>")}</td></tr>`;
         })
         .join("");
+      const tokenTotals = sumMetricTokens(metrics);
+      const voiceSum = metrics.reduce((sum, row) => sum + rowVoiceCostUsd(row), 0);
+      const extractSum = metrics.reduce((sum, row) => sum + rowExtractCostUsd(row), 0);
+      const foot = `<tr>
+        <td colspan="8" style="text-align:right;font-weight:600">Subtotals (agent rows)</td>
+        <td>${escapeHtml(tokenTotals.input + " / " + tokenTotals.output)}</td>
+        <td class="cost-cell">${escapeHtml(fmtCostUsd(voiceSum > 0 ? voiceSum : null))}</td>
+        <td class="cost-cell">${escapeHtml(fmtCostUsd(extractSum > 0 ? extractSum : null))}</td>
+        <td class="cost-cell">${escapeHtml(fmtCostUsd(voiceSum + extractSum > 0 ? voiceSum + extractSum : null))}</td>
+      </tr>`;
+      return { body, foot };
     }
 
     function renderEventsTable(events) {
       if (!events || !events.length) {
         return '<tr><td colspan="4" style="text-align:center;color:var(--text-muted)">No events saved.</td></tr>';
       }
-      return events
+      return insertTimelineGapRows(events)
         .map((ev) => {
+          if (ev.synthetic && ev.event === "gap") {
+            return `<tr class="timeline-gap">
+              <td colspan="4">${escapeHtml(describeTimelineGap(ev.gapMs))}</td>
+            </tr>`;
+          }
           const extra = { ...ev };
           delete extra.event;
           delete extra.turn;
           delete extra.atMs;
+          delete extra.synthetic;
           const extraStr = Object.keys(extra).length ? JSON.stringify(extra) : "";
-          return `<tr>
-            <td>${escapeHtml(ev.event || "")}</td>
-            <td>${escapeHtml(ev.turn != null ? ev.turn : "—")}</td>
-            <td>${escapeHtml(ev.atMs != null ? ev.atMs + "ms" : "—")}</td>
+          const bookend =
+            ev.event === "call_started" || ev.event === "call_ended"
+              ? " timeline-bookend"
+              : "";
+          const wrap = WRAP_UP_EVENTS.has(ev.event) ? " timeline-wrap" : "";
+          const turnDisplay = ev.turn != null && ev.turn !== "" ? String(ev.turn) : "—";
+          return `<tr class="${(bookend + wrap).trim()}">
+            <td>${escapeHtml(timelineEventLabel(ev.event))}</td>
+            <td>${escapeHtml(turnDisplay)}</td>
+            <td>${escapeHtml(ev.atMs != null ? fmtTimelineAt(ev.atMs) : "—")}</td>
             <td style="white-space:normal;max-width:320px">${escapeHtml(extraStr)}</td>
           </tr>`;
         })
@@ -806,13 +1690,19 @@
         }
 
         const call = await res.json();
+        const stats = callStats(call);
+        const metricsTable = renderMetricsTable(call.metrics, call);
+        const { total: sessionCost } = getCostBreakdown(call);
         detailEl.innerHTML = `
           <dl class="detail-meta">
             <div><dt>Call ID</dt><dd>${escapeHtml(call.callId || call.id || "—")}</dd></div>
             <div><dt>Started</dt><dd>${escapeHtml(fmtDate(call.startedAt))}</dd></div>
             <div><dt>Ended</dt><dd>${escapeHtml(fmtDate(call.endedAt))}</dd></div>
             <div><dt>Duration</dt><dd>${escapeHtml(fmtDuration(call.durationSec))}</dd></div>
-            <div><dt>Turns</dt><dd>${escapeHtml(call.turnCount != null ? call.turnCount : "—")}</dd></div>
+            <div><dt>User turns</dt><dd>${escapeHtml(stats.userTurns != null ? stats.userTurns : "—")}</dd></div>
+            <div><dt>Transcript messages</dt><dd>${escapeHtml(stats.messages != null ? stats.messages : "—")}</dd></div>
+            <div><dt>Agent responses</dt><dd>${escapeHtml(stats.agentResponses != null ? stats.agentResponses : "—")}</dd></div>
+            <div><dt>Total est. cost</dt><dd>${escapeHtml(fmtCostUsd(sessionCost > 0 ? sessionCost : null))}</dd></div>
             <div><dt>Channel</dt><dd>${escapeHtml(call.channel || "—")}</dd></div>
             <div><dt>Brokerage</dt><dd>${escapeHtml(call.brokerage || "—")}</dd></div>
             <div><dt>Persona</dt><dd>${escapeHtml(call.persona || "—")}</dd></div>
@@ -823,30 +1713,38 @@
               <div class="panel-header">Transcript</div>
               <div class="panel-body transcript-log">${renderTranscript(call.transcript)}</div>
             </section>
-            <section class="panel">
-              <div class="panel-header">Key Details &amp; Summary</div>
+            <section class="panel panel-key-details">
+              <div class="panel-header">Key details</div>
               <div class="panel-body">${renderKeyDetails(call.keyDetails, call.callSummary)}</div>
             </section>
             <section class="panel">
-              <div class="panel-header">Performance Metrics</div>
-              <div class="panel-body">${renderMetricsCards(call.metrics)}</div>
+              <div class="panel-header">Performance Metrics <span style="font-weight:500;font-size:0.72rem;color:var(--text-muted)">· session averages</span></div>
+              <div class="panel-body">${renderMetricsCards(call.metrics, call)}</div>
             </section>
           </div>
 
           <section class="section-panel">
+            <div class="panel-header">Estimated Call Cost</div>
+            <div class="panel-body">${renderCostBreakdown(call)}</div>
+          </section>
+
+          <section class="section-panel">
             <div class="panel-header" onclick="toggleSection('metricsBody')">
-              <span>Per-turn Metrics</span><span>▼</span>
+              <span>Per-response Metrics</span><span>▼</span>
             </div>
             <div class="panel-body turn-table-wrap" id="metricsBody">
               <table class="data-table">
                 <thead>
                   <tr>
-                    <th>#</th><th>STT</th><th>Think</th><th>First audio</th><th>TTS</th>
-                    <th>Response</th><th>Total</th><th>Tokens (in/out)</th><th>Tok/s</th>
+                    <th>#</th><th>STT</th><th>Think</th><th>Resp.&nbsp;latency</th><th>First&nbsp;audio</th><th>TTS</th>
+                    <th>Response</th><th>Total</th><th>Tokens (in/out)</th>
+                    <th>Voice</th><th>Key&nbsp;details</th><th>Turn&nbsp;total</th>
                   </tr>
                 </thead>
-                <tbody>${renderMetricsTable(call.metrics)}</tbody>
+                <tbody>${metricsTable.body}</tbody>
+                ${metricsTable.foot ? `<tfoot>${metricsTable.foot}</tfoot>` : ""}
               </table>
+              <p class="metrics-cost-note">Per-row costs cover voice and key-details extraction only. See Estimated Call Cost above for transcription (STT) and summary.</p>
             </div>
           </section>
 
@@ -856,18 +1754,10 @@
             </div>
             <div class="panel-body events-table-wrap" id="eventsBody">
               <table class="data-table">
-                <thead><tr><th>Event</th><th>Turn</th><th>At</th><th>Details</th></tr></thead>
+                <thead><tr><th>Event</th><th>User turn</th><th>Call elapsed</th><th>Details</th></tr></thead>
                 <tbody>${renderEventsTable(call.events)}</tbody>
               </table>
-            </div>
-          </section>
-
-          <section class="section-panel">
-            <div class="panel-header" onclick="toggleSection('rawBody')">
-              <span>Raw JSON (full record)</span><span>▼</span>
-            </div>
-            <div class="panel-body collapsed" id="rawBody">
-              <pre class="raw-json">${escapeHtml(JSON.stringify(call, null, 2))}</pre>
+              <p class="timeline-note">${escapeHtml(timelineNote(call, call.events))}</p>
             </div>
           </section>
         `;
