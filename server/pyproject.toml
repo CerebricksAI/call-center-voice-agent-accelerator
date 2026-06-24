@@ -20,6 +20,7 @@ dependencies = [
     "urllib3>=2.7.0",
     "pyjwt>=2.13.0",
     "azure-cosmos>=4.16.0",
+    "msal>=1.36.0",
 ]
 
 [project.optional-dependencies]

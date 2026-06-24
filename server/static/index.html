@@ -1282,13 +1282,16 @@
     }
 
     async function logout() {
+      let logoutUrl = null;
       try {
-        await fetch("/auth/logout", { method: "POST", credentials: "same-origin" });
+        const res = await fetch("/auth/logout", { method: "POST", credentials: "same-origin" });
+        const data = await res.json().catch(() => ({}));
+        logoutUrl = data.logoutUrl || null;
       } catch (_) {}
       if (socket && socket.readyState === WebSocket.OPEN) {
         socket.close();
       }
-      window.location.replace("/login");
+      window.location.replace(logoutUrl || "/login");
     }
 
     function handleAuthFailure() {
