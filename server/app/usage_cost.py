@@ -333,7 +333,7 @@ def enrich_call_record(record: dict, *, include_timeline: bool = True) -> dict:
         if not isinstance(row, dict):
             continue
         m = row.get("metrics")
-        if isinstance(m, dict):
+        if isinstance(m, dict) and m.get("ttfaMs") is None:
             think = m.get("thinkMs")
             tts_start = m.get("ttsStartMs")
             if think is not None and tts_start is not None:
