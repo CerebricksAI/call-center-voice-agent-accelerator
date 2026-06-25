@@ -282,6 +282,22 @@ resource containerAppRt 'Microsoft.App/containerApps@2024-10-02-preview' = if (!
               value: 'gpt-4o-mini-transcribe'
             }
             {
+              name: 'EXTRACT_MODEL'
+              value: 'gpt-4o-mini'
+            }
+            {
+              name: 'SUMMARY_MODEL'
+              value: 'gpt-4o-mini'
+            }
+            {
+              name: 'VOICE_LIVE_EOU_THRESHOLD'
+              value: 'medium'
+            }
+            {
+              name: 'VOICE_LIVE_EOU_TIMEOUT_MS'
+              value: '900'
+            }
+            {
               name: 'DEBUG_MODE'
               value: string(debugMode)
             }

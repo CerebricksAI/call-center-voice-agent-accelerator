@@ -39,6 +39,7 @@ from app.call_store import get_call, is_enabled as cosmos_enabled, list_calls
 from app.config_validator import validate_config
 from app.handler.web_media_handler import WebMediaHandler
 from app.logging_config import configure_logging, new_correlation_id
+from app.conversation_extractor import resolve_extract_model, resolve_summary_model
 from app.usage_cost import enrich_call_record
 from app.provider_registry import detect_provider, get_configured_providers, get_provider
 
@@ -79,16 +80,21 @@ if ambient_preset and ambient_preset != "none":
 else:
     logger.info("Ambient scenes DISABLED (preset=none)")
 logger.info("Voice Live latency profile: %s", latency_mode)
+logger.info(
+    "Voice Live models: voice=%s extract=%s summary=%s transcribe=%s",
+    os.getenv("VOICE_LIVE_MODEL", "gpt-4o-mini").strip(),
+    resolve_extract_model(),
+    resolve_summary_model(),
+    os.getenv("INPUT_TRANSCRIPTION_MODEL", "whisper-1").strip(),
+)
 
 
 def _resolved_models() -> dict[str, str]:
     """Active model names for UI labels (matches handler / extractor defaults)."""
     voice = os.getenv("VOICE_LIVE_MODEL", "gpt-4o-mini").strip()
     transcribe = os.getenv("INPUT_TRANSCRIPTION_MODEL", "whisper-1").strip()
-    extract = (os.getenv("EXTRACT_MODEL") or voice).strip()
-    summary = (
-        os.getenv("SUMMARY_MODEL") or os.getenv("EXTRACT_MODEL") or voice
-    ).strip()
+    extract = resolve_extract_model()
+    summary = resolve_summary_model()
     return {
         "voiceModel": voice,
         "transcriptionModel": transcribe,
