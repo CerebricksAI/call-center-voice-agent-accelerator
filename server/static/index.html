@@ -1680,6 +1680,11 @@
     let speechRecognition = null;
     let speechRecognitionActive = false;
     let liveTranscriptPaused = false;
+    // Position where the current user turn belongs in the log. Captured when the
+    // user starts speaking, so a late final transcript (native-realtime models
+    // reply before their side-channel STT finishes) is inserted in chronological
+    // order rather than appended below the agent's reply.
+    let userTurnAnchor = null;
 
     // ---------------------------------------------------------------
     // Auth session (30-minute sliding window; server middleware enforces)
@@ -1748,6 +1753,7 @@
       partialText.assistant = "";
       liveBubbles.user = null;
       liveBubbles.assistant = null;
+      userTurnAnchor = null;
       const log = document.getElementById("transcriptLog");
       log.innerHTML = '<div id="transcriptEmpty" class="transcript-empty">Transcript will appear here once you start a call.</div>';
     }
@@ -1758,6 +1764,13 @@
         liveBubbles.user.remove();
         liveBubbles.user = null;
       }
+      // Remember where this turn belongs: the last bubble present when the user
+      // began speaking. The final transcript is inserted right after it, above
+      // any agent reply that streams in first (native-realtime models).
+      const log = document.getElementById("transcriptLog");
+      const last = log.lastElementChild;
+      userTurnAnchor =
+        last && last.classList.contains("transcript-bubble") ? last : null;
       if (
         speechRecognition &&
         speechRecognitionActive &&
@@ -1786,8 +1799,9 @@
           liveBubbles.user.classList.remove("live");
           liveBubbles.user = null;
         } else {
-          createBubble("user", cleaned, false);
+          createBubble("user", cleaned, false, userTurnAnchor);
         }
+        userTurnAnchor = null;
         recordTranscriptTurn("user", cleaned);
         scheduleTranscriptFlush();
         return;
@@ -1799,7 +1813,7 @@
 
       partialText.user = cleaned;
       if (!liveBubbles.user) {
-        liveBubbles.user = createBubble("user", cleaned, true);
+        liveBubbles.user = createBubble("user", cleaned, true, userTurnAnchor);
       } else {
         liveBubbles.user.querySelector(".transcript-text").textContent = cleaned;
         liveBubbles.user.classList.add("live");
@@ -1909,7 +1923,7 @@
       log.scrollTop = log.scrollHeight;
     }
 
-    function createBubble(role, text, isLive) {
+    function createBubble(role, text, isLive, insertAfter) {
       hideTranscriptEmpty();
       const bubble = document.createElement("div");
       bubble.className = `transcript-bubble ${role}${isLive ? " live" : ""}`;
@@ -1921,7 +1935,12 @@
       content.textContent = text;
       bubble.appendChild(label);
       bubble.appendChild(content);
-      document.getElementById("transcriptLog").appendChild(bubble);
+      const log = document.getElementById("transcriptLog");
+      if (insertAfter && insertAfter.parentNode === log) {
+        insertAfter.insertAdjacentElement("afterend", bubble);
+      } else {
+        log.appendChild(bubble);
+      }
       scrollTranscriptToBottom();
       return bubble;
     }
