@@ -128,6 +128,18 @@ resource containerApp 'Microsoft.App/containerApps@2024-10-02-preview' = {
               value: modelDeploymentName
             }
             {
+              name: 'AZD_SERVICE_NAME'
+              value: 'app'
+            }
+            {
+              name: 'CONTAINER_APP_NAME'
+              value: containerAppName
+            }
+            {
+              name: 'INPUT_TRANSCRIPTION_MODEL'
+              value: 'gpt-4o-mini-transcribe'
+            }
+            {
               name: 'DEBUG_MODE'
               value: string(debugMode)
             }
@@ -256,6 +268,18 @@ resource containerAppRt 'Microsoft.App/containerApps@2024-10-02-preview' = if (!
             {
               name: 'VOICE_LIVE_MODEL'
               value: secondModelDeploymentName
+            }
+            {
+              name: 'AZD_SERVICE_NAME'
+              value: 'app2'
+            }
+            {
+              name: 'CONTAINER_APP_NAME'
+              value: containerAppRtName
+            }
+            {
+              name: 'INPUT_TRANSCRIPTION_MODEL'
+              value: 'gpt-4o-mini-transcribe'
             }
             {
               name: 'DEBUG_MODE'

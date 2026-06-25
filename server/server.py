@@ -80,6 +80,24 @@ else:
     logger.info("Ambient scenes DISABLED (preset=none)")
 logger.info("Voice Live latency profile: %s", latency_mode)
 
+
+def _resolved_models() -> dict[str, str]:
+    """Active model names for UI labels (matches handler / extractor defaults)."""
+    voice = os.getenv("VOICE_LIVE_MODEL", "gpt-4o-mini").strip()
+    transcribe = os.getenv("INPUT_TRANSCRIPTION_MODEL", "whisper-1").strip()
+    extract = (os.getenv("EXTRACT_MODEL") or voice).strip()
+    summary = (
+        os.getenv("SUMMARY_MODEL") or os.getenv("EXTRACT_MODEL") or voice
+    ).strip()
+    return {
+        "voiceModel": voice,
+        "transcriptionModel": transcribe,
+        "extractModel": extract,
+        "summaryModel": summary,
+        "serviceName": os.getenv("AZD_SERVICE_NAME", "app").strip() or "app",
+        "containerAppName": os.getenv("CONTAINER_APP_NAME", "").strip(),
+    }
+
 # ---------------------------------------------------------------------------
 # Call manager (concurrency limits + timeout enforcement)
 # ---------------------------------------------------------------------------
@@ -409,6 +427,12 @@ async def api_analytics():
         logger.exception("[Analytics] aggregation failed")
         return jsonify({"enabled": True, "hasData": False, "error": "aggregation_failed"}), 200
     return jsonify(payload), 200
+
+
+@app.route("/api/models")
+async def api_models():
+    """GET configured LLM model names for dashboard labels."""
+    return jsonify(_resolved_models()), 200
 
 
 @app.route("/health")

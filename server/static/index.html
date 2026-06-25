@@ -220,6 +220,20 @@
       letter-spacing: 0;
     }
 
+    .nav-model-badge {
+      display: inline-block;
+      margin-left: 0.55rem;
+      padding: 0.14rem 0.5rem;
+      font-size: 0.62rem;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      color: var(--nav-accent);
+      border: 1px solid rgba(167, 139, 250, 0.45);
+      border-radius: 999px;
+      vertical-align: middle;
+      white-space: nowrap;
+    }
+
     .nav-links {
       display: flex;
       align-items: center;
@@ -702,6 +716,14 @@
       font-weight: 600;
       font-size: 0.95rem;
       color: var(--text-primary);
+    }
+
+    .panel-model-tag {
+      font-weight: 500;
+      font-size: 0.72rem;
+      color: var(--text-muted);
+      margin-left: 0.15rem;
+      white-space: nowrap;
     }
 
     .transcript-log {
@@ -1460,7 +1482,7 @@
   <nav class="app-nav">
     <div class="nav-brand">
       <img class="nav-brand-icon" src="/static/sales-agent-logo.png" alt="" width="36" height="36">
-      <span class="nav-brand-text">Sales <span class="accent">Agent</span></span>
+      <span class="nav-brand-text">Sales <span class="accent">Agent</span><span id="navModelBadge" class="nav-model-badge" hidden></span></span>
     </div>
     <div class="nav-links">
       <a class="nav-link active" href="/">Pre-Qual Call</a>
@@ -1496,7 +1518,7 @@
     <!-- Left 40%: Live Transcript -->
     <div class="panel panel-transcript">
       <div class="panel-header transcript-header">
-        <span class="panel-title">Live Transcript</span>
+        <span class="panel-title">Live Transcript<span id="transcriptModelTag" class="panel-model-tag"></span></span>
         <div class="call-controls">
           <button id="startBtn" onclick="startStreaming()" title="Start a voice call with the agent">
             Start Call
@@ -1529,7 +1551,7 @@
     <!-- Middle 40%: Key Details (LLM-extracted) -->
     <div class="panel panel-fields">
       <div class="panel-header fields-panel-header">
-        <span class="fields-panel-title">Key details</span>
+        <span class="fields-panel-title">Key details<span id="extractModelTag" class="panel-model-tag"></span></span>
         <div class="fields-header-meta">
           <span id="fieldsStatusDot" class="fields-status-dot"></span>
           <span id="fieldsStatusText" class="fields-status-text">Waiting</span>
@@ -3281,6 +3303,35 @@
       applyTheme(saved === "dark" ? "dark" : "light");
     }
 
+    async function loadModelLabels() {
+      try {
+        const res = await fetch("/api/models", { credentials: "same-origin" });
+        if (!res.ok) return;
+        const m = await res.json();
+        const tag = document.getElementById("transcriptModelTag");
+        if (tag && m.voiceModel && m.transcriptionModel) {
+          tag.textContent = ` (agent: ${m.voiceModel} · caller: ${m.transcriptionModel})`;
+          tag.title = `Voice agent: ${m.voiceModel}. Caller transcription (STT): ${m.transcriptionModel}.`;
+        }
+        const extractTag = document.getElementById("extractModelTag");
+        if (extractTag && m.extractModel) {
+          extractTag.textContent = ` (${m.extractModel})`;
+          extractTag.title = `Key-details extraction model: ${m.extractModel}`;
+        }
+        const badge = document.getElementById("navModelBadge");
+        if (badge && m.voiceModel) {
+          badge.textContent = m.voiceModel;
+          badge.hidden = false;
+          const parts = [`Voice agent model: ${m.voiceModel}`];
+          if (m.serviceName) parts.push(`Deployment: ${m.serviceName}`);
+          if (m.containerAppName) parts.push(`Container: ${m.containerAppName}`);
+          badge.title = parts.join(" · ");
+        }
+      } catch (_) {
+        /* non-fatal */
+      }
+    }
+
     // Initialize
     (async () => {
       const authed = await ensureAuthenticated();
@@ -3288,6 +3339,7 @@
       setupNavLeaveGuard();
       startSessionWatcher();
       initTheme();
+      loadModelLabels();
       renderKeyDetails();
       loadAudioProcessors();
     })();
