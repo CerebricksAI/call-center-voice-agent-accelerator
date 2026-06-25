@@ -196,17 +196,111 @@
 
     .history-layout {
       display: grid;
-      grid-template-columns: 300px 1fr;
+      grid-template-columns: 56px 1fr;
       height: calc(100vh - 58px);
       background: var(--bg-main);
+      position: relative;
     }
 
+    /* Past-calls rail: collapsed strip with icon, expands on hover. */
     .call-list-panel {
       border-right: 1px solid var(--border);
-      background: var(--bg-panel);
+      background: var(--bg-elevated);
       display: flex;
       flex-direction: column;
       min-height: 0;
+      width: 56px;
+      overflow: hidden;
+      position: relative;
+      z-index: 30;
+      transition: width 0.22s ease, box-shadow 0.22s ease, background 0.22s ease;
+    }
+
+    .call-list-panel:hover {
+      width: 320px;
+      background: var(--bg-panel);
+      box-shadow: 6px 0 22px rgba(0, 0, 0, 0.18);
+    }
+
+    .call-list-header,
+    .call-list {
+      opacity: 0;
+      transition: opacity 0.15s ease;
+    }
+
+    .call-list-panel:hover .call-list-header,
+    .call-list-panel:hover .call-list {
+      opacity: 1;
+    }
+
+    .call-list-rail {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 56px;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 1rem 0 1.25rem;
+      pointer-events: none;
+      transition: opacity 0.15s ease;
+    }
+
+    .call-list-rail::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 3px;
+      background: var(--qt-primary);
+      border-radius: 0 2px 2px 0;
+      opacity: 0.85;
+    }
+
+    .call-list-panel:hover .call-list-rail {
+      opacity: 0;
+    }
+
+    .rail-handle {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.45rem;
+      text-align: center;
+    }
+
+    .rail-icon {
+      width: 22px;
+      height: 22px;
+      color: var(--qt-primary);
+      flex-shrink: 0;
+    }
+
+    .call-list-rail .rail-label {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.1rem;
+      font-size: 0.62rem;
+      font-weight: 700;
+      letter-spacing: 0.03em;
+      line-height: 1.15;
+      color: var(--text-secondary);
+    }
+
+    .call-list-rail .rail-label span {
+      display: block;
+    }
+
+    .rail-expand {
+      margin-top: auto;
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: var(--text-muted);
+      opacity: 0.45;
+      line-height: 1;
     }
 
     .call-list-header {
@@ -295,16 +389,58 @@
 
     .error-state { color: #dc2626; }
 
-    .detail-meta {
+    .page-loading {
       display: flex;
-      flex-wrap: wrap;
-      gap: 0.75rem 1.25rem;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 0.85rem;
+      padding: 2rem 1rem;
+      min-height: 140px;
+      color: var(--text-muted);
+      font-size: 0.86rem;
+      font-weight: 500;
+      text-align: center;
+    }
+
+    .page-loading.detail {
+      min-height: 360px;
+    }
+
+    .loading-ring {
+      width: 46px;
+      height: 46px;
+      border: 3px solid var(--border);
+      border-top-color: var(--qt-primary);
+      border-right-color: rgba(137, 41, 254, 0.35);
+      border-radius: 50%;
+      animation: loading-spin 0.8s linear infinite;
+      flex-shrink: 0;
+    }
+
+    @keyframes loading-spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .refresh-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .detail-meta {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      gap: 1rem 1.5rem;
       padding: 0.85rem 1rem;
       background: var(--bg-panel);
       border: 1px solid var(--border);
       border-radius: var(--radius-md);
       margin-bottom: 1rem;
       font-size: 0.8rem;
+    }
+
+    .detail-meta > div {
+      min-width: 0;
     }
 
     .detail-meta dt {
@@ -320,6 +456,20 @@
       font-weight: 600;
       color: var(--text-primary);
       font-variant-numeric: tabular-nums;
+      overflow-wrap: anywhere;
+      line-height: 1.35;
+    }
+
+    @media (max-width: 1200px) {
+      .detail-meta {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 768px) {
+      .detail-meta {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
     }
 
     .detail-grid {
@@ -659,8 +809,41 @@
 
     .cost-breakdown {
       display: grid;
+      grid-template-columns: minmax(260px, 380px) 1fr;
+      gap: 1.25rem 2.5rem;
+      align-items: stretch;
+      max-width: none;
+    }
+
+    .cost-breakdown-items {
+      display: grid;
       gap: 0.45rem;
-      max-width: 420px;
+      align-content: start;
+    }
+
+    .cost-breakdown-summary {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 0.6rem;
+      padding-left: 2rem;
+      border-left: 1px solid var(--border-subtle);
+    }
+
+    .cost-total-label {
+      font-size: 0.74rem;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: var(--text-secondary);
+    }
+
+    .cost-total-value {
+      font-size: 1.9rem;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      color: var(--qt-primary);
+      line-height: 1.1;
     }
 
     .cost-breakdown-row {
@@ -773,9 +956,26 @@
 
     @media (max-width: 1100px) {
       .history-layout { grid-template-columns: 1fr; grid-template-rows: 240px 1fr; }
-      .call-list-panel { border-right: none; border-bottom: 1px solid var(--border); }
+      .call-list-panel {
+        border-right: none;
+        border-bottom: 1px solid var(--border);
+        width: auto;
+        overflow: auto;
+        box-shadow: none;
+        z-index: auto;
+      }
+      .call-list-panel:hover { width: auto; box-shadow: none; }
+      .call-list-header, .call-list { opacity: 1; }
+      .call-list-rail { display: none; }
       .detail-grid { grid-template-columns: 1fr; }
       .panel { max-height: none; }
+      .cost-breakdown { grid-template-columns: 1fr; gap: 1rem; }
+      .cost-breakdown-summary {
+        border-left: none;
+        padding-left: 0;
+        border-top: 1px solid var(--border-subtle);
+        padding-top: 0.85rem;
+      }
     }
   </style>
 </head>
@@ -788,7 +988,7 @@
     <div class="nav-links">
       <a class="nav-link" href="/">Pre-Qual Call</a>
       <a class="nav-link active" href="/history">Call History</a>
-      <a class="nav-link disabled">Analytics</a>
+      <a class="nav-link" href="/analytics">Analytics</a>
       <a class="nav-link disabled">Settings</a>
     </div>
     <div class="nav-right">
@@ -799,13 +999,26 @@
   </nav>
 
   <div class="history-layout">
-    <aside class="call-list-panel">
+    <aside class="call-list-panel" title="Hover to browse past calls">
+      <div class="call-list-rail" aria-hidden="true">
+        <div class="rail-handle">
+          <svg class="rail-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true">
+            <path d="M12 8v4l3 2"/>
+            <circle cx="12" cy="12" r="9"/>
+          </svg>
+          <div class="rail-label"><span>Past</span><span>calls</span></div>
+        </div>
+        <span class="rail-expand" aria-hidden="true">›</span>
+      </div>
       <div class="call-list-header">
         <span>Past calls</span>
         <button type="button" class="refresh-btn" onclick="loadCallList()">Refresh</button>
       </div>
       <div id="callList" class="call-list">
-        <div class="loading-state">Loading call history…</div>
+        <div class="page-loading" role="status" aria-live="polite">
+          <div class="loading-ring" aria-hidden="true"></div>
+          <span>Loading call history…</span>
+        </div>
       </div>
     </aside>
 
@@ -1053,6 +1266,37 @@
       return vals.reduce((a, b) => a + Number(b), 0) / vals.length;
     }
 
+    function deriveFirstAudioMs(m) {
+      if (!m) return null;
+      if (m.firstAudioMs != null) return Number(m.firstAudioMs);
+      const stt = m.sttMs, think = m.thinkMs, ts = m.ttsStartMs;
+      if (stt != null && think != null && ts != null) return Number(stt) + Number(think) + Number(ts);
+      const ttfa = m.ttfaMs;
+      if (stt != null && ttfa != null) return Number(stt) + Number(ttfa);
+      return ttfa != null ? Number(ttfa) : null;
+    }
+
+    function deriveE2eResponseMs(m) {
+      if (!m) return null;
+      if (m.e2eResponseMs != null) return Number(m.e2eResponseMs);
+      const fa = deriveFirstAudioMs(m), tts = m.ttsMs;
+      if (fa != null && tts != null) return fa + Number(tts);
+      const stt = m.sttMs, think = m.thinkMs, ts = m.ttsStartMs;
+      if (stt != null && think != null && ts != null && tts != null) {
+        return Number(stt) + Number(think) + Number(ts) + Number(tts);
+      }
+      const resp = m.responseMs;
+      if (stt != null && think != null && resp != null) return Number(stt) + Number(think) + Number(resp);
+      if (stt != null && resp != null) return Number(stt) + Number(resp);
+      return resp != null ? Number(resp) : null;
+    }
+
+    function avgDerived(rows, fn) {
+      const vals = rows.map((r) => fn(r.metrics || {})).filter((v) => v != null && Number(v) >= 0);
+      if (!vals.length) return null;
+      return vals.reduce((a, b) => a + Number(b), 0) / vals.length;
+    }
+
     function fmtCostUsd(v) {
       if (v == null || Number.isNaN(Number(v))) return "—";
       return "$" + Number(v).toFixed(FMT_DECIMALS);
@@ -1121,9 +1365,19 @@
       return btn;
     }
 
+    function loadingPanel(message, variant) {
+      const extra = variant ? ` ${variant}` : "";
+      return `<div class="page-loading${extra}" role="status" aria-live="polite">
+        <div class="loading-ring" aria-hidden="true"></div>
+        <span>${message}</span>
+      </div>`;
+    }
+
     async function loadCallList() {
       const listEl = document.getElementById("callList");
-      listEl.innerHTML = '<div class="loading-state">Loading call history…</div>';
+      const refreshBtn = document.querySelector(".refresh-btn");
+      if (refreshBtn) refreshBtn.disabled = true;
+      listEl.innerHTML = loadingPanel("Loading call history…");
 
       try {
         const res = await fetch("/api/calls?limit=50", { credentials: "same-origin" });
@@ -1165,6 +1419,8 @@
         }
       } catch (err) {
         listEl.innerHTML = `<div class="error-state">Failed to load calls: ${escapeHtml(err.message)}</div>`;
+      } finally {
+        if (refreshBtn) refreshBtn.disabled = false;
       }
     }
 
@@ -1216,37 +1472,32 @@
       other: "Other",
     };
 
-    const KEY_ICON_HINTS = {
-      consent: "shield",
-      tcpa_consent: "shield",
-      recording_consent: "mic",
-      loan_purpose: "doc",
-      loan_type: "doc",
-      rate: "doc",
-      current_rate: "doc",
-      lender: "doc",
-      cash_out_amount: "doc",
-      current_balance: "doc",
-      amount: "doc",
-      down_payment: "doc",
-      location: "pin",
-      state: "pin",
-      zip: "pin",
-      property_status: "home",
-      property_type: "home",
-      timeline: "clock",
-      purchase_timeline: "clock",
-      contact: "clock",
-      contact_preference: "clock",
-      credit_score: "user",
-      income: "user",
-      annual_income: "user",
-      employment: "user",
-      employment_status: "user",
-    };
+    // Dynamic icon selection: keys are produced live by the extractor and can be
+    // anything, so match meaningful keywords in the key + label rather than a
+    // fixed key list. First matching rule wins; order = most specific first.
+    const ICON_RULES = [
+      { icon: "shield",    re: /consent|agree|permission|authoriz|\bopt[\s-]?(?:in|out)|disclosure|\bterms\b/ },
+      { icon: "mic",       re: /record/ },
+      { icon: "clock",     re: /\btime\b|timeline|duration|\beta\b|how\s*soon|urgen|availab|hours?/ },
+      { icon: "calendar",  re: /\bdate\b|\bday\b|deadline|appointment|schedul|\bweek|\bmonth|\byear|tomorrow/ },
+      { icon: "target",    re: /purpose|reason|goal|intent|objective|\bwhy\b|motiv|inquir|\bissue\b|problem|concern|request|topic|subject/ },
+      { icon: "money",     re: /income|salary|wage|amount|price|cost|budget|payment|balance|\bloan\b|cash|\bfee\b|deposit|premium|refund|revenue|\bpay\b|dollar|\$|\bfund|financ|invoice|quote/ },
+      { icon: "gauge",     re: /score|credit|rating|\brank|\blevel\b|grade|\bgpa\b/ },
+      { icon: "mail",      re: /e[\s-]?mail/ },
+      { icon: "phone",     re: /phone|\bcall\b|mobile|\bcell\b|telephone|whatsapp|\bsms\b|\btext\b|\bfax\b|contact/ },
+      { icon: "pin",       re: /location|address|\bstate\b|\bcity\b|region|country|\bzip\b|postal|province|county|\barea\b|where|street/ },
+      { icon: "home",      re: /propert|\bhome\b|house|real\s*estate|building|apartment|\bcondo\b|mortgage|\brent\b|residence/ },
+      { icon: "hash",      re: /\bid\b|\bcode\b|number|account|reference|policy|\bssn\b|confirmation|ticket/ },
+      { icon: "briefcase", re: /employ|\bjob\b|\bwork\b|occupation|profession|\bcompany\b|employer|business|industry/ },
+      { icon: "user",      re: /\bname\b|person|applicant|borrower|customer|\bcaller\b|\bage\b|gender|dependent|household|family|party/ },
+    ];
 
-    function iconForKey(key) {
-      return KEY_ICON_HINTS[key] || "doc";
+    function iconForKey(key, label) {
+      const text = ((key || "") + " " + (label || "")).toLowerCase().replace(/_/g, " ");
+      for (const rule of ICON_RULES) {
+        if (rule.re.test(text)) return rule.icon;
+      }
+      return "doc";
     }
 
     const FIELD_ICON_SVG = {
@@ -1257,6 +1508,14 @@
       home: '<svg class="kd-field-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 10.5L12 4l8 6.5V20a1 1 0 0 1-1 1h-5v-6H10v6H5a1 1 0 0 1-1-1v-9.5z"/></svg>',
       clock: '<svg class="kd-field-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
       user: '<svg class="kd-field-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="3.5"/><path d="M5 20a7 7 0 0 1 14 0"/></svg>',
+      money: '<svg class="kd-field-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="2" x2="12" y2="22"/><path d="M16 6a4 3 0 0 0-4-2C9.8 4 8 5.3 8 7s1.8 3 4 3.5 4 1.8 4 3.5-1.8 3-4 3a4 3 0 0 1-4-2"/></svg>',
+      gauge: '<svg class="kd-field-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.5 16a9 9 0 1 0-17 0"/><path d="M12 13l4-4"/><circle cx="12" cy="13" r="1"/></svg>',
+      target: '<svg class="kd-field-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5"/></svg>',
+      phone: '<svg class="kd-field-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 3h3l2 5-2.5 1.5a12 12 0 0 0 5 5L15 12l5 2v3a2 2 0 0 1-2.2 2A16 16 0 0 1 4 5.2 2 2 0 0 1 6 3z"/></svg>',
+      mail: '<svg class="kd-field-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3.5 6.5l8.5 6 8.5-6"/></svg>',
+      calendar: '<svg class="kd-field-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4.5" width="18" height="16" rx="2"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/></svg>',
+      hash: '<svg class="kd-field-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 3L7 21M17 3l-2 18M4 9h17M3 15h17"/></svg>',
+      briefcase: '<svg class="kd-field-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="7.5" width="18" height="12" rx="2"/><path d="M8 7.5V6a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v1.5M3 13h18"/></svg>',
     };
 
     function stripCallerPrefix(value) {
@@ -1446,7 +1705,7 @@
       let html = '<div class="kd-form"><div class="kd-grid">';
       for (const insight of displayRows) {
         html += renderKdFieldHtml(
-          { key: insight.key, icon: iconForKey(insight.key) },
+          { key: insight.key, icon: iconForKey(insight.key, insight.label) },
           map
         );
       }
@@ -1509,27 +1768,29 @@
         return '<div class="empty-state" style="margin:0;padding:0.5rem 0">No cost data saved for this call.</div>';
       }
       return `<div class="cost-breakdown">
-        <div class="cost-breakdown-row">
-          <span class="label">Voice (agent responses)</span>
-          <span class="value">${escapeHtml(fmtCostUsd(voice > 0 ? voice : null))}</span>
+        <div class="cost-breakdown-items">
+          <div class="cost-breakdown-row">
+            <span class="label">Voice (agent responses)</span>
+            <span class="value">${escapeHtml(fmtCostUsd(voice > 0 ? voice : null))}</span>
+          </div>
+          <div class="cost-breakdown-row">
+            <span class="label">Transcription (STT)</span>
+            <span class="value">${escapeHtml(fmtCostUsd(transcribe > 0 ? transcribe : null))}</span>
+          </div>
+          <div class="cost-breakdown-row">
+            <span class="label">Key details (extraction)</span>
+            <span class="value">${escapeHtml(fmtCostUsd(extract > 0 ? extract : null))}</span>
+          </div>
+          <div class="cost-breakdown-row">
+            <span class="label">Call summary</span>
+            <span class="value">${escapeHtml(fmtCostUsd(summary > 0 ? summary : null))}</span>
+          </div>
         </div>
-        <div class="cost-breakdown-row">
-          <span class="label">Transcription (STT)</span>
-          <span class="value">${escapeHtml(fmtCostUsd(transcribe > 0 ? transcribe : null))}</span>
+        <div class="cost-breakdown-summary">
+          <span class="cost-total-label">Total estimated cost</span>
+          <span class="cost-total-value">${escapeHtml(fmtCostUsd(total > 0 ? total : null))}</span>
+          <p class="cost-breakdown-note">Estimated from token usage × configured Azure rates (Voice Live + transcribe). Actual billing may differ slightly.</p>
         </div>
-        <div class="cost-breakdown-row">
-          <span class="label">Key details (extraction)</span>
-          <span class="value">${escapeHtml(fmtCostUsd(extract > 0 ? extract : null))}</span>
-        </div>
-        <div class="cost-breakdown-row">
-          <span class="label">Call summary</span>
-          <span class="value">${escapeHtml(fmtCostUsd(summary > 0 ? summary : null))}</span>
-        </div>
-        <div class="cost-breakdown-row total">
-          <span class="label">Total estimated cost</span>
-          <span class="value">${escapeHtml(fmtCostUsd(total > 0 ? total : null))}</span>
-        </div>
-        <p class="cost-breakdown-note">Estimated from token usage × configured Azure rates (Voice Live + transcribe). Actual billing may differ slightly.</p>
       </div>`;
     }
 
@@ -1549,11 +1810,11 @@
       const turnLabel = metricsAvgLabel(metrics, call);
       const tokenTotals = sumMetricTokens(metrics);
       const cards = [
-        ["Response latency · model", avgMetric(metrics, "ttfaMs")],
+        ["Time to first audio", avgDerived(metrics, deriveFirstAudioMs)],
         ["Speech → Text", avgMetric(metrics, "sttMs")],
         ["Thinking", avgMetric(metrics, "thinkMs")],
         ["Text → Speech", avgMetric(metrics, "ttsMs")],
-        ["Response time", avgMetric(metrics, "responseMs")],
+        ["End-to-end response time", avgDerived(metrics, deriveE2eResponseMs)],
         ["Output tokens", avgOutputTokens(metrics)],
         ["Tokens / sec", avgTokensPerSec(metrics)],
       ];
@@ -1589,10 +1850,10 @@
             row.seq != null ? row.seq : row.turn,
             fmtMs(m.sttMs),
             fmtMs(m.thinkMs),
-            fmtMs(m.ttfaMs),
+            fmtMs(deriveFirstAudioMs(m)),
             fmtMs(m.ttsStartMs != null ? m.ttsStartMs : m.ttfaMs),
             fmtMs(m.ttsMs),
-            fmtMs(m.responseMs),
+            fmtMs(deriveE2eResponseMs(m)),
             fmtMs(m.turnMs),
             tokens,
             rowVoiceCostUsd(row) > 0 ? fmtCostUsd(rowVoiceCostUsd(row)) : "—",
@@ -1663,7 +1924,7 @@
       });
 
       const detailEl = document.getElementById("callDetail");
-      detailEl.innerHTML = '<div class="loading-state">Loading call details…</div>';
+      detailEl.innerHTML = loadingPanel("Loading call details…", "detail");
 
       if (pushState) {
         const url = new URL(window.location.href);
@@ -1736,8 +1997,8 @@
               <table class="data-table">
                 <thead>
                   <tr>
-                    <th>#</th><th>STT</th><th>Think</th><th>Resp.&nbsp;latency</th><th>First&nbsp;audio</th><th>TTS</th>
-                    <th>Response</th><th>Total</th><th>Tokens (in/out)</th>
+                    <th>#</th><th>STT</th><th>Think</th><th>To&nbsp;first&nbsp;audio</th><th>TTS&nbsp;start</th><th>TTS</th>
+                    <th>E2E&nbsp;response</th><th>Total</th><th>Tokens (in/out)</th>
                     <th>Voice</th><th>Key&nbsp;details</th><th>Turn&nbsp;total</th>
                   </tr>
                 </thead>

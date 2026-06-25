@@ -20,28 +20,16 @@ from azure.core.credentials import AzureKeyCredential
 from azure.identity.aio import ManagedIdentityCredential
 from azure.ai.voicelive.aio import connect as voicelive_connect
 from azure.ai.voicelive.models import (
-    AudioEchoCancellation,
-    AudioNoiseReduction,
-    AzureSemanticDetection,
-    AzureSemanticVad,
-    AzureStandardVoice,
-    EouThresholdLevel,
-    InputAudioFormat,
-    Modality,
-    OutputAudioFormat,
-    RequestSession,
     ServerEventType,
 )
 
 from .ambient_mixer import AmbientMixer
 from app import call_store
-from app.agent_persona import (
-    AGENT_VOICE_NAME,
-    AGENT_VOICE_RATE,
-    AGENT_VOICE_STYLE,
-    AGENT_VOICE_TEMPERATURE,
-    BROKERAGE_NAME,
-    LEAD_QUALIFICATION_INSTRUCTIONS,
+from app.agent_persona import BROKERAGE_NAME
+from app.voice_live_session import (
+    build_request_session,
+    log_session_options,
+    resolve_session_options,
 )
 from app.usage_cost import (
     compute_transcribe_cost_usd,
@@ -107,7 +95,8 @@ class VoiceLiveMediaHandler:
         self._max_buffer_size = 480000  # 10 seconds of audio
         self._buffer_warning_logged = False
         self._tts_playback_started = False
-        self._min_buffer_to_start = 9600  # 200ms buffer before starting TTS playback
+        self._session_options = resolve_session_options()
+        self._min_buffer_to_start = self._session_options.tts_playback_buffer_bytes
 
         # Ambient mixer initialization
         self._ambient_mixer: Optional[AmbientMixer] = None
@@ -141,39 +130,9 @@ class VoiceLiveMediaHandler:
         self._extract_cost_usd = 0.0
         self._summary_cost_usd = 0.0
 
-    def _session_config(self) -> RequestSession:
+    def _session_config(self):
         """Return the typed session configuration for Voice Live."""
-        voice_kwargs = {
-            "name": AGENT_VOICE_NAME,
-            "temperature": AGENT_VOICE_TEMPERATURE,
-        }
-        if AGENT_VOICE_STYLE:
-            voice_kwargs["style"] = AGENT_VOICE_STYLE
-        if AGENT_VOICE_RATE:
-            voice_kwargs["rate"] = AGENT_VOICE_RATE
-
-        return RequestSession(
-            modalities=[Modality.TEXT, Modality.AUDIO],
-            instructions=LEAD_QUALIFICATION_INSTRUCTIONS,
-            # Semantic end-of-utterance detection: wait until the caller is
-            # actually finished speaking (not just a brief pause), so turns
-            # feel human instead of getting cut off or awkwardly delayed.
-            turn_detection=AzureSemanticVad(
-                end_of_utterance_detection=AzureSemanticDetection(
-                    threshold_level=EouThresholdLevel.MEDIUM,
-                ),
-                # Barge-in: the instant the caller starts talking, interrupt the
-                # agent and discard the audio she hadn't spoken yet — she stops,
-                # listens, then responds, like a real person.
-                interrupt_response=True,
-                auto_truncate=True,
-            ),
-            input_audio_format=InputAudioFormat.PCM16,
-            output_audio_format=OutputAudioFormat.PCM16,
-            input_audio_noise_reduction=AudioNoiseReduction(type="azure_deep_noise_suppression"),
-            input_audio_echo_cancellation=AudioEchoCancellation(),
-            voice=AzureStandardVoice(**voice_kwargs),
-        )
+        return build_request_session(self._session_options, model=self.model)
 
     # ------------------------------------------------------------------
     # Voice Live connection
@@ -207,6 +166,7 @@ class VoiceLiveMediaHandler:
         t2 = time.perf_counter()
         logger.info("[VoiceLive] SDK connected in %.2fs (total %.2fs)", t2 - t1, t2 - t0)
         self._voicelive_connected = True
+        log_session_options(self._session_options, model=self.model)
 
         await self.conn.session.update(session=self._session_config())
         await self.conn.response.create()
@@ -328,11 +288,7 @@ class VoiceLiveMediaHandler:
                                 await self._mark(
                                     "first_audio",
                                     ts=now,
-                                    ttfaMs=self._response_latency_ms(
-                                        stt_done=ar["user"].get("stt_done"),
-                                        created=ar.get("created"),
-                                        first_audio=now,
-                                    ),
+                                    ttfaMs=self._delta_ms(ar.get("created"), now),
                                 )
                             await self.on_audio_delta(delta)
 
@@ -558,15 +514,6 @@ class VoiceLiveMediaHandler:
         ms = round((t_end - t_start) * 1000)
         return ms if ms >= 0 else None
 
-    @staticmethod
-    def _response_latency_ms(*, stt_done, created, first_audio):
-        """Model latency to first audio: think + first-audio generation (excludes STT)."""
-        anchor = stt_done if stt_done is not None else created
-        if anchor is None or first_audio is None:
-            return None
-        ms = round((first_audio - anchor) * 1000)
-        return ms if ms >= 0 else None
-
     async def _mark(self, name, *, ts=None, emit=True, **info):
         """Record a per-turn timestamp and emit a timeline event to the metrics hook."""
         now = ts if ts is not None else time.perf_counter()
@@ -672,16 +619,24 @@ class VoiceLiveMediaHandler:
             "userSpeechMs": self._delta_ms(speech_started, speech_stopped),
             "sttFirstMs": self._delta_ms(speech_stopped, u.get("stt_first")),
             "sttMs": self._delta_ms(speech_stopped, stt_done),
-            # Segment durations (each column = time spent in that phase only).
-            "thinkMs": self._delta_ms(stt_done or speech_stopped, created),
-            "ttfaMs": self._response_latency_ms(
-                stt_done=stt_done, created=created, first_audio=first_audio
-            ),
+            # Model planning: caller stop → response.created (excludes side STT).
+            "thinkMs": self._delta_ms(speech_stopped, created),
+            "ttfaMs": self._delta_ms(created, first_audio),
+            "firstAudioMs": self._delta_ms(speech_stopped, first_audio),
             "ttsStartMs": self._delta_ms(created, first_audio),
             "ttsMs": self._delta_ms(first_audio, audio_done),
             "responseMs": self._delta_ms(created, done),
             "turnMs": self._delta_ms(speech_started or created, done),
         }
+        # Caller-centric totals (match analytics / Call History formulas).
+        fa = metrics.get("firstAudioMs")
+        tts = metrics.get("ttsMs")
+        if fa is not None and tts is not None:
+            metrics["e2eResponseMs"] = fa + tts
+        else:
+            e2e_stop = self._delta_ms(speech_stopped, audio_done or done)
+            if e2e_stop is not None:
+                metrics["e2eResponseMs"] = e2e_stop
         self._metrics_seq += 1
         payload = {
             "Kind": "AgentEvent",

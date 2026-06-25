@@ -1,4 +1,11 @@
-"""LLM-driven extraction of key conversation details (no fixed form schema)."""
+"""LLM-driven extraction of key conversation details (no fixed form schema).
+
+Domain-agnostic by design: keys, labels, and values are derived purely from what
+is said on each call — the agent's question paired with the caller's answer — not
+from any hard-coded field taxonomy. The live paths are the Voice Live text
+sessions in llm_extract_insights() (per-turn key details) and
+llm_generate_call_summary() (end-of-call summary).
+"""
 
 import asyncio
 import json
@@ -22,35 +29,44 @@ from app.transcript_sanitize import normalize_insight_value
 
 logger = logging.getLogger(__name__)
 
-_EXTRACT_SYSTEM = """You analyze live voice-call transcripts for a financial services agent.
-Extract structured field values — not narrative sentences. Use labels and keys that match what was actually discussed.
+_EXTRACT_SYSTEM = """You read a live transcript of a phone call between an AGENT and a human CALLER, and extract the key details the caller stated as structured fields shown live on a dashboard. Each line is marked Agent or Caller.
 
-Return JSON only:
-{"insights":[{"key":"snake_case_slug","label":"Short field label","value":"Brief value","confidence":0.0-1.0}]}
+The call can be about ANYTHING (support, scheduling, intake, screening, sales, services, healthcare, HR, anything). You have NO domain knowledge and NO expected or predefined fields. Every key, label, and value must emerge purely from what was actually said in THIS conversation — never from assumptions about what this type of call "usually" involves.
 
-Rules:
-- Extract ONLY facts the CALLER stated or clearly confirmed — ignore options the agent lists.
-- REQUIRED label: human-readable name for THIS fact in context (e.g. "Cash-out amount", "Current balance", "Current rate", "Lender", "Loan purpose", "Contact preference", "TCPA consent"). Never use purchase-only labels like "Down payment" or "Purchase timeline" unless the caller is buying a home.
-- key: snake_case slug (e.g. loan_purpose, cash_out_amount, current_balance, current_rate, lender, contact_preference, tcpa_consent, recording_consent, credit_score, state, zip, down_payment, purchase_timeline, property_type, annual_income, employment_status). Pick keys that match the call type (purchase, refinance, cash-out, HELOC).
-- value: brief phrase only (e.g. "Cash-out refinance", "$30,000", "Company Zeta", "~$100,000"). Never full sentences. Never start with "The caller".
-- NEVER emit placeholder values: do not return "not provided", "unknown", "N/A", "not discussed", or similar — omit the field entirely if the caller did not state it.
-- If the caller corrects an earlier fact, return the updated value with the SAME key.
-- Correct speech-to-text errors when obvious.
-- Do not repeat facts listed under "Already extracted" unless correcting them.
-- Return {"insights":[]} if nothing new yet.
-- confidence (0.0–1.0) reflects how clearly the CALLER stated the fact:
-  - 0.9–1.0: stated clearly and directly, no hedging
-  - 0.65–0.8: approximate ("around", "roughly", "about", "approximately", ranges)
-  - 0.4–0.6: vague or uncertain
-  - omit field if not stated — do not use low confidence as a substitute for missing data"""
+Work by SEMANTIC QUESTION/ANSWER PAIRING: read every caller answer in the context of the agent's preceding question or prompt. The agent's question tells you the TOPIC (use it to derive the key and label); the caller's reply gives you the VALUE. An answer like "a couple months" is only meaningful next to the question it answers.
 
-SUMMARY_SYSTEM = """You summarize mortgage pre-qualification phone calls for loan-officer handoff.
+ANTI-HALLUCINATION (highest priority):
+- Extract ONLY facts the CALLER explicitly stated or clearly confirmed (e.g. answered "yes" or "correct" to a direct question). The evidence must be in the caller's own words.
+- NEVER infer, guess, assume, complete, or fabricate a fact the caller did not state.
+- The agent's questions, examples, and listed options are NOT facts, even if the caller stayed silent — unless the caller explicitly adopts them.
+- Do not normalize a value into something the caller did not say; keep their meaning. You may fix obvious speech-to-text errors only.
+- If anything is uncertain, ambiguous, or only implied, OMIT it. Missing data is correct; fabrication is not.
 
-Read the ENTIRE transcript. Your summary must reflect everything material the caller stated — do not omit names, companies, numbers, rates, balances, amounts, or preferences.
+Return JSON only, exactly this shape:
+{"insights":[{"key":"snake_case_slug","label":"Short human label","value":"brief value","confidence":0.0-1.0}]}
 
-Include when present: loan purpose/type, current rate and lender, remaining balance, cash-out or loan amount, property location, credit/income/employment, purchase or refi timeline, TCPA/recording consent, contact preference, and next steps.
+- key: a generic snake_case slug naming the topic in plain language, derived from the question's meaning (e.g. timeline, reason_for_call, preferred_date, party_size). No industry jargon, no domain assumptions.
+- label: a short human noun phrase for that topic (e.g. "Timeline", "Reason For Call", "Preferred Date").
+- value: a brief phrase from what the caller said (e.g. "~2 months", "broken heater", "Friday afternoon"). Never a full sentence; never begin with "The caller".
+- Never emit placeholder values like "not provided", "unknown", "N/A", or "none" — omit the field entirely instead.
+- confidence:
+  - 0.9-1.0: stated clearly and directly, no hedging
+  - 0.65-0.8: approximate or hedged ("around", "about", "roughly", "I think", ranges)
+  - 0.4-0.6: vague but still stated
+  - not stated -> omit the field; do not use low confidence as a stand-in for missing data
 
-Write 2–3 concise prose paragraphs (no bullets, no markdown). Be complete and factual. Separate paragraphs with one blank line."""
+Examples (cross-domain, illustrative only — not a menu of expected fields):
+- Agent: "What's your timeline?" Caller: "a couple months" => {"key":"timeline","label":"Timeline","value":"~2 months","confidence":0.75}
+- Agent: "What seems to be the issue?" Caller: "my heater stopped working" => {"key":"reported_issue","label":"Reported Issue","value":"heater not working","confidence":0.95}
+- Agent: "How many people in your party?" Caller: "maybe four" => {"key":"party_size","label":"Party Size","value":"~4","confidence":0.7}
+
+If the caller corrects an earlier fact, re-emit it with the SAME key and the new value. Do not repeat anything listed under "Already extracted" unless you are correcting it. Return {"insights":[]} when there is nothing new to add."""
+
+SUMMARY_SYSTEM = """You write an end-of-call summary of a phone call between an AGENT and a human CALLER, for handoff to whoever handles the call next. Read the ENTIRE transcript. The call can be about anything, and you have no assumptions about what it should contain — summarize only what actually happened in this conversation.
+
+Your summary must reflect everything material the caller stated: do not omit names, organizations, numbers, dates, amounts, identifiers, preferences, decisions, confirmations or consents, and any agreed next steps. Capture the reason for the call, what was discussed and decided, any unresolved or pending items, and what should happen next, so the next person can pick up without re-listening to the call. Do not invent or infer details the caller did not state, and do not normalize values into something that was not said.
+
+Write 2-3 concise prose paragraphs in plain language. No bullet points, no markdown, no headings, no domain-specific jargon. Be complete and factual, attribute facts to the caller where it matters, and separate paragraphs with one blank line."""
 
 EXTRACT_SYSTEM = _EXTRACT_SYSTEM
 
@@ -90,38 +106,6 @@ def _build_extract_credential() -> AzureKeyCredential | ManagedIdentityCredentia
 
 _SLUG_RE = re.compile(r"[^a-z0-9]+")
 
-_INSIGHT_KEY_LABELS = {
-    "loan_purpose": "Loan purpose",
-    "loan_type": "Loan type",
-    "location": "State",
-    "state": "State",
-    "zip": "ZIP code",
-    "zip_status": "ZIP status",
-    "timeline": "Timeline",
-    "purchase_timeline": "Purchase timeline",
-    "amount": "Amount",
-    "cash_out_amount": "Cash-out amount",
-    "current_balance": "Current balance",
-    "down_payment": "Down payment",
-    "credit_score": "Credit score",
-    "employment": "Employment status",
-    "employment_status": "Employment status",
-    "income": "Annual income",
-    "annual_income": "Annual income",
-    "contact": "Contact preference",
-    "contact_preference": "Contact preference",
-    "consent": "TCPA consent",
-    "tcpa_consent": "TCPA consent",
-    "recording_consent": "Call recording consent",
-    "property_status": "Property type",
-    "property_type": "Property type",
-    "next_step": "Next step",
-    "rate": "Current rate",
-    "current_rate": "Current rate",
-    "lender": "Lender",
-    "other": "Other",
-}
-
 _PLACEHOLDER_VALUE_RE = re.compile(
     r"^(?:not[\s_]?provided|not[\s_]?discussed|not[\s_]?disclosed|unknown|n/a|na|none|"
     r"declined|not_provided|no(?:ne)?(?:\s+provided)?|unspecified)$",
@@ -137,11 +121,14 @@ def _is_placeholder_value(value: str) -> bool:
 
 
 def _insight_label(key: str, explicit: str | None = None) -> str:
+    """Human label for a fact. Prefer the model's label; else title-case the key.
+
+    Fully generic — no domain-specific key→label mapping, so any topic the call
+    surfaces gets a sensible label.
+    """
     label = (explicit or "").strip()
     if label:
         return label
-    if key in _INSIGHT_KEY_LABELS:
-        return _INSIGHT_KEY_LABELS[key]
     return (key or "Detail").replace("_", " ").strip().title()
 
 
@@ -192,61 +179,6 @@ def _adjust_confidence(raw_value: str, conf: float | None) -> float | None:
         return min(conf, 0.75)
     return conf
 
-_MONEY_RE = re.compile(
-    r"\$\s?\d[\d,]*(?:\.\d{2})?"
-    r"|\b\d[\d,]{2,}(?:\.\d{2})?\s*(?:dollars|usd)\b"
-    r"|\b\d+(?:\.\d+)?\s*(?:k|thousand|million)\b",
-    re.I,
-)
-_TIMELINE_RE = re.compile(
-    r"\b(\d{1,2}(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?)|"
-    r"tomorrow|today|this morning|this afternoon|next week)\b",
-    re.I,
-)
-_DURATION_RE = re.compile(r"\b(\d+\s*(?:days?|weeks?|months?))\b", re.I)
-_ZIP_RE = re.compile(r"\b(\d{5})\b")
-_CONTACT_RE = re.compile(
-    r"\b(prefer(?:s|red)?\s+(?:a\s+)?(?:phone\s+)?call|"
-    r"text(?: message)?|email|phone call)\b",
-    re.I,
-)
-_CONSENT_RE = re.compile(
-    r"\b(yes|yeah|sure|that works|works for me|okay|ok|no|nope|don't|do not)\b.*"
-    r"(?:consent|works for you|works for me|recorded|contact|fine with)",
-    re.I,
-)
-
-_US_STATES = {
-    "alabama", "alaska", "arizona", "arkansas", "california", "colorado",
-    "connecticut", "delaware", "florida", "georgia", "hawaii", "idaho",
-    "illinois", "indiana", "iowa", "kansas", "kentucky", "louisiana",
-    "maine", "maryland", "massachusetts", "michigan", "minnesota",
-    "mississippi", "missouri", "montana", "nebraska", "nevada",
-    "new hampshire", "new jersey", "new mexico", "new york",
-    "north carolina", "north dakota", "ohio", "oklahoma", "oregon",
-    "pennsylvania", "rhode island", "south carolina", "south dakota",
-    "tennessee", "texas", "utah", "vermont", "virginia", "washington",
-    "west virginia", "wisconsin", "wyoming",
-}
-
-_CITY_LABELS = {
-    "los angeles": "Los Angeles, California",
-    "san francisco": "San Francisco, California",
-    "san diego": "San Diego, California",
-    "new york city": "New York City, New York",
-    "new york": "New York",
-    "chicago": "Chicago, Illinois",
-    "houston": "Houston, Texas",
-    "phoenix": "Phoenix, Arizona",
-    "dallas": "Dallas, Texas",
-    "austin": "Austin, Texas",
-    "seattle": "Seattle, Washington",
-    "denver": "Denver, Colorado",
-    "miami": "Miami, Florida",
-    "atlanta": "Atlanta, Georgia",
-    "boston": "Boston, Massachusetts",
-}
-
 
 def _slug(label: str) -> str:
     slug = _SLUG_RE.sub("_", (label or "").lower()).strip("_")
@@ -277,15 +209,6 @@ def _trim_turns_for_summary(turns: list[dict]) -> list[dict]:
     return kept
 
 
-def _fact(key: str, value: str, confidence: float = 0.8) -> dict:
-    return {
-        "id": key,
-        "key": key,
-        "value": value,
-        "confidence": confidence,
-    }
-
-
 def _dedupe_insights(items: list[dict]) -> list[dict]:
     out = []
     seen_keys = set()
@@ -303,424 +226,6 @@ def _dedupe_insights(items: list[dict]) -> list[dict]:
         seen_values.add(norm)
         out.append(normalized)
     return out
-
-
-def _normalize_asr(text: str) -> str:
-    """Fix common speech-to-text concatenations before heuristic matching."""
-    return re.sub(r"home\s*equity", "home equity", text, flags=re.I)
-
-
-def _user_turn_texts(turns: list[dict]) -> list[str]:
-    return [
-        _normalize_asr((t.get("text") or "").strip())
-        for t in turns
-        if t.get("role") == "user" and (t.get("text") or "").strip()
-    ]
-
-
-def _user_text(turns: list[dict]) -> str:
-    return " ".join(_user_turn_texts(turns))
-
-
-def _parse_location(text: str) -> str | None:
-    lower = text.lower()
-    for city, label in sorted(_CITY_LABELS.items(), key=lambda x: -len(x[0])):
-        if city in lower:
-            return label
-    for state in sorted(_US_STATES, key=len, reverse=True):
-        if re.search(rf"\b{re.escape(state)}\b", lower):
-            return state.title()
-    match = re.search(
-        r"\b(?:in|from|live in|located in|property in|state of)\s+"
-        r"([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\b",
-        text,
-    )
-    if match:
-        place = match.group(1).strip()
-        if place.lower() not in {"time", "the", "a", "an", "this", "that", "well", "state"}:
-            return place
-    return None
-
-
-def _loan_purpose_fact(user_lower: str) -> dict | None:
-    """Detect loan purpose from caller speech only — ignore agent suggestions."""
-    if not user_lower.strip():
-        return None
-
-    if re.search(
-        r"\bhome equity line of credit\b|\bheloc\b|\bhome equity\b.*\bline of credit\b",
-        user_lower,
-    ):
-        return _fact(
-            "loan_purpose",
-            "The caller is seeking a home equity line of credit (HELOC).",
-            0.92,
-        )
-    if re.search(r"\bcash[- ]?out\b", user_lower):
-        return _fact(
-            "loan_purpose",
-            "The caller wants a cash-out refinance.",
-            0.9,
-        )
-    if re.search(r"\brefinanc\w*\b", user_lower):
-        if "existing mortgage" in user_lower:
-            return _fact(
-                "loan_purpose",
-                "The caller wants to refinance their existing mortgage.",
-                0.93,
-            )
-        return _fact(
-            "loan_purpose",
-            "The caller is interested in refinancing.",
-            0.9,
-        )
-    if re.search(r"\bhome equity\b", user_lower):
-        return _fact(
-            "loan_purpose",
-            "The caller wants to access home equity.",
-            0.88,
-        )
-    if re.search(
-        r"\b(?:purchase|buy(?:ing)?)\s+(?:a\s+)?(?:home|house|property)\b", user_lower
-    ) or re.search(r"\blooking to purchase\b", user_lower):
-        return _fact(
-            "loan_purpose",
-            "The caller is looking to purchase a home.",
-            0.9,
-        )
-    return None
-
-
-def _timeline_fact(turns: list[dict]) -> dict | None:
-    """Use the caller's most recent timeline statement (supports corrections)."""
-    for text in reversed(_user_turn_texts(turns)):
-        lower = text.lower()
-        if not re.search(
-            r"\b\d+\s*(?:days?|weeks?|months?|years?)\b|"
-            r"\bfew months\b|"
-            r"\btimeline\b|"
-            r"\bnext week\b|"
-            r"\btomorrow\b|"
-            r"\btoday\b",
-            lower,
-        ):
-            continue
-
-        m = re.search(r"\b(\d+)\s*(?:to|-)\s*(\d+)\s*months?\b", lower)
-        if m:
-            return _fact(
-                "timeline",
-                f"The caller's expected timeline is about {m.group(1)} to {m.group(2)} months.",
-                0.9,
-            )
-
-        if re.search(r"\bfew months\b", lower) and re.search(
-            r"shift|changed|later|instead|now|personal|family", lower
-        ):
-            return _fact(
-                "timeline",
-                "The caller's timeline has shifted to a few months out.",
-                0.87,
-            )
-
-        m = _DURATION_RE.search(lower)
-        if m:
-            return _fact(
-                "timeline",
-                f"The caller's expected timeline is about {m.group(1).strip()}.",
-                0.85,
-            )
-
-        m = _TIMELINE_RE.search(lower)
-        if m:
-            return _fact(
-                "timeline",
-                f"The caller's expected timeline is {m.group(1).strip()}.",
-                0.82,
-            )
-    return None
-
-
-def _credit_score_fact(turns: list[dict]) -> dict | None:
-    """Extract the caller's latest credit-score range from their own words."""
-    for text in reversed(_user_turn_texts(turns)):
-        lower = text.lower()
-        if not re.search(r"credit|\bscore\b|\b\d{3}\b", lower):
-            continue
-
-        m = re.search(
-            r"(?:now|currently|today).{0,60}"
-            r"(?:around|about|roughly|near|is|at)?\s*(\d{3})\b",
-            lower,
-        )
-        if m and 300 <= int(m.group(1)) <= 850:
-            return _fact(
-                "credit_score",
-                f"The caller's current credit score is around {m.group(1)}.",
-                0.88,
-            )
-
-        m = re.search(
-            r"(?:around|about|roughly|near|somewhat)\s*(\d{3})\b(?:\s*now)?",
-            lower,
-        )
-        if m and 300 <= int(m.group(1)) <= 850:
-            return _fact(
-                "credit_score",
-                f"The caller's credit score is around {m.group(1)}.",
-                0.86,
-            )
-
-        m = re.search(r"(?:above|over|in the)\s*(\d{3})\b", lower)
-        if m and 300 <= int(m.group(1)) <= 850:
-            qualifier = "above" if re.search(r"above|over", lower) else "around"
-            return _fact(
-                "credit_score",
-                f"The caller's credit score is {qualifier} {m.group(1)}.",
-                0.84,
-            )
-
-        m = re.search(r"\b(\d{3})s\b", lower)
-        if m and 300 <= int(m.group(1)) <= 850:
-            return _fact(
-                "credit_score",
-                f"The caller's credit score is in the {m.group(1)}s.",
-                0.84,
-            )
-    return None
-
-
-def _employment_fact(turns: list[dict]) -> dict | None:
-    """Extract employment status from the caller's most recent statement."""
-    for text in reversed(_user_turn_texts(turns)):
-        lower = text.lower()
-        if not re.search(
-            r"employ|unemploy|retired|self[- ]?employ|income|lpa|lakh",
-            lower,
-        ):
-            continue
-
-        prev_income = re.search(
-            r"(?:earlier|previous|prior|was).{0,40}"
-            r"income.{0,25}(?:around|about|roughly)?\s*(\d+)\s*(?:lpa|lakh)",
-            lower,
-        )
-        no_income = re.search(
-            r"(?:now|currently).{0,30}(?:0|zero)|income.{0,20}(?:0|zero|none)",
-            lower,
-        )
-
-        if "unemployed" in lower:
-            if prev_income and no_income:
-                return _fact(
-                    "employment",
-                    f"The caller is currently unemployed with no current income; "
-                    f"prior income was about {prev_income.group(1)} LPA.",
-                    0.91,
-                )
-            if prev_income:
-                return _fact(
-                    "employment",
-                    f"The caller is currently unemployed; prior income was about "
-                    f"{prev_income.group(1)} LPA.",
-                    0.9,
-                )
-            if no_income:
-                return _fact(
-                    "employment",
-                    "The caller is currently unemployed with no current income.",
-                    0.9,
-                )
-            return _fact(
-                "employment",
-                "The caller is currently unemployed.",
-                0.88,
-            )
-
-        if re.search(r"\bself[- ]?employed\b", lower):
-            return _fact("employment", "The caller is self-employed.", 0.88)
-
-        if re.search(r"\bretired\b", lower):
-            return _fact("employment", "The caller is retired.", 0.88)
-
-        if re.search(r"\bemployed\b", lower):
-            income = re.search(
-                r"income.{0,25}(?:around|about|roughly)?\s*(\d+)\s*(?:lpa|lakh)",
-                lower,
-            )
-            if income:
-                return _fact(
-                    "employment",
-                    f"The caller is employed with income around {income.group(1)} LPA.",
-                    0.87,
-                )
-            return _fact("employment", "The caller is employed.", 0.85)
-    return None
-
-
-def _property_status_fact(turns: list[dict]) -> dict | None:
-    """Property search status from the caller's latest relevant statement."""
-    for text in reversed(_user_turn_texts(turns)):
-        lower = text.lower()
-        if re.search(r"\bfound a property\b|\bunder contract\b|\balready own\b", lower):
-            return _fact(
-                "property_status",
-                "The caller already has or has found a property.",
-                0.88,
-            )
-        if re.search(r"\bstill looking\b|\bstill searching\b|\blooking for a property\b", lower):
-            return _fact(
-                "property_status",
-                "The caller is still searching for a property.",
-                0.9,
-            )
-    return None
-
-
-def analyze_conversation(turns: list[dict]) -> list[dict]:
-    """Synthesize analytical key facts from the full conversation so far."""
-    user = _user_text(turns)
-    if not user.strip():
-        return []
-
-    user_lower = user.lower()
-    found: list[dict] = []
-
-    purpose = _loan_purpose_fact(user_lower)
-    if purpose:
-        found.append(purpose)
-
-    location = _parse_location(user)
-    if location:
-        found.append(
-            _fact(
-                "location",
-                f"The caller's property is in {location}.",
-                0.85,
-            )
-        )
-
-    zip_match = _ZIP_RE.search(user)
-    if zip_match:
-        found.append(
-            _fact(
-                "zip",
-                f"The caller's ZIP code is {zip_match.group(1)}.",
-                0.92,
-            )
-        )
-    elif re.search(
-        r"(?:don't|do not|dont|no|not)\s+(?:have|got)?\s*(?:any\s+)?zip",
-        user_lower,
-    ) or re.search(r"\bwithout a zip\b", user_lower):
-        found.append(
-            _fact(
-                "zip_status",
-                "The caller has not provided a ZIP code yet.",
-                0.88,
-            )
-        )
-
-    money = _MONEY_RE.search(user)
-    if money:
-        found.append(
-            _fact(
-                "amount",
-                f"The caller mentioned a loan amount of {money.group(0).strip()}.",
-                0.85,
-            )
-        )
-
-    timeline = _timeline_fact(turns)
-    if timeline:
-        found.append(timeline)
-
-    credit = _credit_score_fact(turns)
-    if credit:
-        found.append(credit)
-
-    employment = _employment_fact(turns)
-    if employment:
-        found.append(employment)
-
-    contact = _CONTACT_RE.search(user)
-    if contact:
-        pref = contact.group(1).strip().lower()
-        if "text" in pref:
-            value = "The caller prefers follow-up by text message."
-        elif "email" in pref:
-            value = "The caller prefers follow-up by email."
-        else:
-            value = "The caller prefers follow-up by phone call."
-        found.append(_fact("contact", value, 0.85))
-
-    if _CONSENT_RE.search(user):
-        found.append(
-            _fact(
-                "consent",
-                "The caller responded to the consent and contact-preference question.",
-                0.78,
-            )
-        )
-
-    property_status = _property_status_fact(turns)
-    if property_status:
-        found.append(property_status)
-
-    for turn in reversed(turns):
-        if turn.get("role") != "assistant":
-            continue
-        text = (turn.get("text") or "").strip()
-        lower = text.lower()
-        if "loan officer" in lower and ("reach out" in lower or "follow up" in lower):
-            found.append(
-                _fact(
-                    "next_step",
-                    "A loan officer will follow up with the caller.",
-                    0.84,
-                )
-            )
-            break
-
-    return _dedupe_insights(found)
-
-
-def extract_new_insights(
-    turns: list[dict], emitted: dict
-) -> list[dict]:
-    """Return new or corrected analytical facts for the client."""
-    analyzed = analyze_conversation(turns)
-    new: list[dict] = []
-    for item in analyzed:
-        row = _normalize_insight_row(item)
-        if not row:
-            continue
-        key = row["key"]
-        value = row["value"]
-        if _emitted_value(emitted.get(key)) == value:
-            continue
-        row["replace"] = key in emitted
-        emitted[key] = {
-            "key": key,
-            "label": row.get("label"),
-            "value": value,
-            "confidence": row.get("confidence"),
-        }
-        new.append(row)
-    return new
-
-
-def extract_insights_incremental(
-    turns: list[dict], processed: int = 0
-) -> list[dict]:
-    """Compatibility wrapper — prefer extract_new_insights with emitted dict."""
-    _ = processed
-    return extract_new_insights(turns, {})
-
-
-def extract_insights_heuristic(turns: list[dict]) -> list[dict]:
-    """Full heuristic analysis pass."""
-    return extract_new_insights(turns, {})
 
 
 def _extract_json_payload(raw: str) -> str:
@@ -933,9 +438,11 @@ def build_call_summary_prompt(
                 f"{facts}\n"
             )
     parts.append(
-        "Summarize this entire call from the transcript above. Include every specific fact "
-        "the caller stated — loan type, amounts, rates, lender/company names, balance, contact "
-        "preference, consent, and next steps. Do not skip proper nouns or numbers."
+        "Summarize this entire call from the transcript above into 2-3 prose paragraphs. "
+        "Include every specific fact the caller stated or confirmed — proper nouns (names, "
+        "organizations, places), numbers, amounts, dates, identifiers, stated preferences, "
+        "decisions, consents, and any agreed next steps — and do not skip proper nouns or "
+        "numbers or invent anything not said."
     )
     return "\n".join(parts)
 
@@ -1083,4 +590,3 @@ def _merge_new_insights(
         }
         new.append(row)
     return new
-

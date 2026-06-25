@@ -55,6 +55,33 @@ async def _close_clients(client, aad_credential) -> None:
             pass
 
 
+async def query_items(
+    query: str, parameters: list | None = None, *, max_items: int = 5000
+) -> list[dict]:
+    """Run a read-only SQL query against the calls container (cross-partition).
+
+    Used by analytics aggregation. Returns an empty list if Cosmos is disabled
+    or the query fails — callers must tolerate an empty result.
+    """
+    if not is_enabled():
+        return []
+    container, client, aad_credential = await _open_container()
+    if container is None:
+        return []
+    try:
+        items: list[dict] = []
+        async for doc in container.query_items(query=query, parameters=parameters or []):
+            items.append(doc)
+            if len(items) >= max_items:
+                break
+        return items
+    except Exception:
+        logger.exception("[Cosmos] Analytics query failed")
+        return []
+    finally:
+        await _close_clients(client, aad_credential)
+
+
 async def list_calls(*, limit: int = 50, offset: int = 0) -> list[dict]:
     """Return recent call documents, newest first. Empty list if Cosmos is disabled."""
     if not is_enabled():

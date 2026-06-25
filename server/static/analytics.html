@@ -1,0 +1,978 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Analytics · Sales Agent</title>
+  <link rel="icon" href="/static/sales-agent-logo.png" type="image/png">
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <script src="/static/us-states.js"></script>
+  <style>
+    :root,
+    [data-theme="light"] {
+      --font-sans: 'Inter', system-ui, sans-serif;
+      --qt-black: #000000;
+      --qt-primary: #8929fe;
+      --qt-primary-hover: #7420db;
+      --qt-heading: #002060;
+      --qt-border: #dddddd;
+      --bg-deep: #ffffff;
+      --bg-main: #f5f7fa;
+      --bg-panel: #ffffff;
+      --bg-card: #ffffff;
+      --bg-elevated: #f8fafc;
+      --border: #dddddd;
+      --border-subtle: #e8e8e8;
+      --text-primary: #111111;
+      --text-secondary: #5c6678;
+      --text-muted: #767676;
+      --nav-bg: #0c1222;
+      --nav-accent: #a78bfa;
+      --nav-border: rgba(255, 255, 255, 0.08);
+      --nav-text: rgba(255, 255, 255, 0.92);
+      --nav-text-muted: rgba(255, 255, 255, 0.72);
+      --panel-shadow: 0 8px 32px rgba(17, 17, 17, 0.08);
+      --radius-sm: 4px;
+      --radius-md: 8px;
+      --teal: #14b8a6;
+      --amber: #f59e0b;
+      --green: #22c55e;
+      --red: #ef4444;
+      --violet-soft: #c4b5fd;
+    }
+
+    [data-theme="dark"] {
+      --qt-primary: #8929fe;
+      --qt-primary-hover: #7420db;
+      --qt-heading: #ffffff;
+      --bg-deep: #0c1222;
+      --bg-main: #0e1628;
+      --bg-panel: #152238;
+      --bg-card: #152238;
+      --bg-elevated: #1a2844;
+      --border: rgba(255, 255, 255, 0.14);
+      --border-subtle: rgba(255, 255, 255, 0.08);
+      --text-primary: #f5f5f5;
+      --text-secondary: #b0b8c4;
+      --text-muted: #8b95a5;
+      --panel-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+    }
+
+    * { box-sizing: border-box; }
+    * { scrollbar-width: none; -ms-overflow-style: none; }
+    *::-webkit-scrollbar { display: none; width: 0; height: 0; }
+
+    body {
+      margin: 0;
+      font-family: var(--font-sans);
+      background: var(--bg-main);
+      height: 100vh;
+      overflow: hidden;
+      color: var(--text-primary);
+    }
+
+    /* ---- Nav (shared with other pages) ---- */
+    .app-nav {
+      display: flex; align-items: center; gap: 1.5rem;
+      padding: 0 1.25rem; height: 58px;
+      background: var(--nav-bg); color: var(--nav-text);
+      border-bottom: 1px solid var(--nav-border);
+      z-index: 100; overflow: hidden; position: relative;
+    }
+    .app-nav::before {
+      content: ""; position: absolute; inset: 0;
+      background: radial-gradient(ellipse 35% 140% at 0% 50%, rgba(137, 41, 254, 0.16) 0%, transparent 72%);
+      pointer-events: none;
+    }
+    .app-nav > * { position: relative; z-index: 1; }
+    .nav-brand { display: flex; align-items: center; gap: 0.65rem; }
+    .nav-brand-icon { width: 36px; height: 36px; flex-shrink: 0; display: block; border-radius: 50%; object-fit: cover; }
+    .nav-brand-text { font-size: 1.05rem; font-weight: 700; letter-spacing: 0.04em; color: #fff; line-height: 1.2; white-space: nowrap; }
+    .nav-brand-text .accent { color: var(--nav-accent); font-weight: 600; letter-spacing: 0; }
+    .nav-links { display: flex; align-items: center; gap: 0.25rem; flex: 1; }
+    .nav-link { padding: 0.42rem 0.85rem; border-radius: var(--radius-sm); font-size: 0.84rem; font-weight: 600; color: var(--nav-text-muted); text-decoration: none; }
+    .nav-link.active { background: var(--qt-primary); color: #fff; }
+    a.nav-link:not(.disabled):not(.active):hover { background: rgba(255, 255, 255, 0.08); color: var(--nav-text); }
+    .nav-link.disabled { opacity: 0.35; pointer-events: none; }
+    .nav-right { display: flex; align-items: center; gap: 0.75rem; margin-left: auto; }
+    .nav-user { font-size: 0.78rem; color: var(--nav-text-muted); max-width: 11rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .logout-btn, .theme-toggle {
+      padding: 0.38rem 0.75rem; border: 1px solid rgba(255, 255, 255, 0.18);
+      border-radius: var(--radius-sm); background: transparent; color: var(--nav-text-muted);
+      font-family: inherit; font-size: 0.78rem; font-weight: 600; cursor: pointer;
+    }
+    .theme-toggle { padding: 0.38rem 0.55rem; }
+
+    /* ---- Analytics shell ---- */
+    .analytics-page {
+      height: calc(100vh - 58px);
+      overflow-y: auto;
+      padding: 1.5rem 1.75rem 3rem;
+      max-width: 1280px;
+      margin: 0 auto;
+    }
+
+    .a-header {
+      display: flex; align-items: flex-start; justify-content: space-between;
+      gap: 1rem; flex-wrap: wrap; margin-bottom: 0.35rem;
+    }
+    .a-title { font-size: 1.45rem; font-weight: 700; color: var(--qt-heading); margin: 0; }
+    .a-sub { font-size: 0.82rem; color: var(--text-muted); margin: 0.2rem 0 0; }
+    .a-controls { display: flex; align-items: center; gap: 0.6rem; }
+
+    .seg { display: inline-flex; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 999px; padding: 3px; }
+    .seg-btn {
+      border: none; background: transparent; color: var(--text-secondary);
+      font-family: inherit; font-size: 0.82rem; font-weight: 600;
+      padding: 0.4rem 0.95rem; border-radius: 999px; cursor: pointer; white-space: nowrap;
+    }
+    .seg-btn.active { background: var(--qt-primary); color: #fff; box-shadow: 0 2px 8px rgba(137, 41, 254, 0.35); }
+
+    .date-pill {
+      display: inline-flex; align-items: center; gap: 0.4rem;
+      border: 1px solid var(--border); background: var(--bg-card); color: var(--text-secondary);
+      border-radius: 999px; padding: 0.4rem 0.85rem; font-size: 0.8rem; font-weight: 600;
+    }
+    .date-pill svg { width: 15px; height: 15px; stroke: var(--text-muted); }
+
+    .a-divider { border: none; border-top: 1px solid var(--border-subtle); margin: 1rem 0 1.25rem; }
+
+    .a-section { display: none; }
+    .a-section.active { display: block; }
+
+    .section-head { display: flex; align-items: center; gap: 0.6rem; margin: 0.25rem 0 1rem; }
+    .section-icon {
+      width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center;
+      background: rgba(137, 41, 254, 0.12); color: var(--qt-primary); flex-shrink: 0;
+    }
+    .section-icon.teal { background: rgba(20, 184, 166, 0.14); color: var(--teal); }
+    .section-icon svg { width: 17px; height: 17px; }
+    .section-title { font-size: 1rem; font-weight: 700; color: var(--qt-heading); }
+    .section-tag { font-size: 0.8rem; color: var(--text-muted); font-weight: 500; }
+
+    /* ---- Cards & grids ---- */
+    .a-card {
+      background: var(--bg-panel); border: 1px solid var(--border);
+      border-radius: var(--radius-md); padding: 1.1rem 1.15rem;
+      box-shadow: var(--panel-shadow);
+    }
+    .grid { display: grid; gap: 1rem; margin-bottom: 1rem; }
+    .kpi-grid { grid-template-columns: repeat(4, 1fr); }
+    .kpi-grid.kpi-grid-3 { grid-template-columns: repeat(3, 1fr); }
+    .kpi-grid.kpi-grid-4 { grid-template-columns: repeat(4, 1fr); }
+
+    /* ---- Latency summary (TTFA vs end-to-end) ---- */
+    .latency-summary {
+      display: grid;
+      gap: 0.75rem;
+      margin-bottom: 1.25rem;
+    }
+    .latency-row {
+      display: grid;
+      grid-template-columns: minmax(160px, 1.4fr) repeat(2, minmax(88px, 0.7fr)) minmax(0, 1.6fr);
+      gap: 0.75rem 1rem;
+      align-items: center;
+      padding: 0.95rem 1.1rem;
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
+      background: var(--bg-card);
+      box-shadow: var(--panel-shadow);
+    }
+    .latency-metric { font-size: 0.88rem; font-weight: 700; color: var(--qt-heading); }
+    .latency-pct { text-align: center; }
+    .latency-pct-label {
+      display: block;
+      font-size: 0.66rem;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      margin-bottom: 0.15rem;
+    }
+    .latency-pct-val {
+      font-size: 1.35rem;
+      font-weight: 700;
+      color: var(--qt-primary);
+      font-variant-numeric: tabular-nums;
+    }
+    .latency-pct-val .unit { font-size: 0.78rem; font-weight: 600; color: var(--text-secondary); margin-left: 0.1rem; }
+    .latency-note { font-size: 0.72rem; color: var(--text-muted); line-height: 1.45; }
+    .grid-latency-charts { grid-template-columns: 1fr 1fr; }
+    @media (max-width: 980px) {
+      .latency-row { grid-template-columns: 1fr 1fr; }
+      .latency-metric { grid-column: 1 / -1; }
+      .latency-note { grid-column: 1 / -1; }
+    }
+    .grid-3 { grid-template-columns: repeat(3, 1fr); }
+    .grid-2 { grid-template-columns: 1fr 1fr; }
+    .grid-wide { grid-template-columns: 1.6fr 1fr; }
+    .grid-map { grid-template-columns: 1.35fr 1fr; }
+
+    .kpi-card { background: var(--bg-panel); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 0.85rem 1rem; }
+    .kpi-label { font-size: 0.74rem; color: var(--text-muted); font-weight: 600; }
+    .kpi-value { font-size: 1.85rem; font-weight: 700; color: var(--text-primary); line-height: 1.1; margin-top: 0.25rem; font-variant-numeric: tabular-nums; }
+    .kpi-value .unit { font-size: 0.95rem; font-weight: 600; color: var(--text-secondary); margin-left: 1px; }
+    .kpi-note { font-size: 0.68rem; color: var(--text-muted); font-weight: 600; margin-left: 0.35rem; }
+    .kpi-delta { font-size: 0.72rem; font-weight: 600; margin-top: 0.4rem; display: flex; align-items: center; gap: 0.25rem; }
+    .kpi-delta.good { color: var(--green); }
+    .kpi-delta.bad { color: var(--red); }
+    .kpi-delta.flat { color: var(--text-muted); }
+
+    .card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.6rem; margin-bottom: 0.65rem; }
+    .card-title { font-size: 0.92rem; font-weight: 700; color: var(--qt-heading); }
+    .card-sub { font-size: 0.72rem; color: var(--text-muted); margin-top: 0.15rem; line-height: 1.4; }
+    .card-head-text { min-width: 0; flex: 1; }
+    .card-pill { font-size: 0.7rem; font-weight: 600; color: var(--text-secondary); background: var(--bg-elevated); border: 1px solid var(--border-subtle); border-radius: 999px; padding: 0.2rem 0.6rem; white-space: nowrap; flex-shrink: 0; }
+
+    /* ---- Bar list ---- */
+    .bar-list { display: grid; gap: 0.7rem; }
+    .bar-row { display: grid; grid-template-columns: minmax(72px, 108px) 1fr 44px; align-items: center; gap: 0.7rem; }
+    .bar-label { font-size: 0.78rem; color: var(--text-secondary); font-weight: 500; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .bar-track {
+      display: block;
+      width: 100%;
+      min-width: 0;
+      height: 9px;
+      border-radius: 999px;
+      background: var(--bg-elevated);
+      overflow: hidden;
+    }
+    [data-theme="dark"] .bar-track { background: rgba(255, 255, 255, 0.08); }
+    .bar-fill {
+      display: block;
+      height: 100%;
+      min-width: 0;
+      border-radius: 999px;
+      background: var(--qt-primary);
+    }
+    .bar-val { font-size: 0.78rem; font-weight: 700; color: var(--text-primary); text-align: right; font-variant-numeric: tabular-nums; }
+
+    /* ---- Donut ---- */
+    .donut-wrap { display: flex; align-items: center; gap: 1.1rem; }
+    .donut-wrap.stacked {
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      gap: 1.15rem;
+      min-height: 300px;
+      padding: 0.75rem 0 1.25rem;
+    }
+    .donut-svg { flex-shrink: 0; }
+    .donut-wrap.stacked .donut-svg { width: 220px; height: 220px; }
+    .donut-center-top { font-size: 1.5rem; font-weight: 700; fill: var(--text-primary); }
+    .donut-center-sub { font-size: 0.7rem; font-weight: 600; fill: var(--text-muted); }
+    .donut-wrap.stacked .donut-center-top { font-size: 2rem; }
+    .donut-wrap.stacked .donut-center-sub { font-size: 0.82rem; }
+    .donut-legend { display: grid; gap: 0.5rem; flex: 1; }
+    .donut-wrap.stacked .donut-legend {
+      flex: none;
+      width: 100%;
+      max-width: 280px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.55rem;
+    }
+    .legend-item { display: grid; grid-template-columns: 12px 1fr auto; align-items: center; gap: 0.5rem; font-size: 0.8rem; }
+    .donut-wrap.stacked .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 0.55rem;
+      font-size: 0.85rem;
+    }
+    .donut-wrap.stacked .legend-dot { width: 11px; height: 11px; }
+    .legend-dot { width: 10px; height: 10px; border-radius: 3px; }
+    .legend-label { color: var(--text-secondary); }
+    .legend-val { font-weight: 700; color: var(--text-primary); font-variant-numeric: tabular-nums; }
+
+    /* ---- Line chart ---- */
+    .line-chart {
+      margin-top: 0.35rem;
+      overflow: hidden;
+      border-radius: 4px;
+    }
+    .line-chart svg { width: 100%; height: auto; display: block; overflow: hidden; }
+    .x-labels {
+      display: flex; justify-content: space-between; margin-top: 0.4rem;
+      padding-left: calc(44 / 560 * 100%); padding-right: calc(14 / 560 * 100%);
+      font-size: 0.68rem; color: var(--text-muted);
+    }
+    .lc-y-label { font-size: 0.65rem; fill: var(--text-muted); font-weight: 600; font-variant-numeric: tabular-nums; }
+    .lc-val-label { font-size: 0.68rem; fill: var(--text-primary); font-weight: 700; font-variant-numeric: tabular-nums; }
+
+    /* ---- Stacked latency bar ---- */
+    .stack-total { font-size: 1.4rem; font-weight: 700; color: var(--text-primary); }
+    .stack-total .unit { font-size: 0.8rem; color: var(--text-secondary); font-weight: 600; }
+    .stack-bar { display: flex; height: 14px; border-radius: 999px; overflow: hidden; margin: 0.7rem 0 1rem; background: var(--bg-elevated); }
+    .stack-seg { height: 100%; }
+    .stack-legend { display: grid; gap: 0.55rem; }
+
+    /* ---- US tile map ---- */
+    .usmap { margin-top: 0.3rem; }
+    .usmap svg { width: 100%; height: auto; display: block; }
+    .usmap-empty { display: grid; place-items: center; min-height: 220px; }
+    .us-state { stroke: #ffffff; stroke-width: 0.75; transition: fill 0.15s ease, stroke 0.15s ease; }
+    .us-state:hover { stroke: var(--qt-heading); stroke-width: 1.25; cursor: default; }
+    .map-foot { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-top: 0.9rem; }
+    .map-scale { display: flex; align-items: center; gap: 0.45rem; font-size: 0.7rem; color: var(--text-muted); }
+    .map-scale .ramp { width: 90px; height: 9px; border-radius: 999px; background: linear-gradient(90deg, rgba(137,41,254,0.14), rgba(137,41,254,0.95)); }
+    .map-peak { font-size: 0.72rem; color: var(--text-secondary); font-weight: 600; }
+
+    /* ---- Objection chips ---- */
+    .chip-wrap { display: flex; flex-wrap: wrap; gap: 0.55rem; }
+    .chip {
+      display: inline-flex; align-items: center; gap: 0.45rem;
+      border: 1px solid var(--border-subtle); border-radius: 999px;
+      padding: 0.42rem 0.7rem 0.42rem 0.85rem; font-size: 0.8rem; color: var(--text-secondary); font-weight: 500;
+    }
+    .chip-n { font-size: 0.74rem; font-weight: 700; color: var(--qt-primary); background: rgba(137, 41, 254, 0.12); border-radius: 999px; padding: 0.05rem 0.45rem; }
+
+    @media (max-width: 980px) {
+      .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+      .grid-3, .grid-2, .grid-wide, .grid-map, .grid-latency-charts { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 540px) {
+      .kpi-grid { grid-template-columns: 1fr; }
+    }
+
+    .analytics-loading {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 360px;
+      gap: 1rem;
+      padding: 2rem 1rem;
+      color: var(--text-muted);
+      font-size: 0.88rem;
+      font-weight: 500;
+    }
+
+    .loading-ring {
+      width: 46px;
+      height: 46px;
+      border: 3px solid var(--border);
+      border-top-color: var(--qt-primary);
+      border-right-color: rgba(137, 41, 254, 0.35);
+      border-radius: 50%;
+      animation: loading-spin 0.8s linear infinite;
+    }
+
+    @keyframes loading-spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .a-controls.is-loading {
+      opacity: 0.55;
+      pointer-events: none;
+    }
+
+    .analytics-empty-banner {
+      margin: 0 0 1.25rem;
+      padding: 0.75rem 1rem;
+      border-radius: var(--radius-md);
+      border: 1px solid var(--border);
+      background: var(--bg-elevated);
+      color: var(--text-secondary);
+      font-size: 0.84rem;
+      font-weight: 500;
+    }
+  </style>
+</head>
+<body>
+  <nav class="app-nav">
+    <div class="nav-brand">
+      <img class="nav-brand-icon" src="/static/sales-agent-logo.png" alt="" width="36" height="36">
+      <span class="nav-brand-text">Sales <span class="accent">Agent</span></span>
+    </div>
+    <div class="nav-links">
+      <a class="nav-link" href="/">Pre-Qual Call</a>
+      <a class="nav-link" href="/history">Call History</a>
+      <a class="nav-link active" href="/analytics">Analytics</a>
+      <a class="nav-link disabled">Settings</a>
+    </div>
+    <div class="nav-right">
+      <button type="button" class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="Toggle theme">☾</button>
+      <span class="nav-user" id="navUser"></span>
+      <button type="button" class="logout-btn" onclick="logout()">Sign out</button>
+    </div>
+  </nav>
+
+  <div class="analytics-page">
+    <div class="a-header">
+      <div>
+        <h1 class="a-title">Call analytics</h1>
+        <p class="a-sub">Voice agent · lead qualification</p>
+      </div>
+      <div class="a-controls">
+        <div class="seg">
+          <button type="button" class="seg-btn active" data-tab="business" onclick="setTab('business')">Business</button>
+          <button type="button" class="seg-btn" data-tab="ai" onclick="setTab('ai')">AI performance</button>
+        </div>
+        <span class="date-pill">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4.5" width="18" height="16" rx="2"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/></svg>
+          Last 7 days
+        </span>
+      </div>
+    </div>
+    <hr class="a-divider" />
+
+    <section id="tab-business" class="a-section active">
+      <div class="analytics-loading" id="analyticsLoading" role="status" aria-live="polite">
+        <div class="loading-ring" aria-hidden="true"></div>
+        <span>Loading analytics…</span>
+      </div>
+    </section>
+    <section id="tab-ai" class="a-section"></section>
+  </div>
+
+  <script>
+    /* ---------------- Shared shell behaviour ---------------- */
+    function toggleTheme() {
+      const html = document.documentElement;
+      const next = html.getAttribute("data-theme") === "dark" ? "light" : "dark";
+      html.setAttribute("data-theme", next);
+      localStorage.setItem("qt-theme", next);
+      document.getElementById("themeToggle").textContent = next === "dark" ? "☀" : "☾";
+    }
+    function applySavedTheme() {
+      const saved = localStorage.getItem("qt-theme") || "light";
+      document.documentElement.setAttribute("data-theme", saved);
+      document.getElementById("themeToggle").textContent = saved === "dark" ? "☀" : "☾";
+    }
+    async function ensureAuthenticated() {
+      try {
+        const res = await fetch("/auth/session", { credentials: "same-origin" });
+        if (!res.ok) { window.location.replace("/login"); return false; }
+        const data = await res.json();
+        const navUser = document.getElementById("navUser");
+        if (navUser && data.email) navUser.textContent = data.email;
+        return true;
+      } catch (_) { window.location.replace("/login"); return false; }
+    }
+    async function logout() {
+      let logoutUrl = null;
+      try {
+        const res = await fetch("/auth/logout", { method: "POST", credentials: "same-origin" });
+        const data = await res.json().catch(() => ({}));
+        logoutUrl = data.logoutUrl || null;
+      } catch (_) {}
+      window.location.replace(logoutUrl || "/login");
+    }
+    function setTab(tab) {
+      document.querySelectorAll(".seg-btn").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
+      document.getElementById("tab-business").classList.toggle("active", tab === "business");
+      document.getElementById("tab-ai").classList.toggle("active", tab === "ai");
+    }
+
+    function last7DayLabels() {
+      const labels = [];
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date();
+        d.setDate(d.getDate() - i);
+        labels.push(d.toLocaleDateString("en-US", { weekday: "short" }));
+      }
+      return labels;
+    }
+
+    function emptyPayload() {
+      const labels = last7DayLabels();
+      const zeroDays = labels.map(() => 0);
+      return {
+        callCount: 0,
+        business: {
+          kpis: [
+            { label: "Total calls", value: "0" },
+            { label: "Avg call duration", value: "—" },
+            { label: "Avg details / call", value: "—" },
+            { label: "Total est. cost", value: "$0.00" },
+          ],
+          daily: { labels, values: zeroDays },
+          avgPerDay: 0,
+          loanPurpose: [],
+          topFields: [],
+          timeline: [],
+          credit: [],
+          states: {},
+          channels: [],
+        },
+        ai: {
+          latencySummary: [
+            {
+              label: "Time to first audio",
+              note: "Caller stops speaking → agent starts speaking",
+              p50: { value: "—", unit: null },
+              p95: { value: "—", unit: null },
+            },
+            {
+              label: "End-to-end response time",
+              note: "Caller stops speaking → agent finishes response",
+              p50: { value: "—", unit: null },
+              p95: { value: "—", unit: null },
+            },
+          ],
+          kpis: [
+            { label: "Avg field confidence", value: "—" },
+            { label: "TTFA within SLA", value: "—", unit: "%", note: "≤0.6s" },
+            { label: "E2E within SLA", value: "—", unit: "%", note: "≤1.2s" },
+            { label: "Calls with summary", value: "—", unit: "%" },
+          ],
+          latencyFirstAudio: { labels, values: zeroDays, sla: 0.6 },
+          latencyE2e: { labels, values: zeroDays, sla: 1.2 },
+          e2eAvgS: 0,
+          ttfaAvgS: 0,
+          stage: [],
+          captureByField: [],
+          confidenceDist: [],
+          reliability: [
+            { label: "Avg field confidence", value: 0, display: "—" },
+            { label: "Turns within SLA", value: 0, display: "—" },
+            { label: "Calls with summary", value: 0, display: "—" },
+          ],
+        },
+      };
+    }
+
+    const EMPTY_REASONS = {
+      cosmos_disabled: "Cosmos DB is not configured. Set COSMOS_ENDPOINT to enable analytics.",
+      no_calls: "No calls recorded in the last 7 days.",
+      aggregation_failed: "Analytics aggregation failed. Check server logs and try again.",
+      fetch_failed: "Could not load analytics. Check your connection and refresh the page.",
+    };
+
+    function setEmptyBanner(reason) {
+      let el = document.getElementById("analyticsEmptyBanner");
+      if (!reason) {
+        if (el) el.remove();
+        return;
+      }
+      const msg = EMPTY_REASONS[reason] || EMPTY_REASONS.fetch_failed;
+      if (!el) {
+        el = document.createElement("div");
+        el.id = "analyticsEmptyBanner";
+        el.className = "analytics-empty-banner";
+        el.setAttribute("role", "status");
+        const divider = document.querySelector(".analytics-page > .a-divider");
+        divider?.after(el);
+      }
+      el.textContent = msg;
+    }
+
+    const DONUT_PALETTE = ["var(--qt-primary)", "var(--teal)", "var(--amber)", "var(--violet-soft)", "#94a3b8", "#64748b"];
+    const STAGE_PALETTE = ["var(--qt-primary)", "var(--teal)", "var(--violet-soft)", "#94a3b8"];
+    const CONF_COLORS = { High: "var(--green)", Approximate: "var(--amber)", Vague: "var(--red)" };
+    function withColors(list, palette, byLabel) {
+      return (list || []).map((s, i) => ({ ...s, color: (byLabel && byLabel[s.label]) || palette[i % palette.length] }));
+    }
+    const EMPTY_NOTE = `<div style="color:var(--text-muted);font-size:0.8rem;padding:0.5rem 0">No data captured yet for this range.</div>`;
+
+    /* ---------------- Chart helpers (no external libs) ---------------- */
+    const BAR_PALETTE = {
+      "var(--qt-primary)": [137, 41, 254],
+      "var(--teal)": [20, 184, 166],
+      "var(--green)": [34, 197, 94],
+      "var(--amber)": [245, 158, 11],
+      "var(--red)": [239, 68, 68],
+    };
+
+    function accuracyColor(v) { return v >= 85 ? "var(--green)" : v >= 70 ? "var(--amber)" : "var(--red)"; }
+
+    /** Bar fill: higher weight → stronger colour (width and opacity both scale). */
+    function barFillColor(base, value, max) {
+      const rgb = BAR_PALETTE[base] || BAR_PALETTE["var(--qt-primary)"];
+      const weight = Math.max(0, Math.min(1, value / (max || 100)));
+      const alpha = 0.22 + weight * 0.78;
+      return `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, ${alpha.toFixed(2)})`;
+    }
+
+    function barList(rows, opts = {}) {
+      const max = opts.max || 100;
+      const html = rows.map((r) => {
+        const pct = Math.max(0, Math.min(100, (r.value / max) * 100));
+        const base = opts.colorFn ? opts.colorFn(r.value) : (opts.color || "var(--qt-primary)");
+        const color = opts.solidColor ? base : barFillColor(base, r.value, max);
+        const val = opts.fmt ? opts.fmt(r) : r.value + "%";
+        const fillW = pct > 0 ? Math.max(pct, 1.5) : 0;
+        return `<div class="bar-row">
+          <span class="bar-label">${r.label}</span>
+          <span class="bar-track"><span class="bar-fill" style="width:${fillW}%;background:${color}"></span></span>
+          <span class="bar-val">${val}</span>
+        </div>`;
+      }).join("");
+      return `<div class="bar-list">${html}</div>`;
+    }
+
+    let _donutId = 0;
+    function donut(segments, opts = {}) {
+      const size = opts.size || 168, sw = opts.stroke || 22;
+      const r = (size - sw) / 2, cx = size / 2, cy = size / 2, C = 2 * Math.PI * r;
+      const total = segments.reduce((s, x) => s + x.value, 0) || 1;
+      let off = 0;
+      const arcs = segments.map((s) => {
+        const len = (s.value / total) * C;
+        const seg = `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${s.color}" stroke-width="${sw}" stroke-dasharray="${len.toFixed(2)} ${(C - len).toFixed(2)}" stroke-dashoffset="${(-off).toFixed(2)}" transform="rotate(-90 ${cx} ${cy})"/>`;
+        off += len; return seg;
+      }).join("");
+      const subY = cy + Math.round(size * 0.1);
+      return `<svg class="donut-svg" viewBox="0 0 ${size} ${size}" width="${size}" height="${size}">
+        <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="var(--border-subtle)" stroke-width="${sw}"/>
+        ${arcs}
+        <text x="${cx}" y="${cy - 2}" text-anchor="middle" class="donut-center-top">${opts.centerTop || ""}</text>
+        <text x="${cx}" y="${subY}" text-anchor="middle" class="donut-center-sub">${opts.centerSub || ""}</text>
+      </svg>`;
+    }
+
+    function donutLegend(segments, opts = {}) {
+      const stacked = opts.layout === "stacked";
+      const donutOpts = {
+        ...opts,
+        size: stacked ? (opts.size || 220) : (opts.size || 168),
+        stroke: stacked ? (opts.stroke || 30) : (opts.stroke || 22),
+      };
+      const items = segments.map((s) => `
+        <div class="legend-item">
+          <span class="legend-dot" style="background:${s.color}"></span>
+          <span class="legend-label">${s.label}</span>
+          <span class="legend-val">${s.value}%</span>
+        </div>`).join("");
+      const cls = stacked ? "donut-wrap stacked" : "donut-wrap";
+      return `<div class="${cls}">${donut(segments, donutOpts)}<div class="donut-legend">${items}</div></div>`;
+    }
+
+    let _lcId = 0;
+    function niceTicks(min, max, targetCount, integer) {
+      if (max <= min) return [min, max];
+      const span = max - min;
+      const raw = span / Math.max(1, targetCount);
+      const pow = Math.pow(10, Math.floor(Math.log10(raw)));
+      const norm = raw / pow;
+      let step = pow;
+      if (norm <= 1) step = pow;
+      else if (norm <= 2) step = 2 * pow;
+      else if (norm <= 5) step = 5 * pow;
+      else step = 10 * pow;
+      if (integer) step = Math.max(1, Math.round(step));
+      const start = Math.floor(min / step) * step;
+      const ticks = [];
+      for (let v = start; v <= max + step * 0.001; v += step) {
+        if (v >= min - step * 0.001) ticks.push(integer ? Math.round(v) : v);
+      }
+      return ticks;
+    }
+
+    function lineChart(values, opts = {}) {
+      const id = "lc" + (_lcId++);
+      const w = 560, h = 210, pad = { t: 28, r: 14, b: 14, l: 44 };
+      const accent = opts.accent || "var(--qt-primary)";
+      const dataMax = values.length ? Math.max(...values) : 0;
+      const min = opts.min != null ? opts.min : 0;
+      const max = opts.max != null ? opts.max : (dataMax * 1.08 || 1);
+      const span = (max - min) || 1;
+      const iw = w - pad.l - pad.r, ih = h - pad.t - pad.b;
+      const integerY = !!opts.integerY;
+      const ticks = niceTicks(min, max, 4, integerY);
+      const plotBottom = pad.t + ih;
+      const grid = ticks.map((t, idx) => {
+        const y = pad.t + ih - ((t - min) / span) * ih;
+        const label = opts.yFmt ? opts.yFmt(t) : (integerY ? String(Math.round(t)) : t.toFixed(1));
+        const isBottom = idx === 0 || Math.abs(t - min) < span * 0.001;
+        const isTop = idx === ticks.length - 1 || Math.abs(t - max) < span * 0.001;
+        const ly = isBottom ? y - 5 : isTop ? y + 11 : y;
+        const baseline = isBottom ? "auto" : isTop ? "hanging" : "middle";
+        return `<line x1="${pad.l}" y1="${y.toFixed(1)}" x2="${w - pad.r}" y2="${y.toFixed(1)}" stroke="var(--border-subtle)" stroke-width="1"/>
+          <text x="${pad.l - 10}" y="${ly.toFixed(1)}" text-anchor="end" dominant-baseline="${baseline}" class="lc-y-label">${label}</text>`;
+      }).join("");
+      const xs = values.map((_, i) => pad.l + (values.length > 1 ? i * (iw / (values.length - 1)) : iw / 2));
+      const ys = values.map((v) => pad.t + ih - ((v - min) / span) * ih);
+      const line = xs.map((x, i) => `${i ? "L" : "M"}${x.toFixed(1)} ${ys[i].toFixed(1)}`).join(" ");
+      const area = `${line} L${xs[xs.length - 1].toFixed(1)} ${plotBottom.toFixed(1)} L${xs[0].toFixed(1)} ${plotBottom.toFixed(1)} Z`;
+      const dots = xs.map((x, i) => `<circle cx="${x.toFixed(1)}" cy="${ys[i].toFixed(1)}" r="3" fill="var(--bg-panel)" stroke="${accent}" stroke-width="2"/>`).join("");
+      const valLabels = opts.showValues ? values.map((v, i) => {
+        if (v === 0) return "";
+        const txt = opts.valueFmt ? opts.valueFmt(v) : String(v);
+        return `<text x="${xs[i].toFixed(1)}" y="${(ys[i] - 9).toFixed(1)}" text-anchor="middle" class="lc-val-label">${txt}</text>`;
+      }).join("") : "";
+      let sla = "";
+      if (opts.sla != null) {
+        const sy = pad.t + ih - ((opts.sla - min) / span) * ih;
+        sla = `<line x1="${pad.l}" y1="${sy.toFixed(1)}" x2="${(w - pad.r).toFixed(1)}" y2="${sy.toFixed(1)}" stroke="var(--red)" stroke-width="1.5" stroke-dasharray="5 4" opacity="0.7"/>`;
+      }
+      return `<svg viewBox="0 0 ${w} ${h}" role="img" aria-label="Line chart">
+        <defs><linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="${accent}" stop-opacity="0.28"/>
+          <stop offset="100%" stop-color="${accent}" stop-opacity="0.02"/>
+        </linearGradient></defs>
+        ${grid}
+        <path d="${area}" fill="url(#${id})"/>
+        <path d="${line}" fill="none" stroke="${accent}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+        ${sla}${dots}${valLabels}
+      </svg>`;
+    }
+
+    function xLabels(labels) {
+      return `<div class="x-labels">${labels.map((l) => `<span>${l}</span>`).join("")}</div>`;
+    }
+
+    /* ---- US geographic choropleth (real state shapes; intensity = volume) ---- */
+    /* Geometry comes from /static/us-states.js (window.US_STATE_PATHS), Albers-USA
+       projection with Alaska & Hawaii as lower-left insets. Data + color ramp + legend
+       are unchanged from the prior tile-grid; only the shapes differ. */
+    function usMap(states) {
+      states = states || {};
+      const P = window.US_STATE_PATHS;
+      if (!P) return `<div class="usmap usmap-empty">${EMPTY_NOTE}</div>`;
+      const vals = Object.values(states);
+      const max = vals.length ? Math.max(...vals) : 1;
+      const shapes = Object.keys(P).map((ab) => {
+        const v = states[ab];
+        const has = v != null;
+        // States with calls get the purple intensity ramp; no-data states render
+        // light grey so the map outline stays visible. Fill must be an inline
+        // attribute (not CSS) or a CSS rule would override the per-state colors.
+        const fill = has ? `rgba(137,41,254,${(0.14 + 0.84 * (v / max)).toFixed(2)})` : "#e6e7ee";
+        return `<path class="us-state" fill="${fill}" d="${P[ab]}"><title>${ab}: ${has ? v : 0} calls</title></path>`;
+      }).join("");
+      return `<div class="usmap"><svg viewBox="-60 8 1008 592" preserveAspectRatio="xMidYMid meet" role="img" aria-label="US map: calls by property state">${shapes}</svg></div>`;
+    }
+
+    function kpiCards(kpis) {
+      return kpis.map((k) => {
+        const arrow = k.dir === "up" ? "▲" : k.dir === "down" ? "▼" : "—";
+        const tone = k.tone || (k.dir === "flat" ? "flat" : "good");
+        const delta = k.delta ? `<div class="kpi-delta ${tone}">${arrow} ${k.delta}</div>` : "";
+        return `<div class="kpi-card">
+          <div class="kpi-label">${k.label}${k.note ? `<span class="kpi-note">(${k.note})</span>` : ""}</div>
+          <div class="kpi-value">${k.value}${k.unit ? `<span class="unit">${k.unit}</span>` : ""}</div>
+          ${delta}
+        </div>`;
+      }).join("");
+    }
+
+    function fmtLatencyPct(p) {
+      if (!p || p.value === "—") return "—";
+      return `${p.value}${p.unit ? `<span class="unit">${p.unit}</span>` : ""}`;
+    }
+
+    function latencySummary(rows) {
+      if (!rows || !rows.length) return "";
+      return `<div class="latency-summary">${rows.map((r) => `
+        <div class="latency-row">
+          <div class="latency-metric">${r.label}</div>
+          <div class="latency-pct"><span class="latency-pct-label">p50</span><span class="latency-pct-val">${fmtLatencyPct(r.p50)}</span></div>
+          <div class="latency-pct"><span class="latency-pct-label">p95</span><span class="latency-pct-val">${fmtLatencyPct(r.p95)}</span></div>
+          <div class="latency-note">${r.note || ""}</div>
+        </div>`).join("")}</div>`;
+    }
+
+    function renderLatencyChart(series, opts) {
+      if (!series) return EMPTY_NOTE;
+      const lv = series.values || [], sla = series.sla;
+      const lmax = Math.max(sla || 0, ...(lv.length ? lv : [sla || 1])) * 1.12;
+      const active = lv.filter((v) => v > 0);
+      const met = active.filter((v) => v <= sla).length;
+      const slaPill = active.length ? `SLA met ${met} / ${active.length} days` : "No latency data";
+      return `
+        <div class="a-card">
+          <div class="card-head">
+            <div class="card-head-text"><div class="card-title">${opts.title}</div><div class="card-sub">${opts.subtitle}</div></div>
+            <span class="card-pill">${slaPill}</span>
+          </div>
+          <div class="line-chart">${lineChart(lv, { accent: opts.accent || "var(--teal)", min: 0, max: lmax, sla: sla, yFmt: (v) => (v === 0 ? "0" : v.toFixed(1) + "s") })}</div>
+          ${xLabels(series.labels || [])}
+        </div>`;
+    }
+
+    function iconChart() { return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>`; }
+    function iconCpu() { return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3"/></svg>`; }
+
+    /* ---------------- Render ---------------- */
+    function renderBusiness(payload) {
+      const b = payload.business;
+      const calls = String(payload.callCount != null ? payload.callCount : "");
+      const dmax = Math.max(...(b.daily.values.length ? b.daily.values : [1])) * 1.15;
+      const purpose = withColors(b.loanPurpose, DONUT_PALETTE);
+      const channels = withColors(b.channels, DONUT_PALETTE);
+      const peak = b.statePeak ? `Peak: ${b.statePeak.name} (${b.statePeak.count})` : "";
+
+      document.getElementById("tab-business").innerHTML = `
+        <div class="section-head">
+          <span class="section-icon">${iconChart()}</span>
+          <span class="section-title">Business metrics</span>
+          <span class="section-tag">Lead volume, quality &amp; pipeline</span>
+        </div>
+
+        <div class="grid kpi-grid">${kpiCards(b.kpis)}</div>
+
+        <div class="grid grid-wide">
+          <div class="a-card">
+            <div class="card-head">
+              <div><div class="card-title">Daily call frequency</div><div class="card-sub">Calls handled per day</div></div>
+              <span class="card-pill">Avg ${b.avgPerDay}/day</span>
+            </div>
+            <div class="line-chart">${lineChart(b.daily.values, { accent: "var(--qt-primary)", min: 0, max: dmax, integerY: true, showValues: true })}</div>
+            ${xLabels(b.daily.labels)}
+          </div>
+          <div class="a-card">
+            <div class="card-head"><div class="card-title">Loan purpose</div></div>
+            ${purpose.length ? donutLegend(purpose, { centerTop: calls, centerSub: "calls" }) : EMPTY_NOTE}
+          </div>
+        </div>
+
+        <div class="grid grid-3">
+          <div class="a-card"><div class="card-head"><div><div class="card-title">Top captured fields</div><div class="card-sub">% of calls captured</div></div></div>${b.topFields.length ? barList(b.topFields, { max: 100, color: "var(--qt-primary)" }) : EMPTY_NOTE}</div>
+          <div class="a-card"><div class="card-head"><div class="card-title">Timeline &amp; urgency</div></div>${b.timeline.length ? barList(b.timeline, { max: 100, color: "var(--teal)" }) : EMPTY_NOTE}</div>
+          <div class="a-card"><div class="card-head"><div class="card-title">Credit range (self-reported)</div></div>${b.credit.length ? barList(b.credit, { max: 100, color: "var(--qt-primary)" }) : EMPTY_NOTE}</div>
+        </div>
+
+        <div class="grid grid-map">
+          <div class="a-card">
+            <div class="card-head"><div><div class="card-title">Calls by property state</div><div class="card-sub">Color intensity = call volume</div></div></div>
+            ${usMap(b.states)}
+            <div class="map-foot">
+              <span class="map-scale">Fewer <span class="ramp"></span> More</span>
+              <span class="map-peak">${peak}</span>
+            </div>
+          </div>
+          <div class="a-card">
+            <div class="card-head"><div><div class="card-title">Calls by channel</div><div class="card-sub">Where calls originate</div></div></div>
+            ${channels.length ? donutLegend(channels, { centerTop: calls, centerSub: "calls", layout: "stacked" }) : EMPTY_NOTE}
+          </div>
+        </div>`;
+    }
+
+    function renderAI(payload) {
+      const a = payload.ai;
+      const stage = withColors(a.stage, STAGE_PALETTE);
+      const stageTotal = stage.reduce((s, x) => s + x.ms, 0) || 1;
+      const stackBar = stage.map((s) => `<span class="stack-seg" style="width:${(s.ms / stageTotal * 100).toFixed(1)}%;background:${s.color}" title="${s.label}: ${s.ms} ms"></span>`).join("");
+      const stageLegend = stage.map((s) => `
+        <div class="legend-item">
+          <span class="legend-dot" style="background:${s.color}"></span>
+          <span class="legend-label">${s.label}</span>
+          <span class="legend-val">${s.ms} ms</span>
+        </div>`).join("");
+
+      const lv = a.latencyE2e || a.latency || { values: [], labels: [], sla: 1.2 };
+      const ttfaSeries = a.latencyFirstAudio || { values: [], labels: [], sla: 0.6 };
+      const conf = withColors(a.confidenceDist, DONUT_PALETTE, CONF_COLORS);
+      const high = (a.confidenceDist.find((x) => x.label === "High") || {}).value || 0;
+
+      document.getElementById("tab-ai").innerHTML = `
+        <div class="section-head">
+          <span class="section-icon teal">${iconCpu()}</span>
+          <span class="section-title">AI performance</span>
+          <span class="section-tag">Caller-centric latency · confidence · reliability</span>
+        </div>
+
+        <div class="grid kpi-grid kpi-grid-4">${kpiCards(a.kpis)}</div>
+
+        ${latencySummary(a.latencySummary)}
+
+        <div class="grid grid-latency-charts">
+          ${renderLatencyChart(ttfaSeries, {
+            title: "Time to first audio",
+            subtitle: "Daily avg · caller stop → first sound",
+            accent: "var(--qt-primary)",
+          })}
+          ${renderLatencyChart(lv, {
+            title: "End-to-end response time",
+            subtitle: "Daily avg · caller stop → response done",
+            accent: "var(--teal)",
+          })}
+        </div>
+
+        <div class="grid grid-2">
+          <div class="a-card">
+            <div class="card-head">
+              <div><div class="card-title">Latency by stage</div><div class="card-sub">Average per-turn stage duration · caller E2E avg ${a.e2eAvgS != null ? a.e2eAvgS.toFixed(2) : "—"}s</div></div>
+            </div>
+            <div class="stack-total">${(stageTotal / 1000).toFixed(2)}<span class="unit">s stage sum / turn</span></div>
+            <div class="stack-bar">${stackBar}</div>
+            <div class="stack-legend">${stageLegend}</div>
+          </div>
+          <div class="a-card">
+            <div class="card-head"><div class="card-title">Latency snapshot</div></div>
+            <div class="bar-list">
+              <div class="bar-row"><span class="bar-label">Avg time to first audio</span><span class="bar-val">${a.ttfaAvgS != null ? a.ttfaAvgS.toFixed(2) + "s" : "—"}</span></div>
+              <div class="bar-row"><span class="bar-label">Avg end-to-end response</span><span class="bar-val">${a.e2eAvgS != null ? a.e2eAvgS.toFixed(2) + "s" : "—"}</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid grid-2">
+          <div class="a-card">
+            <div class="card-head"><div><div class="card-title">Field capture rate</div><div class="card-sub">% of calls where each field was captured</div></div></div>
+            ${a.captureByField.length ? barList(a.captureByField, { max: 100, colorFn: accuracyColor }) : EMPTY_NOTE}
+          </div>
+          <div class="a-card">
+            <div class="card-head"><div><div class="card-title">Extraction confidence &amp; reliability</div><div class="card-sub">Confidence of captured details</div></div></div>
+            ${conf.length ? donutLegend(conf, { centerTop: high + "%", centerSub: "high conf" }) : EMPTY_NOTE}
+            <hr class="a-divider" style="margin:1rem 0 0.9rem" />
+            ${barList(a.reliability, { max: 100, color: "var(--teal)", fmt: (r) => r.display })}
+          </div>
+        </div>`;
+    }
+
+    function setAnalyticsLoading(loading) {
+      const controls = document.querySelector(".a-controls");
+      if (controls) controls.classList.toggle("is-loading", loading);
+      const biz = document.getElementById("tab-business");
+      const ai = document.getElementById("tab-ai");
+      if (loading) {
+        if (biz) {
+          biz.classList.add("active");
+          biz.innerHTML = `<div class="analytics-loading" id="analyticsLoading" role="status" aria-live="polite">
+            <div class="loading-ring" aria-hidden="true"></div>
+            <span>Loading analytics…</span>
+          </div>`;
+        }
+        if (ai) {
+          ai.classList.remove("active");
+          ai.innerHTML = "";
+        }
+      }
+    }
+
+    async function loadAnalytics() {
+      try {
+        const res = await fetch("/api/analytics?range=7d", { credentials: "same-origin" });
+        if (!res.ok) return { ok: false, reason: "fetch_failed" };
+        const j = await res.json();
+        if (!j || !j.enabled) return { ok: false, reason: "cosmos_disabled" };
+        if (j.error === "aggregation_failed") return { ok: false, reason: "aggregation_failed" };
+        if (!j.hasData) return { ok: false, reason: "no_calls" };
+        return { ok: true, payload: j };
+      } catch (_) {
+        return { ok: false, reason: "fetch_failed" };
+      }
+    }
+
+    document.addEventListener("DOMContentLoaded", async () => {
+      applySavedTheme();
+      setAnalyticsLoading(true);
+      const ok = await ensureAuthenticated();
+      if (!ok) return;
+      const result = await loadAnalytics();
+      setAnalyticsLoading(false);
+      const sub = document.querySelector(".a-sub");
+      if (result.ok) {
+        setEmptyBanner(null);
+        if (sub) {
+          sub.textContent = `Voice agent · lead qualification · ${result.payload.callCount} calls · last 7 days`;
+        }
+        renderBusiness(result.payload);
+        renderAI(result.payload);
+        return;
+      }
+      setEmptyBanner(result.reason);
+      if (sub) {
+        sub.textContent = "Voice agent · lead qualification · last 7 days";
+      }
+      renderBusiness(emptyPayload());
+      renderAI(emptyPayload());
+    });
+  </script>
+</body>
+</html>

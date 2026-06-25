@@ -34,6 +34,7 @@ from app.msal_auth import (
 from app.auth_settings import secret_key, session_cookie_secure, session_timeout_minutes
 from app.call_loop import run_call_loop
 from app.call_manager import CallManager
+from app.analytics import compute_analytics
 from app.call_store import get_call, is_enabled as cosmos_enabled, list_calls
 from app.config_validator import validate_config
 from app.handler.web_media_handler import WebMediaHandler
@@ -72,10 +73,12 @@ app.config["AMBIENT_PRESET"] = os.getenv("AMBIENT_PRESET", "none")
 
 # Log ambient configuration on startup
 ambient_preset = app.config["AMBIENT_PRESET"]
+latency_mode = os.getenv("VOICE_LIVE_LATENCY_MODE", "default").strip().lower()
 if ambient_preset and ambient_preset != "none":
     logger.info("Ambient scenes ENABLED: preset='%s'", ambient_preset)
 else:
     logger.info("Ambient scenes DISABLED (preset=none)")
+logger.info("Voice Live latency profile: %s", latency_mode)
 
 # ---------------------------------------------------------------------------
 # Call manager (concurrency limits + timeout enforcement)
@@ -345,6 +348,14 @@ async def history_page():
     return response
 
 
+@app.route("/analytics")
+async def analytics_page():
+    """Aggregate call analytics dashboards (business + AI performance)."""
+    response = await app.send_static_file("analytics.html")
+    response.cache_control.no_store = True
+    return response
+
+
 @app.route("/api/calls")
 async def api_list_calls():
     """GET recent call records from Cosmos DB."""
@@ -384,6 +395,20 @@ async def api_get_call(call_id: str):
     if record is None:
         return jsonify({"error": "Call not found."}), 404
     return jsonify(enrich_call_record(record)), 200
+
+
+@app.route("/api/analytics")
+async def api_analytics():
+    """GET aggregate analytics computed from saved Cosmos call records."""
+    if not cosmos_enabled():
+        return jsonify({"enabled": False, "hasData": False}), 200
+    range_key = request.args.get("range", "7d")
+    try:
+        payload = await compute_analytics(range_key)
+    except Exception:
+        logger.exception("[Analytics] aggregation failed")
+        return jsonify({"enabled": True, "hasData": False, "error": "aggregation_failed"}), 200
+    return jsonify(payload), 200
 
 
 @app.route("/health")
