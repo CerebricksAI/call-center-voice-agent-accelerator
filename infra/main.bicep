@@ -34,6 +34,8 @@ param location string
 param appExists bool
 @description('The OpenAI model name')
 param modelName string = 'gpt-4o-mini'
+@description('Model for an optional second container app (e.g. gpt-realtime-mini). Empty disables the second app.')
+param secondModelName string = 'gpt-realtime-mini'
 @description('The selected telephony provider')
 @allowed(['acs', 'twilio', 'infobip', 'genesys'])
 param telephonyProvider string = 'acs'
@@ -162,6 +164,7 @@ module containerapp 'modules/containerapp.bicep' = {
     containerRegistryName: registry.outputs.name
     aiServicesEndpoint: aiServices.outputs.aiServicesEndpoint
     modelDeploymentName: modelName
+    secondModelDeploymentName: secondModelName
     acsConnectionStringSecretUri: keyvault.outputs.acsConnectionStringUri
     twilioAuthTokenSecretUri: keyvault.outputs.twilioAuthTokenUri
     infobipApiKeySecretUri: keyvault.outputs.infobipApiKeyUri
@@ -194,3 +197,5 @@ var providerEndpoints = {
 output SERVICE_API_ENDPOINTS array = [providerEndpoints[telephonyProvider]]
 output AZURE_VOICE_LIVE_ENDPOINT string = aiServices.outputs.aiServicesEndpoint
 output AZURE_VOICE_LIVE_MODEL string = modelName
+output AZURE_VOICE_LIVE_MODEL_2 string = secondModelName
+output SERVICE_APP2_WEB_URL string = empty(secondModelName) ? '' : 'https://${containerapp.outputs.containerAppRtFqdn}'

@@ -16,6 +16,15 @@ services:
       remoteBuild: true
       buildArgs:
         - TELEPHONY=${TELEPHONY_PROVIDER}
+  app2:
+    project: server
+    host: containerapp
+    language: python
+    docker:
+      path: Dockerfile
+      remoteBuild: true
+      buildArgs:
+        - TELEPHONY=${TELEPHONY_PROVIDER}
 hooks:
   preprovision:
     shell: pwsh
