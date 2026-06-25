@@ -76,6 +76,7 @@ Include: reason for call, what the caller stated (names, places, numbers, amount
 EXTRACT_SYSTEM = _EXTRACT_SYSTEM
 
 _EXTRACT_TIMEOUT_S = float(os.getenv("EXTRACT_TIMEOUT_S", "30"))
+_EXTRACT_MAX_OUTPUT_TOKENS = int(os.getenv("EXTRACT_MAX_OUTPUT_TOKENS", "800"))
 _SUMMARY_TIMEOUT_S = float(os.getenv("SUMMARY_TIMEOUT_S", "20"))
 _SUMMARY_MAX_CHARS = int(os.getenv("SUMMARY_MAX_CHARS", "5000"))
 _SUMMARY_MAX_TURNS = int(os.getenv("SUMMARY_MAX_TURNS", "32"))
@@ -99,6 +100,32 @@ def _summary_semaphore() -> asyncio.Semaphore:
     if _SUMMARY_SEMAPHORE is None:
         _SUMMARY_SEMAPHORE = asyncio.Semaphore(1)
     return _SUMMARY_SEMAPHORE
+
+
+def _resolve_analysis_model(*env_keys: str) -> str:
+    """Pick a text-only Voice Live model for extract/summary.
+
+    Realtime voice deployments (gpt-realtime-mini) are a poor fit for short JSON
+    text sessions; default those to gpt-4o-mini unless EXTRACT_MODEL / SUMMARY_MODEL
+    is set explicitly.
+    """
+    text_default = os.getenv("TEXT_ANALYSIS_MODEL", "gpt-4o-mini").strip() or "gpt-4o-mini"
+    for key in env_keys:
+        val = os.getenv(key, "").strip()
+        if val:
+            return val
+    voice = os.getenv("VOICE_LIVE_MODEL", text_default).strip()
+    if "realtime" in voice.lower():
+        return text_default
+    return voice or text_default
+
+
+def resolve_extract_model() -> str:
+    return _resolve_analysis_model("EXTRACT_MODEL")
+
+
+def resolve_summary_model() -> str:
+    return _resolve_analysis_model("SUMMARY_MODEL", "EXTRACT_MODEL")
 
 
 def _build_extract_credential() -> AzureKeyCredential | ManagedIdentityCredential | None:
@@ -389,10 +416,7 @@ async def llm_extract_insights(
 ) -> tuple[list[dict], dict | None]:
     """Analyze the transcript with a dedicated Voice Live text session (parallel-safe)."""
     endpoint = os.getenv("AZURE_VOICE_LIVE_ENDPOINT", "").rstrip("/")
-    model = (
-        os.getenv("EXTRACT_MODEL")
-        or os.getenv("VOICE_LIVE_MODEL", "gpt-4o-mini")
-    ).strip()
+    model = resolve_extract_model()
     if not endpoint:
         logger.warning("[Extract] AZURE_VOICE_LIVE_ENDPOINT is not set")
         return [], None
@@ -408,13 +432,25 @@ async def llm_extract_insights(
         return [], None
 
     prompt = build_extract_user_prompt(turns, emitted)
+    logger.info(
+        "[Extract] Starting LLM pass (turns=%d, prompt_chars=%d, model=%s)",
+        len(turns),
+        len(prompt),
+        model,
+    )
     raw = ""
     usage: dict | None = None
     try:
         async with _extract_semaphore():
             try:
                 raw, usage = await asyncio.wait_for(
-                    _voicelive_text_completion(endpoint, credential, model, prompt),
+                    _voicelive_text_completion(
+                        endpoint,
+                        credential,
+                        model,
+                        prompt,
+                        max_output_tokens=_EXTRACT_MAX_OUTPUT_TOKENS,
+                    ),
                     timeout=_EXTRACT_TIMEOUT_S,
                 )
             except asyncio.TimeoutError:
@@ -494,11 +530,7 @@ async def llm_generate_call_summary(
     """Generate a plain-text summary of the full call transcript."""
     t0 = time.perf_counter()
     endpoint = os.getenv("AZURE_VOICE_LIVE_ENDPOINT", "").rstrip("/")
-    model = (
-        os.getenv("SUMMARY_MODEL")
-        or os.getenv("EXTRACT_MODEL")
-        or os.getenv("VOICE_LIVE_MODEL", "gpt-4o-mini")
-    ).strip()
+    model = resolve_summary_model()
     if not endpoint:
         logger.warning("[Summary] AZURE_VOICE_LIVE_ENDPOINT is not set")
         return "", None

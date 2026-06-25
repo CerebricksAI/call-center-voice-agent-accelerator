@@ -2458,6 +2458,8 @@
       if (insightsLoading) {
         dot.classList.add("live");
         status.textContent = "Extracting live";
+      } else if (insightsError) {
+        status.textContent = "Extract failed";
       } else if (captured > 0) {
         dot.classList.add("done");
         status.textContent = "Captured";
@@ -2631,8 +2633,10 @@
         summaryLoading = true;
         summaryError = null;
         if (msg.callId) currentCallId = msg.callId;
-        showCallFinalizeBanner("generating", currentCallId);
-        armSummaryCloseTimer();
+        if (waitingForSummary) {
+          showCallFinalizeBanner("generating", currentCallId);
+          armSummaryCloseTimer();
+        }
         renderKeyDetails();
         scrollKeyDetailsToBottom();
         return;
@@ -2644,9 +2648,11 @@
       renderKeyDetails();
       scrollKeyDetailsToBottom();
       if (waitingForSummary) {
-        waitingForCallSaved = true;
-        showCallFinalizeBanner("saving", currentCallId);
-        armCallSavedCloseTimer(CALL_SAVED_WAIT_MS);
+        if (callSummary || summaryError) {
+          waitingForCallSaved = true;
+          showCallFinalizeBanner("saving", currentCallId);
+          armCallSavedCloseTimer(CALL_SAVED_WAIT_MS);
+        }
       }
     }
 
@@ -2656,14 +2662,21 @@
     }
 
     function beginCallFinalizeUI() {
-      if (waitingForSummary || summaryLoading) return;
+      if (waitingForSummary) return;
       stopMicrophone();
       stopPlayback();
       insightsLoading = false;
       waitingForSummary = true;
-      summaryLoading = true;
-      summaryError = null;
-      showCallFinalizeBanner("generating", currentCallId);
+      if (!callSummary && !summaryError) {
+        summaryLoading = true;
+        showCallFinalizeBanner("generating", currentCallId);
+        armSummaryCloseTimer();
+      } else {
+        summaryLoading = false;
+        waitingForCallSaved = true;
+        showCallFinalizeBanner("saving", currentCallId);
+        armCallSavedCloseTimer(CALL_SAVED_WAIT_MS);
+      }
       renderKeyDetails();
       scrollKeyDetailsToBottom();
       const stopBtn = document.getElementById("stopBtn");
@@ -2671,7 +2684,6 @@
       const startBtn = document.getElementById("startBtn");
       if (startBtn) startBtn.disabled = true;
       setCallStatus(false);
-      armSummaryCloseTimer();
     }
 
     function closeSocketAfterSummary() {

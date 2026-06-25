@@ -18,6 +18,8 @@ from app.conversation_extractor import (
     insight_detail_rows,
     llm_extract_insights,
     llm_generate_call_summary,
+    resolve_extract_model,
+    resolve_summary_model,
 )
 from app.transcript_sanitize import (
     sanitize_assistant_transcript,
@@ -51,6 +53,7 @@ class WebMediaHandler(VoiceLiveMediaHandler):
         self._extract_publish_lock = asyncio.Lock()
         self._extract_run_lock = asyncio.Lock()
         self._extract_worker: asyncio.Task | None = None
+        self._final_extract_done = False
         self._finalizing = False
         self._summary_sent = False
         self._summary_loading_sent = False
@@ -141,8 +144,7 @@ class WebMediaHandler(VoiceLiveMediaHandler):
         """Begin summary during auto-end delay so it may finish before finalize."""
         if not self._summary_prefetch_enabled() or self._finalizing:
             return
-        if not self._summary_loading_sent:
-            asyncio.create_task(self._emit_call_summary_loading())
+        # Do not notify the browser yet — avoids "Generating summary" banner mid-call.
         self._start_call_summary_task()
 
     async def _emit_call_summary_loading(self) -> None:
@@ -222,6 +224,14 @@ class WebMediaHandler(VoiceLiveMediaHandler):
         last = self._mirror_turns[-1] if self._mirror_turns else None
         if last and last.get("role") == role and last.get("text") == text:
             return
+        # Native realtime models may emit multiple assistant finals per user turn.
+        if role == "assistant" and last and last.get("role") == "assistant":
+            prev = (last.get("text") or "").strip()
+            if prev and (text.startswith(prev) or prev in text):
+                last["text"] = text
+                return
+            if prev and len(text) < len(prev) * 0.5:
+                return
         self._mirror_turns.append({"role": role, "text": text})
 
     async def _send_transcript(
@@ -357,7 +367,9 @@ class WebMediaHandler(VoiceLiveMediaHandler):
         """Serialize LLM passes so the voice session is not starved."""
         async with self._extract_run_lock:
             try:
-                while not self._finalizing:
+                while True:
+                    if self._finalizing and self._extract_seq <= self._last_published_seq:
+                        break
                     seq = self._extract_seq
                     turns = self._turns_for_extract()
                     if not turns:
@@ -382,9 +394,24 @@ class WebMediaHandler(VoiceLiveMediaHandler):
                         )
                         return
 
+                    extract_error: str | None = None
+                    if usage is None and not insights:
+                        extract_error = (
+                            "Key-details extraction unavailable "
+                            "(Voice Live text session failed or timed out)"
+                        )
+                        logger.warning(
+                            "[WebMediaHandler] Extract returned no data (seq=%s, turns=%d)",
+                            seq,
+                            len(turns),
+                        )
+
                     if usage:
                         cost = self._record_usage_cost(
-                            usage, text_only=True, category="extract"
+                            usage,
+                            text_only=True,
+                            category="extract",
+                            model=resolve_extract_model(),
                         )
                         await self.on_agent_event(
                             {
@@ -408,6 +435,7 @@ class WebMediaHandler(VoiceLiveMediaHandler):
                         insights,
                         turn_seq=seq,
                         loading=False,
+                        error=extract_error,
                         append=True,
                     )
                     if insights:
@@ -418,9 +446,16 @@ class WebMediaHandler(VoiceLiveMediaHandler):
                         )
 
                     if self._extract_seq == seq:
+                        if self._finalizing:
+                            break
                         return
             except asyncio.CancelledError:
                 raise
+            finally:
+                try:
+                    await self._send_insights([], loading=False, append=True)
+                except Exception:
+                    pass
 
     async def _send_insights(
         self,
@@ -489,6 +524,10 @@ class WebMediaHandler(VoiceLiveMediaHandler):
     async def _send_call_summary(self) -> None:
         """Analyze the full transcript and send a summary to the browser."""
         if self._summary_sent:
+            if (self._call_summary_text or "").strip():
+                await self._emit_call_summary(
+                    loading=False, summary=self._call_summary_text
+                )
             return
 
         turns = self._turns_for_summary()
@@ -514,7 +553,10 @@ class WebMediaHandler(VoiceLiveMediaHandler):
             )
             if usage:
                 cost = self._record_usage_cost(
-                    usage, text_only=True, category="summary"
+                    usage,
+                    text_only=True,
+                    category="summary",
+                    model=resolve_summary_model(),
                 )
                 await self.on_agent_event(
                     {
@@ -581,25 +623,88 @@ class WebMediaHandler(VoiceLiveMediaHandler):
             payload["costBreakdown"] = self._cost_breakdown()
         await self.send_message(json.dumps(payload))
 
-    async def _cancel_extract_worker(self) -> None:
+    async def _await_extract_worker(self) -> None:
+        """Let in-flight extraction finish before persisting (do not cancel mid-pass)."""
         if self._extract_worker is None or self._extract_worker.done():
-            self._extract_worker = None
+            await self._run_final_extract()
             return
-        self._extract_worker.cancel()
+        timeout = float(os.getenv("EXTRACT_TIMEOUT_S", "30")) + 10.0
         try:
             await asyncio.wait_for(
-                asyncio.gather(self._extract_worker, return_exceptions=True),
-                timeout=1.5,
+                asyncio.shield(self._extract_worker),
+                timeout=timeout,
             )
         except asyncio.TimeoutError:
-            logger.info(
-                "[WebMediaHandler] Extract worker still stopping; continuing finalize"
+            logger.warning(
+                "[WebMediaHandler] Extract worker timed out after %.0fs during finalize",
+                timeout,
             )
-        self._extract_worker = None
+            self._extract_worker.cancel()
+            try:
+                await asyncio.gather(self._extract_worker, return_exceptions=True)
+            except Exception:
+                pass
+        except asyncio.CancelledError:
+            raise
+        finally:
+            self._extract_worker = None
+        await self._run_final_extract()
+
+    async def _run_final_extract(self) -> None:
+        """One last extract pass at end-of-call so key details are not lost."""
+        if self._final_extract_done:
+            return
+        turns = self._turns_for_extract()
+        if not turns:
+            return
+        self._final_extract_done = True
         try:
-            await self._send_insights([], loading=False, append=True)
+            insights, usage = await llm_extract_insights(
+                turns, self._emitted_insights
+            )
         except Exception:
-            logger.debug("[WebMediaHandler] Could not clear extract loading state on cancel")
+            logger.exception("[WebMediaHandler] Final extract failed")
+            try:
+                await self._send_insights(
+                    [],
+                    loading=False,
+                    error="Insight extraction failed at end of call",
+                    append=True,
+                )
+            except Exception:
+                pass
+            return
+        if usage:
+            cost = self._record_usage_cost(
+                usage,
+                text_only=True,
+                category="extract",
+                model=resolve_extract_model(),
+            )
+            await self.on_agent_event(
+                {
+                    "Kind": "AgentEvent",
+                    "kind": "usage",
+                    "source": "extract",
+                    "tokens": usage,
+                    "cost": cost,
+                    "callCostUsd": self._call_cost_usd,
+                    "costBreakdown": self._cost_breakdown(),
+                }
+            )
+        if insights:
+            await self._send_insights(insights, loading=False, append=True)
+            logger.info(
+                "[WebMediaHandler] Final extract sent %d insight(s)", len(insights)
+            )
+        else:
+            try:
+                await self._send_insights([], loading=False, append=True)
+            except Exception:
+                pass
+
+    async def _cancel_extract_worker(self) -> None:
+        await self._await_extract_worker()
 
     async def _ensure_voicelive_cleanup(self, *, persist: bool = True) -> None:
         if self._voicelive_cleaned:
@@ -653,6 +758,12 @@ class WebMediaHandler(VoiceLiveMediaHandler):
                 "keyDetails": insight_detail_rows(self._emitted_insights),
                 "callCostUsd": round(self._call_cost_usd, 6) if self._call_cost_usd else None,
                 "costBreakdown": self._cost_breakdown(),
+                "voiceLiveModel": self.model,
+                "extractModel": resolve_extract_model(),
+                "summaryModel": resolve_summary_model(),
+                "transcriptionModel": os.getenv(
+                    "INPUT_TRANSCRIPTION_MODEL", "whisper-1"
+                ).strip(),
             }
             await call_store.save_call(record)
             return call_id

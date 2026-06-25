@@ -179,6 +179,29 @@ class VoiceLiveMediaHandler:
             return
         await self.conn.input_audio_buffer.append(audio=audio_b64)
 
+    def _is_native_realtime_model(self) -> bool:
+        return "realtime" in (self.model or "").strip().lower()
+
+    async def _cancel_active_response_if_needed(self) -> None:
+        """Cancel a stale in-flight response when the caller starts speaking again."""
+        if self._active_response is None or not self._voicelive_connected:
+            return
+        if not self._is_native_realtime_model():
+            return
+        rid = self._active_response.get("id")
+        try:
+            if rid:
+                await self.conn.response.cancel(response_id=rid)
+            else:
+                await self.conn.response.cancel()
+            logger.debug(
+                "[VoiceLive] Cancelled in-flight response (id=%s) on new speech",
+                rid,
+            )
+        except Exception as exc:
+            logger.debug("[VoiceLive] Response cancel skipped: %s", exc)
+        self._active_response = None
+
     async def _receiver_loop(self):
         """Receives typed events from Voice Live and dispatches to hook methods."""
         cancelled = False
@@ -217,6 +240,7 @@ class VoiceLiveMediaHandler:
                             "[VoiceLive] Speech started at %s ms",
                             event.audio_start_ms,
                         )
+                        await self._cancel_active_response_if_needed()
                         # New user turn — reset per-turn timing state.
                         self._turn_index += 1
                         self._turn_ts = {}
@@ -546,6 +570,7 @@ class VoiceLiveMediaHandler:
         *,
         text_only: bool = False,
         category: str = "voice",
+        model: str | None = None,
     ) -> dict | None:
         cost = compute_usage_cost_usd(usage, text_only=text_only)
         if cost:
