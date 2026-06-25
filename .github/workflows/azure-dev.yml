@@ -50,9 +50,19 @@ jobs:
             --tenant-id "$Env:AZURE_TENANT_ID"
         shell: pwsh
 
+      - name: Configure azd environment (model + telephony)
+        shell: pwsh
+        run: |
+          # Write CI variables into azd's env file so the preprovision hook reads them
+          # (the hook uses `azd env get-value`, which does NOT see OS env vars).
+          azd env new "$Env:AZURE_ENV_NAME" --location "$Env:AZURE_LOCATION" --subscription "$Env:AZURE_SUBSCRIPTION_ID"
+          if (-not [string]::IsNullOrWhiteSpace($Env:AZURE_VOICE_LIVE_MODEL)) { azd env set AZURE_VOICE_LIVE_MODEL "$Env:AZURE_VOICE_LIVE_MODEL" }
+          if (-not [string]::IsNullOrWhiteSpace($Env:TELEPHONY_PROVIDER)) { azd env set TELEPHONY_PROVIDER "$Env:TELEPHONY_PROVIDER" }
+          azd env get-values
+
       - name: Provision Infrastructure
         run: azd provision --no-prompt
-          
+
       - name: Deploy Application
         run: azd deploy --no-prompt
 
