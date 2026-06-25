@@ -197,8 +197,12 @@ class WebMediaHandler(VoiceLiveMediaHandler):
             "INPUT_TRANSCRIPTION_MODEL", "whisper-1"
         )
         session.input_audio_transcription = AudioInputTranscriptionOptions(
+            # ISO-639-1 ("en"), not a BCP-47 locale ("en-US"): whisper-1 / gpt-4o-transcribe
+            # only honor ISO-639-1, and an unrecognized locale silently falls back to
+            # language auto-detection — which mis-transcribes short English speech into
+            # other scripts (e.g. Urdu) on the native-realtime model's side-channel STT.
             model=transcription_model,
-            language="en-US",
+            language="en",
         )
         logger.info(
             "Web client input transcription enabled: model=%s",

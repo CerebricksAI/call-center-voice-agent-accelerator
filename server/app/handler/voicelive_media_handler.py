@@ -121,6 +121,11 @@ class VoiceLiveMediaHandler:
         self.channel = "web"
         self._call_started_at = None
         self._call_turns = []     # [{role, text, atMs}]
+        # Index in _call_turns where the in-flight user turn's transcript belongs.
+        # Captured at speech start so a late transcript (native-realtime models reply
+        # before their side-channel STT finishes) is inserted in conversational order
+        # rather than appended after the agent's reply.
+        self._user_turn_insert_index = None
         self._call_metrics = []   # [{turn, atMs, metrics, tokens, tokensPerSec}]
         self._call_events = []    # [{event, turn, atMs, ...}]
         self._metrics_seq = 0     # sequential response # for the UI table
@@ -244,6 +249,9 @@ class VoiceLiveMediaHandler:
                         # New user turn — reset per-turn timing state.
                         self._turn_index += 1
                         self._turn_ts = {}
+                        # Reserve this turn's slot in the transcript now, before the
+                        # agent's reply gets appended (see _user_turn_insert_index).
+                        self._user_turn_insert_index = len(self._call_turns)
                         await self._mark(
                             "speech_started", audioStartMs=event.audio_start_ms
                         )
@@ -271,9 +279,19 @@ class VoiceLiveMediaHandler:
                         )
                         await self._record_transcribe_usage(event, transcript)
                         if transcript:
-                            self._call_turns.append(
-                                {"role": "user", "text": transcript, "atMs": self._clock_ms()}
-                            )
+                            stopped = self._turn_ts.get("speech_stopped")
+                            turn = {
+                                "role": "user",
+                                "text": transcript,
+                                # When the caller actually spoke, not when STT finished.
+                                "atMs": self._clock_ms(stopped if stopped is not None else None),
+                            }
+                            idx = self._user_turn_insert_index
+                            if idx is not None and 0 <= idx <= len(self._call_turns):
+                                self._call_turns.insert(idx, turn)
+                            else:
+                                self._call_turns.append(turn)
+                            self._user_turn_insert_index = None
                             await self.on_user_transcript_done(transcript)
 
                     case ServerEventType.CONVERSATION_ITEM_INPUT_AUDIO_TRANSCRIPTION_FAILED:
