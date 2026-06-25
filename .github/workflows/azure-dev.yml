@@ -21,7 +21,9 @@ jobs:
       AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
       AZURE_ENV_NAME: ${{ vars.AZURE_ENV_NAME }}
       AZURE_LOCATION: ${{ vars.AZURE_LOCATION }}
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}    
+      AZURE_VOICE_LIVE_MODEL: ${{ vars.AZURE_VOICE_LIVE_MODEL }}
+      TELEPHONY_PROVIDER: ${{ vars.TELEPHONY_PROVIDER }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     steps:
       - name: Checkout
