@@ -68,13 +68,20 @@ Your summary must reflect everything material the caller stated: do not omit nam
 
 Write 2-3 concise prose paragraphs in plain language. No bullet points, no markdown, no headings, no domain-specific jargon. Be complete and factual, attribute facts to the caller where it matters, and separate paragraphs with one blank line."""
 
+_SUMMARY_SYSTEM_COMPACT = """\
+Write a factual end-of-call handoff summary from the transcript (and key facts if provided).
+Include: reason for call, what the caller stated (names, places, numbers, amounts, dates, preferences, consents), decisions, open items, next steps.
+2 short prose paragraphs, plain language, no bullets/markdown. Do not invent facts."""
+
 EXTRACT_SYSTEM = _EXTRACT_SYSTEM
 
 _EXTRACT_TIMEOUT_S = float(os.getenv("EXTRACT_TIMEOUT_S", "30"))
 _SUMMARY_TIMEOUT_S = float(os.getenv("SUMMARY_TIMEOUT_S", "20"))
-_SUMMARY_MAX_CHARS = int(os.getenv("SUMMARY_MAX_CHARS", "8000"))
-_SUMMARY_MAX_TURNS = int(os.getenv("SUMMARY_MAX_TURNS", "48"))
-_SUMMARY_MAX_OUTPUT_TOKENS = int(os.getenv("SUMMARY_MAX_OUTPUT_TOKENS", "350"))
+_SUMMARY_MAX_CHARS = int(os.getenv("SUMMARY_MAX_CHARS", "5000"))
+_SUMMARY_MAX_TURNS = int(os.getenv("SUMMARY_MAX_TURNS", "32"))
+_SUMMARY_MAX_OUTPUT_TOKENS = int(os.getenv("SUMMARY_MAX_OUTPUT_TOKENS", "220"))
+_SUMMARY_HEAD_TURNS = int(os.getenv("SUMMARY_HEAD_TURNS", "4"))
+_SUMMARY_TAIL_TURNS = int(os.getenv("SUMMARY_TAIL_TURNS", "16"))
 _EXTRACT_SEMAPHORE: asyncio.Semaphore | None = None
 _SUMMARY_SEMAPHORE: asyncio.Semaphore | None = None
 
@@ -197,11 +204,22 @@ def _format_transcript(turns: list[dict]) -> str:
     return "\n".join(lines)
 
 
+def _summary_system_instructions() -> str:
+    mode = os.getenv("SUMMARY_PROMPT_MODE", "compact").strip().lower()
+    if mode == "full":
+        return SUMMARY_SYSTEM
+    return _SUMMARY_SYSTEM_COMPACT
+
+
 def _trim_turns_for_summary(turns: list[dict]) -> list[dict]:
-    """Keep prompt bounded while preserving the full conversation when possible."""
+    """Keep prompt bounded: head+tail when long, else drop middle until under char cap."""
     if not turns:
         return []
     kept = list(turns)
+    if len(kept) > _SUMMARY_HEAD_TURNS + _SUMMARY_TAIL_TURNS:
+        head = kept[: max(1, _SUMMARY_HEAD_TURNS)]
+        tail = kept[-max(1, _SUMMARY_TAIL_TURNS) :]
+        kept = head + tail
     while len(kept) > 4 and len(_format_transcript(kept)) > _SUMMARY_MAX_CHARS:
         kept.pop(len(kept) // 2)
     while len(kept) > _SUMMARY_MAX_TURNS:
@@ -438,11 +456,9 @@ def build_call_summary_prompt(
                 f"{facts}\n"
             )
     parts.append(
-        "Summarize this entire call from the transcript above into 2-3 prose paragraphs. "
-        "Include every specific fact the caller stated or confirmed — proper nouns (names, "
-        "organizations, places), numbers, amounts, dates, identifiers, stated preferences, "
-        "decisions, consents, and any agreed next steps — and do not skip proper nouns or "
-        "numbers or invent anything not said."
+        "Summarize this call in 2 short prose paragraphs. "
+        "Include every specific fact the caller stated — names, places, numbers, "
+        "amounts, dates, preferences, consents, and next steps. Do not invent facts."
     )
     return "\n".join(parts)
 
@@ -517,7 +533,7 @@ async def llm_generate_call_summary(
                         credential,
                         model,
                         prompt,
-                        instructions=SUMMARY_SYSTEM,
+                        instructions=_summary_system_instructions(),
                         temperature=0.2,
                         max_output_tokens=_SUMMARY_MAX_OUTPUT_TOKENS,
                     ),

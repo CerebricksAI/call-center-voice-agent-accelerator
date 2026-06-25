@@ -59,6 +59,7 @@ class WebMediaHandler(VoiceLiveMediaHandler):
         self._persisted_call_id: str | None = None
         self._call_saved_notified = False
         self._call_summary_text: str | None = None
+        self._summary_task: asyncio.Task | None = None
         self._finalize_task: asyncio.Task | None = None
         self._auto_end_task: asyncio.Task | None = None
         self._awaiting_close_ack = False
@@ -110,6 +111,49 @@ class WebMediaHandler(VoiceLiveMediaHandler):
         )
         return any(re.match(p, text) for p in patterns)
 
+    def _summary_prefetch_enabled(self) -> bool:
+        raw = os.getenv("SUMMARY_PREFETCH_ON_CLOSE", "true").strip().lower()
+        return raw not in ("0", "false", "no", "off")
+
+    def _start_call_summary_task(self) -> None:
+        """Start summary generation in the background (safe to call multiple times)."""
+        if self._summary_task is not None and not self._summary_task.done():
+            return
+        if self._summary_sent:
+            return
+        self._summary_task = asyncio.create_task(self._send_call_summary())
+
+    async def _await_call_summary(self) -> None:
+        """Ensure summary generation finished (starts it if not already running)."""
+        if not self._summary_loading_sent:
+            try:
+                await self._emit_call_summary(loading=True)
+                self._summary_loading_sent = True
+            except Exception:
+                logger.exception(
+                    "[WebMediaHandler] Failed to send call summary loading state"
+                )
+        self._start_call_summary_task()
+        if self._summary_task is not None:
+            await asyncio.gather(self._summary_task, return_exceptions=True)
+
+    def _prefetch_call_summary(self) -> None:
+        """Begin summary during auto-end delay so it may finish before finalize."""
+        if not self._summary_prefetch_enabled() or self._finalizing:
+            return
+        if not self._summary_loading_sent:
+            asyncio.create_task(self._emit_call_summary_loading())
+        self._start_call_summary_task()
+
+    async def _emit_call_summary_loading(self) -> None:
+        try:
+            await self._emit_call_summary(loading=True)
+            self._summary_loading_sent = True
+        except Exception:
+            logger.exception(
+                "[WebMediaHandler] Failed to send call summary prefetch loading state"
+            )
+
     def _auto_end_call_delay_s(self) -> float:
         try:
             return max(0.0, float(os.getenv("AUTO_END_CALL_DELAY_S", "5")))
@@ -120,6 +164,7 @@ class WebMediaHandler(VoiceLiveMediaHandler):
         """Wait briefly after the agent closes the interview, then finalize."""
         if self._finalizing:
             return
+        self._prefetch_call_summary()
         if self._auto_end_task is not None and not self._auto_end_task.done():
             self._auto_end_task.cancel()
         self._auto_end_task = asyncio.create_task(self._auto_end_after_delay())
@@ -446,16 +491,6 @@ class WebMediaHandler(VoiceLiveMediaHandler):
         if self._summary_sent:
             return
 
-        if not self._summary_loading_sent:
-            try:
-                await self._emit_call_summary(loading=True)
-                self._summary_loading_sent = True
-            except Exception:
-                logger.exception(
-                    "[WebMediaHandler] Failed to send call summary loading state"
-                )
-
-        self._summary_sent = True
         turns = self._turns_for_summary()
 
         if not turns:
@@ -463,6 +498,7 @@ class WebMediaHandler(VoiceLiveMediaHandler):
             self._call_summary_text = msg
             await self._record_session_event("summary_done", summaryMs=0)
             await self._emit_call_summary(loading=False, summary=msg)
+            self._summary_sent = True
             return
 
         t_summary = time.perf_counter()
@@ -496,6 +532,7 @@ class WebMediaHandler(VoiceLiveMediaHandler):
                     loading=False,
                     error="Call summary could not be generated",
                 )
+                self._summary_sent = True
                 return
             self._call_summary_text = summary
             await self._emit_call_summary(loading=False, summary=summary)
@@ -511,6 +548,8 @@ class WebMediaHandler(VoiceLiveMediaHandler):
                 loading=False,
                 error="Call summary failed",
             )
+        finally:
+            self._summary_sent = True
 
     def _attach_extract_cost_to_metrics(self, payload: dict) -> None:
         """Merge key-details extraction cost onto the matching voice turn row."""
@@ -669,6 +708,7 @@ class WebMediaHandler(VoiceLiveMediaHandler):
                 logger.exception(
                     "[WebMediaHandler] Failed to send call summary loading on end call"
                 )
+        self._start_call_summary_task()
         if self._finalize_task is None or self._finalize_task.done():
             self._finalize_task = asyncio.create_task(self._finalize_call())
 
@@ -687,7 +727,7 @@ class WebMediaHandler(VoiceLiveMediaHandler):
         try:
             cancel_task = asyncio.create_task(self._cancel_extract_worker())
             await asyncio.gather(
-                self._send_call_summary(),
+                self._await_call_summary(),
                 self._ensure_voicelive_cleanup(persist=False),
                 cancel_task,
                 return_exceptions=True,
@@ -749,7 +789,7 @@ class WebMediaHandler(VoiceLiveMediaHandler):
         if self._finalize_task is not None and not self._finalize_task.done():
             await asyncio.gather(self._finalize_task, return_exceptions=True)
         elif not self._summary_sent:
-            await self._send_call_summary()
+            await self._await_call_summary()
         if not self._voicelive_cleaned:
             await self._ensure_voicelive_cleanup(persist=False)
         saved_id = await self._await_persist_call_record()
