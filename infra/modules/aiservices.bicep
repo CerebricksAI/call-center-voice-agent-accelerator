@@ -2,7 +2,9 @@ param environmentName string
 param uniqueSuffix string
 param identityId string
 param tags object
-param disableLocalAuth bool = true
+// Set to false so API-key (local) auth stays enabled for local development across deploys.
+// Set back to true to enforce keyless / managed-identity-only access.
+param disableLocalAuth bool = false
 
 @description('Voice Live API supported regions. See: https://learn.microsoft.com/azure/ai-services/speech-service/regions?tabs=voice-live')
 @allowed([
