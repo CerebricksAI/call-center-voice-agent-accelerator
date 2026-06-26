@@ -33,8 +33,10 @@ from app.voice_live_session import (
 )
 from app.usage_cost import (
     compute_transcribe_cost_usd,
+    compute_tts_cost_usd,
     compute_usage_cost_usd,
     estimate_transcribe_usage_from_speech_ms,
+    get_text_analysis_rates,
     normalize_transcription_usage,
     normalize_usage,
 )
@@ -75,9 +77,12 @@ class VoiceLiveMediaHandler:
     for their specific protocols.
     """
 
-    def __init__(self, config):
+    def __init__(self, config, voice_model=None):
         self.endpoint = config["AZURE_VOICE_LIVE_ENDPOINT"]
-        self.model = config["VOICE_LIVE_MODEL"]
+        # Per-session model (validated UI selection) overrides the env default.
+        # Note: only the VOICE model is per-session — extract/summary stay on their
+        # own (gpt-4o-mini) resolution, independent of this choice.
+        self.model = (voice_model or config["VOICE_LIVE_MODEL"] or "").strip()
         self.api_key = config["AZURE_VOICE_LIVE_API_KEY"]
         self.client_id = config["AZURE_USER_ASSIGNED_IDENTITY_CLIENT_ID"]
         self.conn = None
@@ -134,6 +139,7 @@ class VoiceLiveMediaHandler:
         self._transcribe_cost_usd = 0.0
         self._extract_cost_usd = 0.0
         self._summary_cost_usd = 0.0
+        self._tts_cost_usd = 0.0
 
     def _session_config(self):
         """Return the typed session configuration for Voice Live."""
@@ -351,6 +357,12 @@ class VoiceLiveMediaHandler:
                             self._call_turns.append(
                                 {"role": "assistant", "text": transcript, "atMs": self._clock_ms()}
                             )
+                            # Azure TTS (the agent voice) is billed per synthesized
+                            # character, separate from the model tokens — both models
+                            # render output through the Azure voice.
+                            tts_cost = self._record_tts_cost(transcript)
+                            if self._active_response is not None and tts_cost:
+                                self._active_response["tts"] = tts_cost
                             await self.on_transcript_done(transcript)
 
                     case ServerEventType.RESPONSE_TEXT_DELTA:
@@ -590,7 +602,14 @@ class VoiceLiveMediaHandler:
         category: str = "voice",
         model: str | None = None,
     ) -> dict | None:
-        cost = compute_usage_cost_usd(usage, text_only=text_only)
+        # Voice turns: per-session model rates. Extract/summary are standalone
+        # gpt-4o-mini TEXT completions billed at the standard $0.15/$0.60 rate.
+        if category in ("extract", "summary"):
+            cost = compute_usage_cost_usd(
+                usage, text_only=True, rates=get_text_analysis_rates()
+            )
+        else:
+            cost = compute_usage_cost_usd(usage, text_only=text_only, model=model)
         if cost:
             usd = cost["usd"]
             self._call_cost_usd = round(self._call_cost_usd + usd, 6)
@@ -600,6 +619,15 @@ class VoiceLiveMediaHandler:
                 self._summary_cost_usd = round(self._summary_cost_usd + usd, 6)
             else:
                 self._voice_cost_usd = round(self._voice_cost_usd + usd, 6)
+        return cost
+
+    def _record_tts_cost(self, text: str | None) -> dict | None:
+        """Bill Azure TTS for the agent's spoken characters (separate per-char charge)."""
+        cost = compute_tts_cost_usd(len(text or ""))
+        if cost:
+            usd = cost["usd"]
+            self._call_cost_usd = round(self._call_cost_usd + usd, 6)
+            self._tts_cost_usd = round(self._tts_cost_usd + usd, 6)
         return cost
 
     async def _record_transcribe_usage(self, event, transcript: str | None) -> None:
@@ -640,6 +668,7 @@ class VoiceLiveMediaHandler:
             "transcribeUsd": round(self._transcribe_cost_usd, 6),
             "extractUsd": round(self._extract_cost_usd, 6),
             "summaryUsd": round(self._summary_cost_usd, 6),
+            "ttsUsd": round(self._tts_cost_usd, 6),
             "totalUsd": total,
         }
 
@@ -691,7 +720,7 @@ class VoiceLiveMediaHandler:
         }
         if usage:
             payload["tokens"] = usage
-            cost = self._record_usage_cost(usage, text_only=False)
+            cost = self._record_usage_cost(usage, text_only=False, model=self.model)
             if cost is not None:
                 payload["cost"] = cost
             payload["callCostUsd"] = self._call_cost_usd
@@ -700,6 +729,12 @@ class VoiceLiveMediaHandler:
             response_ms = metrics.get("responseMs")
             if output_tokens and response_ms:
                 payload["tokensPerSec"] = round(output_tokens / (response_ms / 1000), 3)
+        # Per-turn Azure TTS (agent voice) cost, recorded when the spoken transcript
+        # completed. Independent of the model's token usage.
+        tts_cost = ar.get("tts")
+        if tts_cost is not None:
+            payload["ttsCost"] = tts_cost
+            payload["costBreakdown"] = self._cost_breakdown()
         self._call_metrics.append(
             {
                 "turn": payload["turn"],
@@ -709,6 +744,7 @@ class VoiceLiveMediaHandler:
                 "tokens": payload.get("tokens"),
                 "tokensPerSec": payload.get("tokensPerSec"),
                 "cost": payload.get("cost"),
+                "ttsCost": payload.get("ttsCost"),
             }
         )
         await self.on_agent_event(payload)
@@ -828,6 +864,7 @@ class VoiceLiveMediaHandler:
                 "id": call_id,
                 "callId": call_id,
                 "channel": self.channel,
+                "model": self.model,
                 "brokerage": BROKERAGE_NAME,
                 "persona": "Maya — mortgage pre-qualification",
                 "startedAt": started.isoformat() if started else None,

@@ -8,6 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <script src="/static/settings-modal.js"></script>
   <style>
     :root,
     [data-theme="light"] {
@@ -989,7 +990,7 @@
       <a class="nav-link" href="/">Pre-Qual Call</a>
       <a class="nav-link active" href="/history">Call History</a>
       <a class="nav-link" href="/analytics">Analytics</a>
-      <a class="nav-link disabled">Settings</a>
+      <a class="nav-link" href="#" id="navSettings" onclick="openSettings(event)">Settings</a>
     </div>
     <div class="nav-right">
       <button type="button" class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="Toggle theme">☾</button>
@@ -1150,6 +1151,7 @@
       if (userTurns != null) parts.push(`${userTurns} user turn${userTurns === 1 ? "" : "s"}`);
       if (messages != null) parts.push(`${messages} message${messages === 1 ? "" : "s"}`);
       parts.push(call.channel || "web");
+      if (call.model) parts.push(call.model);
       return parts.join(" · ");
     }
 
@@ -1312,8 +1314,13 @@
       return Number.isNaN(c) ? 0 : c;
     }
 
+    function rowTtsCostUsd(row) {
+      const c = row.ttsCost && row.ttsCost.usd != null ? Number(row.ttsCost.usd) : 0;
+      return Number.isNaN(c) ? 0 : c;
+    }
+
     function rowTurnCostUsd(row) {
-      const sum = rowVoiceCostUsd(row) + rowExtractCostUsd(row);
+      const sum = rowVoiceCostUsd(row) + rowTtsCostUsd(row) + rowExtractCostUsd(row);
       return sum > 0 ? sum : null;
     }
 
@@ -1752,19 +1759,20 @@
       const transcribe = Number(bd.transcribeUsd) || 0;
       const extract = Number(bd.extractUsd) || 0;
       const summary = Number(bd.summaryUsd) || 0;
+      const tts = Number(bd.ttsUsd) || 0;
       let total = Number(bd.totalUsd);
       if (!total || Number.isNaN(total)) {
         total = Number(call && call.callCostUsd);
       }
       if (!total || Number.isNaN(total)) {
-        total = voice + transcribe + extract + summary;
+        total = voice + transcribe + extract + summary + tts;
       }
-      return { voice, transcribe, extract, summary, total };
+      return { voice, transcribe, extract, summary, tts, total };
     }
 
     function renderCostBreakdown(call) {
-      const { voice, transcribe, extract, summary, total } = getCostBreakdown(call);
-      if (!(total > 0 || voice > 0 || transcribe > 0 || extract > 0 || summary > 0)) {
+      const { voice, transcribe, extract, summary, tts, total } = getCostBreakdown(call);
+      if (!(total > 0 || voice > 0 || transcribe > 0 || extract > 0 || summary > 0 || tts > 0)) {
         return '<div class="empty-state" style="margin:0;padding:0.5rem 0">No cost data saved for this call.</div>';
       }
       return `<div class="cost-breakdown">
@@ -1778,6 +1786,10 @@
             <span class="value">${escapeHtml(fmtCostUsd(transcribe > 0 ? transcribe : null))}</span>
           </div>
           <div class="cost-breakdown-row">
+            <span class="label">Speech synthesis (TTS)</span>
+            <span class="value">${escapeHtml(fmtCostUsd(tts > 0 ? tts : null))}</span>
+          </div>
+          <div class="cost-breakdown-row">
             <span class="label">Key details (extraction)</span>
             <span class="value">${escapeHtml(fmtCostUsd(extract > 0 ? extract : null))}</span>
           </div>
@@ -1789,7 +1801,7 @@
         <div class="cost-breakdown-summary">
           <span class="cost-total-label">Total estimated cost</span>
           <span class="cost-total-value">${escapeHtml(fmtCostUsd(total > 0 ? total : null))}</span>
-          <p class="cost-breakdown-note">Estimated from token usage × configured Azure rates (Voice Live + transcribe). Actual billing may differ slightly.</p>
+          <p class="cost-breakdown-note">Estimated from token usage × configured Azure rates (Voice Live model + transcribe STT + per-character speech synthesis). Actual billing may differ slightly.</p>
         </div>
       </div>`;
     }
@@ -1838,7 +1850,7 @@
 
     function renderMetricsTable(metrics, call) {
       if (!metrics || !metrics.length) {
-        return { body: '<tr><td colspan="12" class="muted" style="text-align:center">No turn metrics.</td></tr>', foot: "" };
+        return { body: '<tr><td colspan="13" class="muted" style="text-align:center">No turn metrics.</td></tr>', foot: "" };
       }
       const body = metrics
         .map((row) => {
@@ -1850,13 +1862,14 @@
             row.seq != null ? row.seq : row.turn,
             fmtMs(m.sttMs),
             fmtMs(m.thinkMs),
-            fmtMs(deriveFirstAudioMs(m)),
             fmtMs(m.ttsStartMs != null ? m.ttsStartMs : m.ttfaMs),
+            fmtMs(deriveFirstAudioMs(m)),
             fmtMs(m.ttsMs),
             fmtMs(deriveE2eResponseMs(m)),
             fmtMs(m.turnMs),
             tokens,
             rowVoiceCostUsd(row) > 0 ? fmtCostUsd(rowVoiceCostUsd(row)) : "—",
+            rowTtsCostUsd(row) > 0 ? fmtCostUsd(rowTtsCostUsd(row)) : "—",
             extractCost > 0 ? fmtCostUsd(extractCost) : "—",
             rowTurnCostUsd(row) != null ? fmtCostUsd(rowTurnCostUsd(row)) : "—",
           ];
@@ -1865,13 +1878,15 @@
         .join("");
       const tokenTotals = sumMetricTokens(metrics);
       const voiceSum = metrics.reduce((sum, row) => sum + rowVoiceCostUsd(row), 0);
+      const ttsSum = metrics.reduce((sum, row) => sum + rowTtsCostUsd(row), 0);
       const extractSum = metrics.reduce((sum, row) => sum + rowExtractCostUsd(row), 0);
       const foot = `<tr>
         <td colspan="8" style="text-align:right;font-weight:600">Subtotals (agent rows)</td>
         <td>${escapeHtml(tokenTotals.input + " / " + tokenTotals.output)}</td>
         <td class="cost-cell">${escapeHtml(fmtCostUsd(voiceSum > 0 ? voiceSum : null))}</td>
+        <td class="cost-cell">${escapeHtml(fmtCostUsd(ttsSum > 0 ? ttsSum : null))}</td>
         <td class="cost-cell">${escapeHtml(fmtCostUsd(extractSum > 0 ? extractSum : null))}</td>
-        <td class="cost-cell">${escapeHtml(fmtCostUsd(voiceSum + extractSum > 0 ? voiceSum + extractSum : null))}</td>
+        <td class="cost-cell">${escapeHtml(fmtCostUsd(voiceSum + ttsSum + extractSum > 0 ? voiceSum + ttsSum + extractSum : null))}</td>
       </tr>`;
       return { body, foot };
     }
@@ -1965,6 +1980,7 @@
             <div><dt>Agent responses</dt><dd>${escapeHtml(stats.agentResponses != null ? stats.agentResponses : "—")}</dd></div>
             <div><dt>Total est. cost</dt><dd>${escapeHtml(fmtCostUsd(sessionCost > 0 ? sessionCost : null))}</dd></div>
             <div><dt>Channel</dt><dd>${escapeHtml(call.channel || "—")}</dd></div>
+            <div><dt>Voice model</dt><dd>${escapeHtml(call.model || "—")}</dd></div>
             <div><dt>Brokerage</dt><dd>${escapeHtml(call.brokerage || "—")}</dd></div>
             <div><dt>Persona</dt><dd>${escapeHtml(call.persona || "—")}</dd></div>
           </dl>
@@ -1997,9 +2013,9 @@
               <table class="data-table">
                 <thead>
                   <tr>
-                    <th>#</th><th>STT</th><th>Think</th><th>To&nbsp;first&nbsp;audio</th><th>TTS&nbsp;start</th><th>TTS</th>
+                    <th>#</th><th>STT</th><th>Think</th><th>TTS&nbsp;start</th><th>To&nbsp;first&nbsp;audio</th><th>TTS</th>
                     <th>E2E&nbsp;response</th><th>Total</th><th>Tokens (in/out)</th>
-                    <th>Voice</th><th>Key&nbsp;details</th><th>Turn&nbsp;total</th>
+                    <th>Voice</th><th>TTS&nbsp;$</th><th>Key&nbsp;details</th><th>Turn&nbsp;total</th>
                   </tr>
                 </thead>
                 <tbody>${metricsTable.body}</tbody>
