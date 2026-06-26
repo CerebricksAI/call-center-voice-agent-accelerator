@@ -8,6 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <script src="/static/settings-modal.js"></script>
   <style>
     :root,
     [data-theme="light"] {
@@ -1488,7 +1489,7 @@
       <a class="nav-link active" href="/">Pre-Qual Call</a>
       <a class="nav-link" href="/history" id="navCallHistory">Call History</a>
       <a class="nav-link" href="/analytics">Analytics</a>
-      <a class="nav-link disabled">Settings</a>
+      <a class="nav-link" href="#" id="navSettings" onclick="openSettings(event)">Settings</a>
     </div>
     <div class="nav-right">
       <button type="button" class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="Toggle light/dark theme" aria-label="Toggle theme">
@@ -1626,19 +1627,20 @@
                 <th>#</th>
                 <th>Speech&nbsp;→&nbsp;Text</th>
                 <th>Thinking</th>
-                <th>To&nbsp;first&nbsp;audio</th>
                 <th>TTS&nbsp;start</th>
+                <th>To&nbsp;first&nbsp;audio</th>
                 <th>Text&nbsp;→&nbsp;Speech</th>
                 <th>E2E&nbsp;response</th>
                 <th>Total</th>
                 <th>Tokens&nbsp;(in/out)</th>
                 <th>Voice</th>
+                <th>TTS&nbsp;$</th>
                 <th>Key&nbsp;details</th>
                 <th>Turn&nbsp;total</th>
               </tr>
             </thead>
             <tbody id="turnTableBody">
-              <tr id="turnTableEmpty"><td colspan="12" class="muted" style="text-align:center;">No agent responses yet.</td></tr>
+              <tr id="turnTableEmpty"><td colspan="13" class="muted" style="text-align:center;">No agent responses yet.</td></tr>
             </tbody>
             <tfoot id="turnTableFoot" hidden>
               <tr>
@@ -1781,6 +1783,22 @@
           speechRecognition.stop();
         } catch (_) {}
         speechRecognitionActive = false;
+      }
+      // Reserve this turn's slot immediately with a placeholder bubble, so the
+      // caller's turn is visible right away — before any agent reply. Native
+      // models answer before their (slower) caller transcript arrives, so without
+      // this the caller bubble would pop in afterward. It's filled by the live
+      // browser transcript or the server's final transcript when they arrive.
+      liveBubbles.user = createBubble("user", "…", true, userTurnAnchor);
+    }
+
+    function removeEmptyUserPlaceholder() {
+      if (!liveBubbles.user) return;
+      const t = liveBubbles.user.querySelector(".transcript-text");
+      const txt = t ? t.textContent.trim() : "";
+      if (txt === "" || txt === "…") {
+        liveBubbles.user.remove();
+        liveBubbles.user = null;
       }
     }
 
@@ -2867,6 +2885,7 @@
       transcribeUsd: 0,
       extractUsd: 0,
       summaryUsd: 0,
+      ttsUsd: 0,
       costUsd: 0,
     };
 
@@ -2887,7 +2906,7 @@
     function updateRowTurnTotal(tr) {
       const totalCell = tr.querySelector(".turn-total-cost-cell");
       if (!totalCell) return;
-      const sum = rowCostUsd(tr, "voiceCostUsd") + rowCostUsd(tr, "extractCostUsd");
+      const sum = rowCostUsd(tr, "voiceCostUsd") + rowCostUsd(tr, "ttsCostUsd") + rowCostUsd(tr, "extractCostUsd");
       totalCell.textContent = sum > 0 ? fmtCostUsd(sum) : "—";
     }
 
@@ -2929,6 +2948,7 @@
         callUsageTotals.transcribeUsd = Number(bd.transcribeUsd) || 0;
         callUsageTotals.extractUsd = Number(bd.extractUsd) || 0;
         callUsageTotals.summaryUsd = Number(bd.summaryUsd) || 0;
+        callUsageTotals.ttsUsd = Number(bd.ttsUsd) || 0;
         callUsageTotals.costUsd =
           Number(bd.totalUsd) || Number(msg.callCostUsd) || callUsageTotals.costUsd;
       } else if (msg && msg.callCostUsd != null) {
@@ -2940,8 +2960,8 @@
     function renderCallCostBreakdown() {
       const el = document.getElementById("callCostBreakdown");
       if (!el) return;
-      const { voiceUsd, transcribeUsd, extractUsd, summaryUsd, costUsd } = callUsageTotals;
-      if (!(costUsd > 0 || voiceUsd > 0 || transcribeUsd > 0 || extractUsd > 0 || summaryUsd > 0)) {
+      const { voiceUsd, transcribeUsd, extractUsd, summaryUsd, ttsUsd, costUsd } = callUsageTotals;
+      if (!(costUsd > 0 || voiceUsd > 0 || transcribeUsd > 0 || extractUsd > 0 || summaryUsd > 0 || ttsUsd > 0)) {
         el.hidden = true;
         el.innerHTML = "";
         return;
@@ -2951,13 +2971,14 @@
         <div class="call-cost-items">
           <div class="call-cost-row"><span class="label">Voice (agent responses)</span><span class="value">${fmtCostUsd(voiceUsd > 0 ? voiceUsd : null)}</span></div>
           <div class="call-cost-row"><span class="label">Transcription (STT)</span><span class="value">${fmtCostUsd(transcribeUsd > 0 ? transcribeUsd : null)}</span></div>
+          <div class="call-cost-row"><span class="label">Speech synthesis (TTS)</span><span class="value">${fmtCostUsd(ttsUsd > 0 ? ttsUsd : null)}</span></div>
           <div class="call-cost-row"><span class="label">Key details (extraction)</span><span class="value">${fmtCostUsd(extractUsd > 0 ? extractUsd : null)}</span></div>
           <div class="call-cost-row"><span class="label">Call summary</span><span class="value">${fmtCostUsd(summaryUsd > 0 ? summaryUsd : null)}</span></div>
         </div>
         <div class="call-cost-summary">
           <span class="call-cost-total-label">Total estimated cost</span>
           <span class="call-cost-total-value">${fmtCostUsd(costUsd > 0 ? costUsd : null)}</span>
-          <p class="metrics-cost-note">Includes voice, transcription (STT), key-details extraction, and call summary when generated.</p>
+          <p class="metrics-cost-note">Includes voice (model), transcription (STT), speech synthesis (TTS), key-details extraction, and call summary when generated.</p>
         </div>`;
     }
 
@@ -3013,17 +3034,19 @@
       const tk = msg.tokens || {};
       const tokensCell = `${tk.input != null ? tk.input : "—"} / ${tk.output != null ? tk.output : "—"}`;
       const voiceCost = msg.cost && msg.cost.usd != null ? Number(msg.cost.usd) : 0;
+      const ttsCost = msg.ttsCost && msg.ttsCost.usd != null ? Number(msg.ttsCost.usd) : 0;
       const cells = [
         msg.seq != null ? msg.seq : msg.turn,
         fmtMs(m.sttMs),
         fmtMs(m.thinkMs),
-        fmtMs(deriveFirstAudioMs(m)),
         fmtMs(m.ttsStartMs != null ? m.ttsStartMs : m.ttfaMs),
+        fmtMs(deriveFirstAudioMs(m)),
         fmtMs(m.ttsMs),
         fmtMs(deriveE2eResponseMs(m)),
         fmtMs(m.turnMs),
         tokensCell,
         voiceCost > 0 ? fmtCostUsd(voiceCost) : "—",
+        ttsCost > 0 ? fmtCostUsd(ttsCost) : "—",
         "—",
         "—",
       ];
@@ -3031,9 +3054,10 @@
       tr.dataset.voiceRow = "1";
       tr.dataset.turn = String(msg.turn != null ? msg.turn : "");
       tr.dataset.voiceCostUsd = String(voiceCost);
+      tr.dataset.ttsCostUsd = String(ttsCost);
       tr.dataset.extractCostUsd = "0";
       tr.dataset.extractApplied = "0";
-      const costClasses = ["", "", "", "", "", "", "", "", "", "cost-cell", "extract-cost-cell cost-cell", "turn-total-cost-cell cost-cell"];
+      const costClasses = ["", "", "", "", "", "", "", "", "", "cost-cell", "tts-cost-cell cost-cell", "extract-cost-cell cost-cell", "turn-total-cost-cell cost-cell"];
       for (let i = 0; i < cells.length; i++) {
         const td = document.createElement("td");
         td.textContent = cells[i];
@@ -3095,6 +3119,9 @@
       if (msg.event === "first_audio") {
         pauseLiveUserTranscript();
       }
+      if (msg.event === "stt_failed") {
+        removeEmptyUserPlaceholder();
+      }
       // Live card updates from timeline events (stream no longer shown in UI).
       if (msg.event === "first_audio" && msg.ttfaMs != null) {
         const stt = metricsState.stt.length ? metricsState.stt[metricsState.stt.length - 1] : null;
@@ -3115,6 +3142,7 @@
       callUsageTotals.transcribeUsd = 0;
       callUsageTotals.extractUsd = 0;
       callUsageTotals.summaryUsd = 0;
+      callUsageTotals.ttsUsd = 0;
       callUsageTotals.costUsd = 0;
       renderCallCostBreakdown();
       pendingExtractUsage = null;
@@ -3233,6 +3261,7 @@
 
     function stopStreaming() {
       if (!socket) return;
+      removeEmptyUserPlaceholder();
       beginCallFinalizeUI();
       if (socket.readyState === WebSocket.OPEN) {
         socket.send(JSON.stringify({ Kind: "EndCall" }));
@@ -3243,8 +3272,10 @@
       clearTranscript();
       resetDashboard();
       let wsProtocol = window.location.protocol === "https:" ? "wss" : "ws";
-      let wsHost = window.location.host; 
-      socket = new WebSocket(`${wsProtocol}://${wsHost}/web/ws`);
+      let wsHost = window.location.host;
+      const chosenModel = (window.effectiveVoiceModel && window.effectiveVoiceModel()) || "";
+      const modelQuery = chosenModel ? `?model=${encodeURIComponent(chosenModel)}` : "";
+      socket = new WebSocket(`${wsProtocol}://${wsHost}/web/ws${modelQuery}`);
       socket.binaryType = "arraybuffer";
 
       socket.onopen = async () => {
@@ -3334,34 +3365,10 @@
       applyTheme(saved === "dark" ? "dark" : "light");
     }
 
-    async function loadModelLabels() {
-      try {
-        const res = await fetch("/api/models", { credentials: "same-origin" });
-        if (!res.ok) return;
-        const m = await res.json();
-        const tag = document.getElementById("transcriptModelTag");
-        if (tag && m.voiceModel && m.transcriptionModel) {
-          tag.textContent = ` (agent: ${m.voiceModel} · caller: ${m.transcriptionModel})`;
-          tag.title = `Voice agent: ${m.voiceModel}. Caller transcription (STT): ${m.transcriptionModel}.`;
-        }
-        const extractTag = document.getElementById("extractModelTag");
-        if (extractTag && m.extractModel) {
-          extractTag.textContent = ` (${m.extractModel})`;
-          extractTag.title = `Key-details extraction model: ${m.extractModel}`;
-        }
-        const badge = document.getElementById("navModelBadge");
-        if (badge && m.voiceModel) {
-          badge.textContent = m.voiceModel;
-          badge.hidden = false;
-          const parts = [`Voice agent model: ${m.voiceModel}`];
-          if (m.serviceName) parts.push(`Deployment: ${m.serviceName}`);
-          if (m.containerAppName) parts.push(`Container: ${m.containerAppName}`);
-          badge.title = parts.join(" · ");
-        }
-      } catch (_) {
-        /* non-fatal */
-      }
-    }
+    // Voice-model selection + the Settings modal live in /static/settings-modal.js
+    // (shared across all pages). It exposes window.openSettings,
+    // window.effectiveVoiceModel, and window.loadModelLabels, and updates this
+    // page's model badge / transcript tag when models load or the choice changes.
 
     // Initialize
     (async () => {

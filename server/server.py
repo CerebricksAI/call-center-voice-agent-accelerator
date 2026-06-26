@@ -102,7 +102,43 @@ def _resolved_models() -> dict[str, str]:
         "summaryModel": summary,
         "serviceName": os.getenv("AZD_SERVICE_NAME", "app").strip() or "app",
         "containerAppName": os.getenv("CONTAINER_APP_NAME", "").strip(),
+        "selectableModels": _selectable_models(),
+        "defaultVoiceModel": voice,
     }
+
+
+def _selectable_models() -> list[str]:
+    """Voice models the user may pick in the UI (allow-list).
+
+    From VOICE_LIVE_SELECTABLE_MODELS (comma-separated); defaults to the env
+    voice model plus the two we support (gpt-4o-mini, gpt-realtime-mini).
+    """
+    raw = os.getenv("VOICE_LIVE_SELECTABLE_MODELS", "").strip()
+    models: list[str] = []
+    if raw:
+        models = [m.strip() for m in raw.split(",") if m.strip()]
+    if not models:
+        default = os.getenv("VOICE_LIVE_MODEL", "gpt-4o-mini").strip()
+        models = [default]
+        for m in ("gpt-4o-mini", "gpt-realtime-mini"):
+            if m not in models:
+                models.append(m)
+    return models
+
+
+def _resolve_voice_model(requested: str | None) -> str:
+    """Return the requested voice model if it is allow-listed, else the env default."""
+    default = os.getenv("VOICE_LIVE_MODEL", "gpt-4o-mini").strip()
+    if requested and requested.strip():
+        candidate = requested.strip()
+        if candidate in _selectable_models():
+            return candidate
+        logger.warning(
+            "Rejected unsupported voice model request %r — using default %r",
+            candidate,
+            default,
+        )
+    return default
 
 # ---------------------------------------------------------------------------
 # Call manager (concurrency limits + timeout enforcement)
@@ -337,7 +373,9 @@ async def web_ws():
         await websocket.close(4429, "Too Many Connections")
         return
 
-    handler = WebMediaHandler(app.config)
+    voice_model = _resolve_voice_model(websocket.args.get("model"))
+    logger.info("Web call using voice model: %s", voice_model)
+    handler = WebMediaHandler(app.config, voice_model=voice_model)
     await handler.init_websocket(websocket)
     handler.set_call_context(call_id, "web")
     try:

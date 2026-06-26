@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass
 
 
@@ -32,25 +33,111 @@ class VoiceLiveRates:
 
 @dataclass(frozen=True)
 class TranscribeRates:
-    """Per-million-token USD rates (Azure gpt-4o-mini-transcribe)."""
+    """Per-million-token USD rates (Azure gpt-4o-mini-transcribe).
+
+    Official: audio input $1.25, text output $5.00 (text input unused — STT is
+    audio-in -> text-out).
+    """
 
     text_input: float = 1.25
     text_output: float = 5.0
-    audio_input: float = 3.0
+    audio_input: float = 1.25
 
 
-def get_voice_live_rates() -> VoiceLiveRates:
+def _model_env_token(model: str | None) -> str:
+    """ENV-safe token for a model name, e.g. ``gpt-realtime-mini`` -> ``GPT_REALTIME_MINI``."""
+    return re.sub(r"[^A-Z0-9]+", "_", (model or "").upper()).strip("_")
+
+
+def _rate(suffix: str, default: float, model_token: str) -> float:
+    """Resolve a price: per-model override -> generic override -> default.
+
+    Both Voice Live *Basic* models (gpt-4o-mini, gpt-realtime-mini) share the same
+    tier rate by default. The per-model override (``VOICE_LIVE_PRICE_<MODEL>_<SUFFIX>``)
+    lets a different-tier model (e.g. Pro ``gpt-realtime``) be priced separately
+    without code changes.
+    """
+    if model_token:
+        raw = os.getenv(f"VOICE_LIVE_PRICE_{model_token}_{suffix}")
+        if raw and raw.strip():
+            try:
+                return float(raw)
+            except ValueError:
+                pass
+    return _env_float(f"VOICE_LIVE_PRICE_{suffix}", default)
+
+
+# Azure Voice Live per-1M-token USD rates by tier, effective 2025-07-01.
+# Verified June 2026 (azure.microsoft.com/pricing/details/speech, learn.microsoft.com
+# Voice Live, MS Q&A 5778584):
+#   Basic: text-in $0.66, text-out $2.64 (4x in), audio-in $15.
+#   Pro:   text-in $4.40, text-out $17.60, cached text-in $1.375, audio-in $17.
+# Values marked (est) are not published on a fetchable page and are inferred from
+# the in/out ratios — confirm in the Azure portal before relying on them, or set
+# the matching VOICE_LIVE_PRICE_* env var. Both selectable models are Basic tier,
+# so the cost difference between them comes from token TYPE (cascaded text vs
+# native audio), not the rate table.
+_TIER_DEFAULTS: dict[str, dict[str, float]] = {
+    "basic": {
+        "TEXT_INPUT_PER_1M": 0.66,
+        "TEXT_CACHED_INPUT_PER_1M": 0.33,
+        "TEXT_OUTPUT_PER_1M": 2.64,
+        "AUDIO_INPUT_PER_1M": 15.0,
+        "AUDIO_CACHED_INPUT_PER_1M": 0.33,   # (est)
+        "AUDIO_OUTPUT_PER_1M": 33.0,         # (est)
+    },
+    "pro": {
+        "TEXT_INPUT_PER_1M": 4.40,
+        "TEXT_CACHED_INPUT_PER_1M": 1.375,
+        "TEXT_OUTPUT_PER_1M": 17.60,
+        "AUDIO_INPUT_PER_1M": 17.0,
+        "AUDIO_CACHED_INPUT_PER_1M": 1.375,  # (est)
+        "AUDIO_OUTPUT_PER_1M": 37.40,        # (est) ~2.2x audio-in, as in Basic
+    },
+}
+
+# Exact per-model rates — override the tier defaults for a specific model.
+# gpt-realtime-mini has its own published native-audio rates (per the Azure
+# Voice Live billing sheet): text $0.60/$2.40, audio $10/$20 per 1M tokens.
+_MODEL_DEFAULTS: dict[str, dict[str, float]] = {
+    "gpt-realtime-mini": {
+        "TEXT_INPUT_PER_1M": 0.60,
+        "TEXT_CACHED_INPUT_PER_1M": 0.30,    # (est) cached not in the 4-component sheet
+        "TEXT_OUTPUT_PER_1M": 2.40,
+        "AUDIO_INPUT_PER_1M": 10.0,
+        "AUDIO_CACHED_INPUT_PER_1M": 0.30,   # (est)
+        "AUDIO_OUTPUT_PER_1M": 20.0,
+    },
+}
+
+# Models billed at the Voice Live Pro tier; everything else defaults to Basic.
+_PRO_MODELS = frozenset(
+    {"gpt-realtime", "gpt-4o", "gpt-4.1", "gpt-5", "gpt-5-chat"}
+)
+
+
+def _tier_for_model(model: str | None) -> str:
+    return "pro" if (model or "").strip().lower() in _PRO_MODELS else "basic"
+
+
+def get_voice_live_rates(model: str | None = None) -> VoiceLiveRates:
+    """Per-million-token rates for ``model``.
+
+    Picks the tier defaults by model name (Basic for gpt-4o-mini / gpt-realtime-mini,
+    Pro for gpt-realtime / gpt-4o / …), then applies any env overrides
+    (``VOICE_LIVE_PRICE_<MODEL>_<SUFFIX>`` first, then ``VOICE_LIVE_PRICE_<SUFFIX>``).
+    """
+    t = _model_env_token(model)
+    name = (model or "").strip().lower()
+    # Exact per-model rates take precedence over the tier defaults.
+    d = _MODEL_DEFAULTS.get(name) or _TIER_DEFAULTS[_tier_for_model(model)]
     return VoiceLiveRates(
-        text_input=_env_float("VOICE_LIVE_PRICE_TEXT_INPUT_PER_1M", 0.66),
-        text_cached_input=_env_float(
-            "VOICE_LIVE_PRICE_TEXT_CACHED_INPUT_PER_1M", 0.33
-        ),
-        text_output=_env_float("VOICE_LIVE_PRICE_TEXT_OUTPUT_PER_1M", 2.64),
-        audio_input=_env_float("VOICE_LIVE_PRICE_AUDIO_INPUT_PER_1M", 15.0),
-        audio_cached_input=_env_float(
-            "VOICE_LIVE_PRICE_AUDIO_CACHED_INPUT_PER_1M", 0.33
-        ),
-        audio_output=_env_float("VOICE_LIVE_PRICE_AUDIO_OUTPUT_PER_1M", 33.0),
+        text_input=_rate("TEXT_INPUT_PER_1M", d["TEXT_INPUT_PER_1M"], t),
+        text_cached_input=_rate("TEXT_CACHED_INPUT_PER_1M", d["TEXT_CACHED_INPUT_PER_1M"], t),
+        text_output=_rate("TEXT_OUTPUT_PER_1M", d["TEXT_OUTPUT_PER_1M"], t),
+        audio_input=_rate("AUDIO_INPUT_PER_1M", d["AUDIO_INPUT_PER_1M"], t),
+        audio_cached_input=_rate("AUDIO_CACHED_INPUT_PER_1M", d["AUDIO_CACHED_INPUT_PER_1M"], t),
+        audio_output=_rate("AUDIO_OUTPUT_PER_1M", d["AUDIO_OUTPUT_PER_1M"], t),
     )
 
 
@@ -58,8 +145,43 @@ def get_transcribe_rates() -> TranscribeRates:
     return TranscribeRates(
         text_input=_env_float("TRANSCRIBE_PRICE_TEXT_INPUT_PER_1M", 1.25),
         text_output=_env_float("TRANSCRIBE_PRICE_TEXT_OUTPUT_PER_1M", 5.0),
-        audio_input=_env_float("TRANSCRIBE_PRICE_AUDIO_INPUT_PER_1M", 3.0),
+        audio_input=_env_float("TRANSCRIBE_PRICE_AUDIO_INPUT_PER_1M", 1.25),
     )
+
+
+def get_text_analysis_rates() -> VoiceLiveRates:
+    """Standard gpt-4o-mini TEXT rates for the side analysis sessions (lead
+    extraction + call summary). These are plain text completions billed at the
+    standard model price ($0.15 in / $0.60 out) — NOT the Voice Live voice rate.
+    """
+    return VoiceLiveRates(
+        text_input=_env_float("TEXT_ANALYSIS_PRICE_INPUT_PER_1M", 0.15),
+        text_cached_input=_env_float("TEXT_ANALYSIS_PRICE_CACHED_INPUT_PER_1M", 0.075),
+        text_output=_env_float("TEXT_ANALYSIS_PRICE_OUTPUT_PER_1M", 0.60),
+        audio_input=0.0,
+        audio_cached_input=0.0,
+        audio_output=0.0,
+    )
+
+
+def get_tts_rate_per_1m_chars() -> float:
+    """Azure Speech TTS price per 1M characters synthesized (the agent voice).
+
+    The spoken output is rendered by the Azure voice (en-US-Ava:DragonHDLatestNeural)
+    and billed separately by Azure AI Speech, per character — for BOTH voice models.
+    Default is the HD-neural rate; confirm the exact Dragon HD price in the Azure
+    portal and override via TTS_PRICE_PER_1M_CHARS.
+    """
+    return _env_float("TTS_PRICE_PER_1M_CHARS", 30.0)
+
+
+def compute_tts_cost_usd(char_count: int) -> dict | None:
+    """USD cost to synthesize ``char_count`` characters of agent speech."""
+    chars = _int(char_count)
+    if chars <= 0:
+        return None
+    usd = chars * get_tts_rate_per_1m_chars() / 1_000_000
+    return {"usd": round(usd, 6), "chars": chars}
 
 
 def _normalize_usage_model(usage_model) -> dict | None:
@@ -145,12 +267,17 @@ def compute_usage_cost_usd(
     *,
     text_only: bool = False,
     rates: VoiceLiveRates | None = None,
+    model: str | None = None,
 ) -> dict | None:
-    """Return USD cost breakdown for a usage dict from normalize_usage()."""
+    """Return USD cost breakdown for a usage dict from normalize_usage().
+
+    ``model`` selects per-model rates (see get_voice_live_rates) when ``rates``
+    is not supplied explicitly.
+    """
     if not usage:
         return None
 
-    rates = rates or get_voice_live_rates()
+    rates = rates or get_voice_live_rates(model)
 
     in_text = _int(usage.get("inputText"))
     in_audio = 0 if text_only else _int(usage.get("inputAudio"))
@@ -325,6 +452,7 @@ def enrich_call_record(record: dict, *, include_timeline: bool = True) -> dict:
             enriched_events.append({"event": "call_ended", "turn": None, "atMs": duration_ms})
         record["events"] = enriched_events
 
+    record_model = record.get("model")
     session_total = _cost_usd({"usd": record.get("callCostUsd")})
     row_voice = 0.0
     row_extract = 0.0
@@ -344,12 +472,14 @@ def enrich_call_record(record: dict, *, include_timeline: bool = True) -> dict:
                 m["ttfaMs"] = tts_start
         tokens = row.get("tokens")
         if not row.get("cost") and isinstance(tokens, dict) and tokens:
-            cost = compute_usage_cost_usd(tokens, text_only=False)
+            cost = compute_usage_cost_usd(tokens, text_only=False, model=record_model)
             if cost:
                 row["cost"] = cost
         extract_tokens = row.get("extractTokens")
         if not row.get("extractCost") and isinstance(extract_tokens, dict) and extract_tokens:
-            extract_cost = compute_usage_cost_usd(extract_tokens, text_only=True)
+            extract_cost = compute_usage_cost_usd(
+                extract_tokens, text_only=True, rates=get_text_analysis_rates()
+            )
             if extract_cost:
                 row["extractCost"] = extract_cost
         row_voice += _cost_usd(row.get("cost"))
@@ -362,22 +492,24 @@ def enrich_call_record(record: dict, *, include_timeline: bool = True) -> dict:
         transcribe = _estimate_transcribe_usd_from_metrics(metrics)
     extract = _cost_usd({"usd": stored.get("extractUsd")}) or row_extract
     summary = _cost_usd({"usd": stored.get("summaryUsd")})
+    tts = _cost_usd({"usd": stored.get("ttsUsd")})
 
-    parts_total = round(voice + transcribe + extract + summary, 6)
+    parts_total = round(voice + transcribe + extract + summary + tts, 6)
     if session_total > 0 and summary <= 0 and session_total > parts_total:
-        summary = round(session_total - voice - transcribe - extract, 6)
+        summary = round(session_total - voice - transcribe - extract - tts, 6)
         if summary < 0:
             summary = 0.0
 
-    total = session_total if session_total > 0 else round(voice + transcribe + extract + summary, 6)
-    if total <= 0 and (voice > 0 or transcribe > 0 or extract > 0 or summary > 0):
-        total = round(voice + transcribe + extract + summary, 6)
+    total = session_total if session_total > 0 else round(voice + transcribe + extract + summary + tts, 6)
+    if total <= 0 and (voice > 0 or transcribe > 0 or extract > 0 or summary > 0 or tts > 0):
+        total = round(voice + transcribe + extract + summary + tts, 6)
 
     record["costBreakdown"] = {
         "voiceUsd": round(voice, 6),
         "transcribeUsd": round(transcribe, 6),
         "extractUsd": round(extract, 6),
         "summaryUsd": round(summary, 6),
+        "ttsUsd": round(tts, 6),
         "totalUsd": round(total, 6),
     }
     if total > 0:
