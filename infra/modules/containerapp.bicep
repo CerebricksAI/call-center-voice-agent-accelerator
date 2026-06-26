@@ -30,6 +30,7 @@ param transcriptionModel string = 'gpt-4o-mini-transcribe'
 // Helper to sanitize environmentName for valid container app name
 var sanitizedEnvName = toLower(replace(replace(replace(environmentName, ' ', '-'), '--', '-'), '_', '-'))
 var containerAppName = take('ca-${sanitizedEnvName}-${uniqueSuffix}', 32)
+var containerAppRtName = take('ca-rt-${sanitizedEnvName}-${uniqueSuffix}', 32)
 var containerEnvName = take('cae-${sanitizedEnvName}-${uniqueSuffix}', 32)
 
 resource logAnalyticsWorkspace 'Microsoft.OperationalInsights/workspaces@2022-10-01' existing = { name: logAnalyticsWorkspaceName }
@@ -140,10 +141,6 @@ resource containerApp 'Microsoft.App/containerApps@2024-10-02-preview' = {
             {
               name: 'CONTAINER_APP_NAME'
               value: containerAppName
-            }
-            {
-              name: 'INPUT_TRANSCRIPTION_MODEL'
-              value: 'gpt-4o-mini-transcribe'
             }
             {
               name: 'DEBUG_MODE'
@@ -286,10 +283,6 @@ resource containerAppRt 'Microsoft.App/containerApps@2024-10-02-preview' = if (!
             {
               name: 'CONTAINER_APP_NAME'
               value: containerAppRtName
-            }
-            {
-              name: 'INPUT_TRANSCRIPTION_MODEL'
-              value: 'gpt-4o-mini-transcribe'
             }
             {
               name: 'EXTRACT_MODEL'
