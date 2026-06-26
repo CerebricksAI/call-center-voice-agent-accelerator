@@ -129,8 +129,6 @@
     if (sel && sel.value) {
       try { localStorage.setItem(KEY, sel.value); } catch (e) {}
     }
-    var navSel = document.getElementById("modelSelect");
-    if (navSel && sel && sel.value) navSel.value = sel.value;
     var pa = document.getElementById("systemPromptInput");
     if (pa) {
       var val = (pa.value || "").trim();
