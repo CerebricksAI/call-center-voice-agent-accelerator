@@ -54,8 +54,11 @@
       ".settings-head h2{margin:0;font-size:1.05rem}",
       ".settings-close{background:none;border:none;font-size:1.5rem;line-height:1;cursor:pointer;color:var(--text-secondary,#666)}",
       ".settings-body{padding:1.25rem 1.5rem;overflow-y:auto;flex:1;min-height:0}",
-      ".settings-label{display:block;font-weight:600;font-size:.85rem;margin-bottom:.4rem}",
-      ".settings-select{width:100%;max-width:22rem;padding:.55rem .6rem;font-size:.95rem;border:1px solid var(--qt-border,#ccc);border-radius:8px;background:var(--bg-deep,#fff);color:inherit}",
+      ".settings-label{display:block;font-weight:600;font-size:.85rem;margin-bottom:.4rem;color:var(--text-primary,#111)}",
+      ".settings-select{width:100%;max-width:100%;padding:.6rem 2.25rem .6rem .75rem;font-size:.95rem;font-weight:500;line-height:1.35;border:1px solid var(--qt-border,#ccc);border-radius:8px;background:var(--bg-elevated,#f8fafc);color:var(--text-primary,#111);cursor:pointer;appearance:none;-webkit-appearance:none;background-image:url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%235c6678' d='M2.5 4.5 6 8l3.5-3.5'/%3E%3C/svg%3E\");background-repeat:no-repeat;background-position:right .75rem center;background-size:12px 12px}",
+      ".settings-select:hover{border-color:var(--qt-primary,#8929fe)}",
+      ".settings-select:focus{outline:2px solid var(--qt-primary,#8929fe);outline-offset:2px;border-color:var(--qt-primary,#8929fe)}",
+      ".settings-select option{background:#fff;color:#111827}",
       ".settings-textarea{width:100%;min-height:14rem;margin-top:.25rem;padding:.65rem .75rem;font-size:.875rem;line-height:1.5;border:1px solid var(--qt-border,#ccc);border-radius:8px;background:var(--bg-deep,#fff);color:inherit;resize:vertical;font-family:inherit;box-sizing:border-box}",
       ".settings-note{margin:.9rem 0 0;font-size:.74rem;color:var(--text-muted,#888);line-height:1.5}",
       ".settings-foot{display:flex;justify-content:flex-end;gap:.6rem;padding:1rem 1.25rem;border-top:1px solid var(--qt-border,#eee);flex-shrink:0}",
@@ -126,6 +129,8 @@
     if (sel && sel.value) {
       try { localStorage.setItem(KEY, sel.value); } catch (e) {}
     }
+    var navSel = document.getElementById("modelSelect");
+    if (navSel && sel && sel.value) navSel.value = sel.value;
     var pa = document.getElementById("systemPromptInput");
     if (pa) {
       var val = (pa.value || "").trim();
