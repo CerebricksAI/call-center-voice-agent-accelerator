@@ -77,12 +77,15 @@ class VoiceLiveMediaHandler:
     for their specific protocols.
     """
 
-    def __init__(self, config, voice_model=None):
+    def __init__(self, config, voice_model=None, system_prompt=None):
         self.endpoint = config["AZURE_VOICE_LIVE_ENDPOINT"]
         # Per-session model (validated UI selection) overrides the env default.
         # Note: only the VOICE model is per-session — extract/summary stay on their
         # own (gpt-4o-mini) resolution, independent of this choice.
         self.model = (voice_model or config["VOICE_LIVE_MODEL"] or "").strip()
+        # Optional per-session system prompt from the UI. When set, it overrides
+        # the default persona instructions for this call only; blank = default.
+        self.system_prompt = (system_prompt or "").strip() or None
         self.api_key = config["AZURE_VOICE_LIVE_API_KEY"]
         self.client_id = config["AZURE_USER_ASSIGNED_IDENTITY_CLIENT_ID"]
         self.conn = None
@@ -143,7 +146,9 @@ class VoiceLiveMediaHandler:
 
     def _session_config(self):
         """Return the typed session configuration for Voice Live."""
-        return build_request_session(self._session_options, model=self.model)
+        return build_request_session(
+            self._session_options, model=self.model, instructions=self.system_prompt
+        )
 
     # ------------------------------------------------------------------
     # Voice Live connection
@@ -865,6 +870,7 @@ class VoiceLiveMediaHandler:
                 "callId": call_id,
                 "channel": self.channel,
                 "model": self.model,
+                "customPrompt": self.system_prompt is not None,
                 "brokerage": BROKERAGE_NAME,
                 "persona": "Maya — mortgage pre-qualification",
                 "startedAt": started.isoformat() if started else None,

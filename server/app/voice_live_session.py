@@ -218,10 +218,21 @@ def build_request_session(
     options: VoiceLiveSessionOptions | None = None,
     *,
     model: str | None = None,
+    instructions: str | None = None,
 ) -> RequestSession:
-    """Return a Voice Live ``RequestSession`` using env-driven tuning."""
+    """Return a Voice Live ``RequestSession`` using env-driven tuning.
+
+    ``instructions`` overrides the default persona/system prompt when a non-empty
+    string is supplied (the per-session custom prompt from the UI); otherwise the
+    built-in lead-qualification persona is used.
+    """
     opts = options or resolve_session_options()
     voice_model = (model or os.getenv("VOICE_LIVE_MODEL", "gpt-4o-mini")).strip()
+    system_prompt = (
+        instructions.strip()
+        if isinstance(instructions, str) and instructions.strip()
+        else resolve_lead_qualification_instructions()
+    )
 
     voice_kwargs: dict[str, Any] = {
         "name": resolve_agent_voice_name(),
@@ -236,7 +247,7 @@ def build_request_session(
 
     session_kwargs: dict[str, Any] = {
         "modalities": [Modality.TEXT, Modality.AUDIO],
-        "instructions": resolve_lead_qualification_instructions(),
+        "instructions": system_prompt,
         "turn_detection": _build_turn_detection(opts, model=voice_model),
         "input_audio_format": InputAudioFormat.PCM16,
         "output_audio_format": OutputAudioFormat.PCM16,
