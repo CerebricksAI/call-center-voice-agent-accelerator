@@ -30,7 +30,6 @@ param transcriptionModel string = 'gpt-4o-mini-transcribe'
 // Helper to sanitize environmentName for valid container app name
 var sanitizedEnvName = toLower(replace(replace(replace(environmentName, ' ', '-'), '--', '-'), '_', '-'))
 var containerAppName = take('ca-${sanitizedEnvName}-${uniqueSuffix}', 32)
-var containerAppRtName = take('ca-rt-${sanitizedEnvName}-${uniqueSuffix}', 32)
 var containerEnvName = take('cae-${sanitizedEnvName}-${uniqueSuffix}', 32)
 
 resource logAnalyticsWorkspace 'Microsoft.OperationalInsights/workspaces@2022-10-01' existing = { name: logAnalyticsWorkspaceName }
@@ -363,4 +362,3 @@ resource containerAppRt 'Microsoft.App/containerApps@2024-10-02-preview' = if (!
 
 output containerAppFqdn string = containerApp.properties.configuration.ingress.fqdn
 output containerAppId string = containerApp.id
-output containerAppRtFqdn string = !empty(secondModelDeploymentName) ? containerAppRt.properties.configuration.ingress.fqdn : ''

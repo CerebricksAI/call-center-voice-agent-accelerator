@@ -67,6 +67,15 @@ if session_cookie_secure():
 app.config["AZURE_VOICE_LIVE_API_KEY"] = os.getenv("AZURE_VOICE_LIVE_API_KEY", "")
 app.config["AZURE_VOICE_LIVE_ENDPOINT"] = os.getenv("AZURE_VOICE_LIVE_ENDPOINT")
 app.config["VOICE_LIVE_MODEL"] = os.getenv("VOICE_LIVE_MODEL", "gpt-4o-mini")
+# Models the web client may switch between (settings selector). Comma-separated.
+_model_choices = [
+    m.strip()
+    for m in os.getenv("MODEL_CHOICES", "gpt-4o-mini,gpt-realtime-mini").split(",")
+    if m.strip()
+]
+if app.config["VOICE_LIVE_MODEL"] not in _model_choices:
+    _model_choices.insert(0, app.config["VOICE_LIVE_MODEL"])
+app.config["MODEL_CHOICES"] = _model_choices
 app.config["AZURE_USER_ASSIGNED_IDENTITY_CLIENT_ID"] = os.getenv(
     "AZURE_USER_ASSIGNED_IDENTITY_CLIENT_ID", ""
 )
@@ -357,6 +366,17 @@ async def auth_session():
         return jsonify({"authenticated": False}), 401
     touch_session(session)
     return jsonify(session_payload(session)), 200
+
+
+@app.route("/web/models")
+async def web_models():
+    """List the Voice Live models the web client may select from (settings selector)."""
+    return jsonify(
+        {
+            "models": app.config["MODEL_CHOICES"],
+            "default": app.config["VOICE_LIVE_MODEL"],
+        }
+    )
 
 
 @app.websocket("/web/ws")
