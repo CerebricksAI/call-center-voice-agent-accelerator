@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import logging
 import os
 import secrets
@@ -148,6 +149,37 @@ def _resolve_voice_model(requested: str | None) -> str:
             default,
         )
     return default
+
+
+_MAX_SYSTEM_PROMPT_CHARS = 8000
+
+
+def _decode_system_prompt(raw: str | None) -> str | None:
+    """Decode the optional base64url custom system prompt from the WS query.
+
+    Returns the prompt (capped at _MAX_SYSTEM_PROMPT_CHARS) or None to fall back
+    to the default persona. Malformed input is ignored (default persona is used).
+    """
+    if not raw or not raw.strip():
+        return None
+    raw = raw.strip()
+    try:
+        pad = "=" * (-len(raw) % 4)
+        text = base64.urlsafe_b64decode(raw + pad).decode("utf-8")
+    except (ValueError, UnicodeDecodeError):
+        logger.warning("Ignoring malformed custom system prompt on WS connect")
+        return None
+    text = text.strip()
+    if not text:
+        return None
+    if len(text) > _MAX_SYSTEM_PROMPT_CHARS:
+        logger.warning(
+            "Custom system prompt too long (%d chars); truncating to %d",
+            len(text),
+            _MAX_SYSTEM_PROMPT_CHARS,
+        )
+        text = text[:_MAX_SYSTEM_PROMPT_CHARS]
+    return text
 
 # ---------------------------------------------------------------------------
 # Call manager (concurrency limits + timeout enforcement)
@@ -394,8 +426,15 @@ async def web_ws():
         return
 
     voice_model = _resolve_voice_model(websocket.args.get("model"))
-    logger.info("Web call using voice model: %s", voice_model)
-    handler = WebMediaHandler(app.config, voice_model=voice_model)
+    system_prompt = _decode_system_prompt(websocket.args.get("prompt"))
+    logger.info(
+        "Web call using voice model: %s (custom prompt: %s)",
+        voice_model,
+        "yes" if system_prompt else "no",
+    )
+    handler = WebMediaHandler(
+        app.config, voice_model=voice_model, system_prompt=system_prompt
+    )
     await handler.init_websocket(websocket)
     handler.set_call_context(call_id, "web")
     try:

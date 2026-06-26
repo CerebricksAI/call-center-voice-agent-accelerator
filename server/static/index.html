@@ -3311,9 +3311,14 @@
       resetDashboard();
       let wsProtocol = window.location.protocol === "https:" ? "wss" : "ws";
       let wsHost = window.location.host;
+      const wsParams = [];
       const chosenModel = (window.effectiveVoiceModel && window.effectiveVoiceModel()) || "";
-      const modelQuery = chosenModel ? `?model=${encodeURIComponent(chosenModel)}` : "";
-      socket = new WebSocket(`${wsProtocol}://${wsHost}/web/ws${modelQuery}`);
+      if (chosenModel) wsParams.push("model=" + encodeURIComponent(chosenModel));
+      // base64url-encoded custom system prompt (URL-safe; empty = default persona).
+      const promptParam = (window.effectiveSystemPromptEncoded && window.effectiveSystemPromptEncoded()) || "";
+      if (promptParam) wsParams.push("prompt=" + promptParam);
+      const wsQuery = wsParams.length ? "?" + wsParams.join("&") : "";
+      socket = new WebSocket(`${wsProtocol}://${wsHost}/web/ws${wsQuery}`);
       socket.binaryType = "arraybuffer";
 
       socket.onopen = async () => {

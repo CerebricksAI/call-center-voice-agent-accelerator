@@ -41,8 +41,8 @@ class WebMediaHandler(VoiceLiveMediaHandler):
     to the browser over the WebSocket. Telephony providers use other handlers.
     """
 
-    def __init__(self, config, voice_model=None):
-        super().__init__(config, voice_model=voice_model)
+    def __init__(self, config, voice_model=None, system_prompt=None):
+        super().__init__(config, voice_model=voice_model, system_prompt=system_prompt)
         self._last_user_transcript = ""
         self._assistant_partial = ""
         self._user_partial = ""
@@ -748,6 +748,7 @@ class WebMediaHandler(VoiceLiveMediaHandler):
                 "callId": call_id,
                 "channel": self.channel,
                 "model": self.model,
+                "customPrompt": self.system_prompt is not None,
                 "brokerage": BROKERAGE_NAME,
                 "persona": "Maya — mortgage pre-qualification",
                 "startedAt": started.isoformat() if started else None,
