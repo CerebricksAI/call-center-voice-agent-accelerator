@@ -1477,6 +1477,11 @@
       color: var(--qt-primary);
     }
   </style>
+  <style>
+    .model-select{background:transparent;color:inherit;border:1px solid currentColor;border-radius:8px;padding:4px 8px;font-size:13px;opacity:.85;cursor:pointer}
+    .model-select:disabled{opacity:.45;cursor:not-allowed}
+    .model-select-wrap{display:inline-flex;align-items:center;gap:6px;font-size:12px;opacity:.8}
+  </style>
 </head>
 <body>
   <nav class="app-nav">
@@ -1491,6 +1496,10 @@
       <a class="nav-link disabled">Settings</a>
     </div>
     <div class="nav-right">
+      <label class="model-select-wrap" title="Voice Live model used for the next call">
+        <span>Model</span>
+        <select id="modelSelect" class="model-select" aria-label="Voice Live model" onchange="onModelChange()"></select>
+      </label>
       <button type="button" class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="Toggle light/dark theme" aria-label="Toggle theme">
         <span id="themeIcon">☾</span>
       </button>
@@ -3239,12 +3248,42 @@
       }
     }
 
+    const MODEL_STORAGE_KEY = "voiceLiveModel";
+    function selectedModel() {
+      const el = document.getElementById("modelSelect");
+      return (el && el.value) || "";
+    }
+    function onModelChange() {
+      try { localStorage.setItem(MODEL_STORAGE_KEY, selectedModel()); } catch (e) {}
+    }
+    async function initModelSelect() {
+      const el = document.getElementById("modelSelect");
+      if (!el) return;
+      try {
+        const data = await (await fetch("/web/models")).json();
+        const models = data.models || [];
+        let saved = null;
+        try { saved = localStorage.getItem(MODEL_STORAGE_KEY); } catch (e) {}
+        const preferred = (saved && models.includes(saved)) ? saved : (data.default || models[0]);
+        el.innerHTML = "";
+        models.forEach((m) => {
+          const opt = document.createElement("option");
+          opt.value = m;
+          opt.textContent = m;
+          if (m === preferred) opt.selected = true;
+          el.appendChild(opt);
+        });
+      } catch (e) { console.warn("Could not load model list", e); }
+    }
+    initModelSelect();
+
     function startStreaming() {
       clearTranscript();
       resetDashboard();
       let wsProtocol = window.location.protocol === "https:" ? "wss" : "ws";
-      let wsHost = window.location.host; 
-      socket = new WebSocket(`${wsProtocol}://${wsHost}/web/ws`);
+      let wsHost = window.location.host;
+      const modelParam = selectedModel() ? `?model=${encodeURIComponent(selectedModel())}` : "";
+      socket = new WebSocket(`${wsProtocol}://${wsHost}/web/ws${modelParam}`);
       socket.binaryType = "arraybuffer";
 
       socket.onopen = async () => {
