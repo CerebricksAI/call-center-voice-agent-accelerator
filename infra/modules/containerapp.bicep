@@ -336,7 +336,7 @@ resource containerAppRt 'Microsoft.App/containerApps@2024-10-02-preview' = if (!
         }
       ]
       scale: {
-        minReplicas: 1
+        minReplicas: 0
         maxReplicas: 10
         rules: [
           {
