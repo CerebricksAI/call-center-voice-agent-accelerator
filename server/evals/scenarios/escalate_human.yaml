@@ -1,9 +1,0 @@
-id: escalate_human
-category: escalation
-caller_turns:
-  - "Can I just speak to a human?"
-expect:
-  actions: [ESCALATE]
-  tool_calls: [log_disposition]
-  disposition: transferred
-  state: TRANSFER

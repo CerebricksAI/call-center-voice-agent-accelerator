@@ -17,12 +17,9 @@ from app.orchestrator.graph import GraphEngine, build_app  # noqa: E402
 
 # Each scenario: a list of caller turns after consent (start in QUALIFY).
 SCENARIOS = {
-    "optout": ["actually, take me off your list"],
-    "decline_two_turns": ["I'm not interested", "no thanks"],
-    "busy": ["I'm busy, call me back later"],
-    "language": ["can we do this in Spanish"],
-    "escalate": ["let me speak to a human"],
-    "neutral": ["I'd like to refinance my house"],
+    "optout": ["actually, take me off your list"],   # the ONE gated action (compliance)
+    "neutral": ["I'd like to refinance my house"],   # gate silent
+    "defers": ["I'm not interested"],                # non-opt-out -> gate silent (router handles)
 }
 
 
@@ -62,10 +59,10 @@ def test_graph_optout_fires_tools_before_close_and_isolates_skill():
 
 def test_checkpointer_persists_state_by_thread_id():
     graph = GraphEngine()
-    fsm, ctx, _ = _run(graph, ["I'm not interested", "no thanks"], "thread-x")
+    fsm, ctx, _ = _run(graph, ["actually, take me off your list"], "thread-x")
     snapshot = graph.app.get_state({"configurable": {"thread_id": "thread-x"}})
-    assert snapshot.values.get("disposition") == "declined"
-    assert snapshot.values.get("rebuttal_used") is True
+    assert snapshot.values.get("disposition") == "do_not_call"
+    assert snapshot.values.get("fsm_state") == "DNC_CLOSE"
 
 
 def test_build_app_compiles():
@@ -77,3 +74,24 @@ if __name__ == "__main__":
     test_graph_optout_fires_tools_before_close_and_isolates_skill()
     test_checkpointer_persists_state_by_thread_id()
     print("graph: OK")
+
+
+def test_graph_and_fsm_classify_turn_route_via_router(monkeypatch):
+    """Both engines' classify_turn return the router's action (LLM mocked)."""
+    import asyncio
+    import app.orchestrator.semantic as sem
+
+    async def fake_route(turns):
+        # whole-conversation router 'decides' decline from the transcript
+        return "DECLINE_CLOSE" if any("changed my mind" in (t.get("text") or "") for t in turns) else None
+
+    monkeypatch.setattr(sem, "route_conversation", fake_route)
+
+    turns = [{"role": "agent", "text": "Timeline?"}, {"role": "user", "text": "I've changed my mind"}]
+    # LangGraph engine (routes through the router node)
+    assert asyncio.run(GraphEngine().classify_turn(turns, thread_id="t1")) == "DECLINE_CLOSE"
+    # FSM engine (plain)
+    assert asyncio.run(dialog.classify_turn(turns, thread_id="t1")) == "DECLINE_CLOSE"
+    # a neutral transcript -> no route
+    neutral = [{"role": "user", "text": "California, single family"}]
+    assert asyncio.run(GraphEngine().classify_turn(neutral, thread_id="t2")) is None

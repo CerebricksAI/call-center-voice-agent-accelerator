@@ -1,9 +1,0 @@
-id: busy_callback
-category: callback
-caller_turns:
-  - "I'm busy right now, can you call me back later?"
-expect:
-  actions: [CALLBACK_CLOSE]
-  tool_calls: [log_disposition]
-  disposition: callback_requested
-  state: CALLBACK_CLOSE

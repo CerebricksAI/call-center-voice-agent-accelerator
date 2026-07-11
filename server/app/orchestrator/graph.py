@@ -38,6 +38,7 @@ _ACTION_TO_NODE = {
 
 class CallState(TypedDict, total=False):
     transcript: str
+    turns: list[dict[str, Any]]
     call_id: str
     borrower_name: str
     lead_source: str
@@ -124,6 +125,46 @@ def _make_outcome(action: str) -> Callable[[CallState], dict[str, Any]]:
     return node
 
 
+async def _router(state: CallState) -> dict[str, Any]:
+    """LLM router node: read the WHOLE conversation, decide the caller's intent.
+
+    Classification only (no apply): the handler commits the action after a fresh
+    state check, so a slow result can't override a call that already moved on.
+    """
+    from app.orchestrator.semantic import route_conversation
+
+    action = await route_conversation(state.get("turns", []))
+    return {"action": action}
+
+
+def _decide(action: str) -> Callable[[CallState], dict[str, Any]]:
+    # One branch per intent — records the routed action; the handler applies it.
+    def node(state: CallState) -> dict[str, Any]:
+        return {"action": action}
+
+    return node
+
+
+def build_router_app(checkpointer: Any = None):
+    """Compile the semantic router graph: LLM node -> conditional edge -> intent branch."""
+    g = StateGraph(CallState)
+    g.add_node("router", _router)
+    g.add_node("cont", _cont)
+    for action, node_name in _ACTION_TO_NODE.items():
+        g.add_node("decide_" + node_name, _decide(action))
+
+    g.add_edge(START, "router")
+    g.add_conditional_edges(
+        "router",
+        _route,
+        {"cont": "cont", **{v: "decide_" + v for v in _ACTION_TO_NODE.values()}},
+    )
+    g.add_edge("cont", END)
+    for node_name in _ACTION_TO_NODE.values():
+        g.add_edge("decide_" + node_name, END)
+    return g.compile(checkpointer=checkpointer or MemorySaver())
+
+
 def build_app(checkpointer: Any = None):
     """Compile the single-turn routing graph (one caller turn per invoke)."""
     g = StateGraph(CallState)
@@ -154,6 +195,21 @@ class GraphEngine:
 
     def __init__(self) -> None:
         self.app = build_app()
+        self.router_app = build_router_app()
+
+    async def classify_turn(
+        self, turns: list[dict], *, thread_id: str = "local"
+    ) -> Optional[str]:
+        """Route the whole conversation through the LangGraph router node.
+
+        Returns the classified Action (or None). Classification only — the handler
+        applies it after re-checking state.
+        """
+        result = await self.router_app.ainvoke(
+            {"turns": turns},
+            config={"configurable": {"thread_id": thread_id}},
+        )
+        return result.get("action")
 
     def handle_caller_turn(
         self,

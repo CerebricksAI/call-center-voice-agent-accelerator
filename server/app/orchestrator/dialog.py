@@ -94,3 +94,14 @@ def handle_caller_turn(
     if action is None:
         return None
     return apply_action(action, fsm, ctx, sink=sink)
+
+
+async def classify_turn(turns: list[dict], *, thread_id: str = "local") -> Optional[Action]:
+    """Semantic whole-conversation router (fsm engine). Returns a forced Action or None.
+
+    Classification only — the caller (handler) applies the action after re-checking
+    state, so a slow LLM result can't override a call that already moved on.
+    """
+    from app.orchestrator.semantic import route_conversation
+
+    return await route_conversation(turns)

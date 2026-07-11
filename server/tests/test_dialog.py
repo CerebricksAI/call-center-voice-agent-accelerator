@@ -11,29 +11,23 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.orchestrator.dialog import handle_caller_turn  # noqa: E402
+from app.orchestrator.dialog import apply_action, handle_caller_turn  # noqa: E402
 from app.orchestrator.fsm import CallContext, CallStateMachine  # noqa: E402
 from app.orchestrator.tools import execute_tool  # noqa: E402
 
 
-def test_greeting_to_qualify_to_decline_to_ended():
+def test_decline_close_effects_via_apply_action():
+    # Decline is now decided SEMANTICALLY (the router), not by the keyword gate.
+    # apply_action performs the same deterministic effect the router triggers.
     fsm = CallStateMachine(call_id="c1")
     ctx = CallContext(call_id="c1")
-
-    # Consent is model-driven — gate stays silent, model proceeds.
-    assert handle_caller_turn("yes, that works", fsm, ctx) is None
+    assert handle_caller_turn("yes, that works", fsm, ctx) is None  # gate silent
     fsm.transition("QUALIFY", reason="consent")
 
-    # First soft decline -> exactly one rebuttal, still qualifying.
-    d1 = handle_caller_turn("I'm not interested", fsm, ctx)
-    assert d1.action == "REBUTTAL_ONCE" and fsm.state == "QUALIFY"
-
-    # Second decline -> graceful close, disposition recorded in code.
-    d2 = handle_caller_turn("no thanks", fsm, ctx)
-    assert d2.action == "DECLINE_CLOSE" and fsm.state == "DECLINE_CLOSE"
+    d1 = apply_action("DECLINE_CLOSE", fsm, ctx)
+    assert d1.action == "DECLINE_CLOSE" and fsm.state == "DECLINE_CLOSE"
     assert ctx.disposition == "declined"
 
-    # Now the call may end.
     assert fsm.end(ctx) is True and fsm.state == "ENDED"
     states = [t["to"] for t in fsm.transitions]
     assert states == ["QUALIFY", "DECLINE_CLOSE", "ENDED"]
@@ -69,17 +63,29 @@ def test_end_call_refused_without_disposition():
     assert ok["ok"] is True and ctx.ended is True
 
 
-def test_busy_routes_to_callback_close():
+def test_callback_close_effects_via_apply_action():
+    # "Busy / call me later" is now a semantic (router) decision; apply_action runs
+    # the deterministic effect.
     fsm = CallStateMachine()
     ctx = CallContext()
     fsm.transition("QUALIFY", reason="consent")
-    d = handle_caller_turn("sorry I'm busy, call me back later", fsm, ctx)
+    d = apply_action("CALLBACK_CLOSE", fsm, ctx)
     assert d.state == "CALLBACK_CLOSE" and ctx.disposition == "callback_requested"
 
 
+def test_gate_still_catches_hard_optout_deterministically():
+    # The one intent that stays deterministic: a hard opt-out, via handle_caller_turn.
+    fsm = CallStateMachine()
+    ctx = CallContext()
+    fsm.transition("QUALIFY", reason="consent")
+    d = handle_caller_turn("please take me off your list", fsm, ctx)
+    assert d.action == "DNC_CLOSE" and ctx.dnc_recorded is True
+
+
 if __name__ == "__main__":
-    test_greeting_to_qualify_to_decline_to_ended()
+    test_decline_close_effects_via_apply_action()
     test_hard_optout_fires_tools_before_the_close_speaks()
     test_end_call_refused_without_disposition()
-    test_busy_routes_to_callback_close()
+    test_callback_close_effects_via_apply_action()
+    test_gate_still_catches_hard_optout_deterministically()
     print("dialog: OK")

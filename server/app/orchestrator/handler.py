@@ -25,7 +25,7 @@ from azure.ai.voicelive.models import FunctionCallOutputItem
 from app.handler.web_media_handler import WebMediaHandler
 from app.orchestrator.dialog import apply_action
 from app.orchestrator.fsm import CallContext, CallStateMachine
-from app.orchestrator.semantic import classify_disengagement, semantic_enabled
+from app.orchestrator.semantic import semantic_enabled
 from app.orchestrator.tools import execute_tool, function_tools, tools_for
 from skills.loader import compose
 
@@ -151,30 +151,43 @@ class OrchestratorMixin:
         except Exception:
             logger.debug("[Orchestrator] client WS close skipped", exc_info=True)
 
-    # --- semantic fallback gate (only when the keyword gate is silent) -----
+    # --- semantic router (whole conversation; only when the keyword gate is silent) --
 
-    def _spawn_semantic_check(self, text: str) -> None:
-        task = getattr(self, "_semantic_task", None)
+    def _spawn_router(self) -> None:
+        task = getattr(self, "_router_task", None)
         if task is not None and not task.done():
-            return  # one classification in flight is enough
-        self._semantic_task = asyncio.create_task(self._semantic_intent_check(text))
+            task.cancel()  # supersede any in-flight pass with the latest turn
+        self._router_task = asyncio.create_task(self._route_conversation())
 
-    async def _semantic_intent_check(self, text: str) -> None:
-        """Classify disengagement intent the keyword gate missed; override if clear."""
+    async def _route_conversation(self) -> None:
+        """Whole-conversation router: decide the intent, then create the SINGLE reply
+        for this turn — the routed close/hand-off, or a normal qualifying reply.
+
+        The reply is created HERE (not before), so a routing turn yields exactly one
+        reply instead of a normal reply plus an override. We re-check state after the
+        LLM call so a slow result can't act on a call that already moved on.
+        """
         try:
-            action = await classify_disengagement(text)
+            action = await self._engine.classify_turn(
+                list(self._call_turns), thread_id=self._ctx.call_id
+            )
+        except asyncio.CancelledError:
+            raise
         except Exception:
-            logger.debug("[Orchestrator] semantic check failed", exc_info=True)
+            logger.debug("[Orchestrator] router failed", exc_info=True)
+            action = None
+        if self._ctx.ended:
             return
-        # Only override an active call — never re-close or fight a keyword decision
-        # that already advanced the call to a close/transfer state.
-        if action is None or self._ctx.ended or self._fsm.state not in ("GREETING", "QUALIFY"):
-            return
-        logger.info("[Orchestrator] semantic gate=%s -> override", action)
-        apply_action(action, self._fsm, self._ctx, sink=self._sink)
-        await self._update_session()
-        await self._create_response(cancel=True)
-        self._schedule_hard_close()
+        if action and self._fsm.state == "QUALIFY":
+            logger.info("[Orchestrator] router -> %s (route)", action)
+            apply_action(action, self._fsm, self._ctx, sink=self._sink)
+            await self._update_session()
+            await self._create_response(cancel=True)
+            if self._fsm.state in _TERMINAL_CLOSE_STATES:
+                self._schedule_hard_close()
+        else:
+            # Not a hand-off after all — the single normal qualifying reply.
+            await self._create_response()
 
     # --- session (behavior + tools per stage) ------------------------------
 
@@ -237,12 +250,15 @@ class OrchestratorMixin:
             await self._create_response(cancel=True)
             return
 
-        # Ordinary turn — create the one reply, then (in the background) classify
-        # softer disengagement the keyword gate can't match ("I'm done", "gotta
-        # run"); if it fires it overrides with the same deterministic close.
-        await self._create_response()
-        if semantic_enabled():
-            self._spawn_semantic_check(text)
+        # Ordinary qualifying turn. Hand the whole conversation to the semantic router
+        # (no keyword pre-filter — the model decides intent every turn). The router
+        # creates the SINGLE reply for this turn: a routed close/hand-off, or a normal
+        # qualifying reply. Creating the reply in the router (not before) is what keeps
+        # it to one reply. Note: this adds ~1-2s per qualifying turn (the model call).
+        if semantic_enabled() and self._fsm.state == "QUALIFY":
+            self._spawn_router()
+        else:
+            await self._create_response()
 
     # --- tool calls from the model -----------------------------------------
 

@@ -1,13 +1,10 @@
-"""Semantic disengagement classifier — the control plane's fallback intent gate.
+"""Semantic intent router — the model analyses the WHOLE conversation and decides.
 
-The deterministic keyword gate (``intents.gate``) is the compliance floor and runs
-first. This classifier runs ONLY when the keyword gate finds nothing, so it can add
-coverage for phrasings we didn't hard-code ("I'm done here", "gotta run", "let's
-wrap this up") but can never weaken the guaranteed keyword detection.
-
-It reuses the same text-only Voice Live path as the conversation extractor (no new
-dependency) and returns a forced ``Action`` (``DNC_CLOSE`` / ``DECLINE_CLOSE``) or
-None. When unsure it returns None — the model then responds normally.
+This is the pure-semantic layer: there is NO keyword matching on the caller's words
+here. ``route_conversation`` sends the running transcript to the model and asks for
+one intent label, which maps to a forced ``Action`` (or None = continue). It runs on
+every qualifying turn the deterministic opt-out gate (``intents.gate``) let through.
+Reuses the extractor's text-only Voice Live path (no new dependency).
 """
 
 from __future__ import annotations
@@ -20,24 +17,6 @@ from app.orchestrator.intents import Action
 
 logger = logging.getLogger(__name__)
 
-_SYSTEM = """You classify ONE utterance from the CALLER on a phone call with a mortgage pre-qualification agent. Decide the caller's intent and reply with EXACTLY one word:
-
-- OPT_OUT — the caller wants to never be contacted again, be removed from the list, or stop all future contact.
-- END — the caller clearly wants to hang up / stop this call now AND is not asking to continue later (e.g. "I'm done", "I have to go, goodbye", "let's just stop", "please hang up"). Do NOT use END if they want to be removed from a list (that is OPT_OUT).
-- CONTINUE — everything else. This INCLUDES answering or asking a question, hesitating, changing an answer, chit-chat, being unclear, AND wanting to reconnect LATER / be called back / do this another time / "we'll connect later" / "call me later" / "I'm in a hurry" (the agent arranges callbacks itself — that is NOT END).
-
-Rules:
-- Judge ONLY the caller's words; do not infer beyond what they clearly express.
-- When in doubt, answer CONTINUE. Only answer END or OPT_OUT when the intent is unmistakable and the caller wants no further conversation now or later.
-- Output the single word only — no punctuation, no explanation."""
-
-# Which forced Action each label maps to. OPT_OUT is the stronger signal.
-_ACTION_FOR_LABEL: list[tuple[str, Action]] = [
-    ("OPT_OUT", "DNC_CLOSE"),
-    ("OPTOUT", "DNC_CLOSE"),
-    ("END", "DECLINE_CLOSE"),
-]
-
 
 def semantic_enabled() -> bool:
     """Feature flag (default on). Set SEMANTIC_INTENT_ENABLED=false to disable."""
@@ -49,25 +28,67 @@ def semantic_enabled() -> bool:
     )
 
 
-def map_label(raw: str) -> Optional[Action]:
-    """Map the classifier's one-word reply to a forced Action, or None."""
+# --- whole-conversation intent router ---------------------------------------
+
+_ROUTER_SYSTEM = """You route a mortgage pre-qualification phone call. Read the whole conversation, but decide based on what the CALLER'S LATEST turn means IN CONTEXT. Reply with EXACTLY one label. The default is CONTINUE — only pick another label when the caller's intent is UNMISTAKABLE.
+
+- CONTINUE — the caller is engaging with the call: answering, asking, hesitating, chit-chatting, OR wanting to keep going ("let's resume", "let's continue", "go on", "okay", "sure", "proceed", "start"). If in any doubt, choose this.
+- OPT_OUT — the caller explicitly wants to NEVER be contacted again / be removed from the list / stop all future contact ("take me off your list", "don't ever call me", "remove me").
+- DECLINE — the caller clearly does NOT want to continue this application at all ("I'm not interested", "I don't want to do this", "stop the application", "I'm done"). Note: a single "I don't want to proceed right now" may just be hesitation — only DECLINE if they clearly want to stop.
+- CALLBACK — the caller explicitly wants to be contacted LATER or do this ANOTHER time ("call me back", "can we do this tomorrow", "not now, later", "I'm busy, another time"). NOT for "let's resume/continue now".
+- ESCALATE — the caller wants a human / real loan officer, wants a specific rate/quote/program, is in financial hardship, or is hostile.
+- LANGUAGE — the caller would rather continue in another language.
+
+Rules:
+- "Resume", "continue", "go on", "keep going", "proceed", "start" all mean CONTINUE — never CALLBACK.
+- Changing an earlier answer or SWITCHING loan type (purchase <-> refinance <-> cash-out <-> home equity) is CONTINUE — the caller is still engaged, just changing a detail. Never DECLINE.
+- "Changed my mind" followed by a NEW request (e.g. "...I'd like to refinance instead") is CONTINUE, not DECLINE.
+- When unsure, answer CONTINUE. Only route on an unmistakable intent in the latest turn.
+- Output the single label only — no punctuation, no explanation."""
+
+# Router label -> forced gate Action (CONTINUE and anything unmatched -> None).
+_ROUTER_LABELS: list[tuple[str, Action]] = [
+    ("OPT_OUT", "DNC_CLOSE"),
+    ("DECLINE", "DECLINE_CLOSE"),
+    ("CALLBACK", "CALLBACK_CLOSE"),
+    ("ESCALATE", "ESCALATE"),
+    ("LANGUAGE", "LANGUAGE_ROUTE"),
+]
+
+
+def route_label(raw: str) -> Optional[Action]:
+    """Map the router's one-word reply to a forced Action, or None (=continue)."""
     label = (raw or "").strip().upper()
-    for token, action in _ACTION_FOR_LABEL:
+    for token, action in _ROUTER_LABELS:
         if token in label:
             return action
     return None
 
 
-async def classify_disengagement(utterance: str) -> Optional[Action]:
-    """Classify a caller turn's disengagement intent. None = let the model respond."""
-    text = (utterance or "").strip()
-    if not text:
+def format_transcript(turns: list[dict]) -> str:
+    """Render [{role, text}] turns as 'Caller:/Agent:' lines for the router prompt."""
+    lines = []
+    for t in turns:
+        role = "Caller" if (t.get("role") or "").lower() in ("user", "caller") else "Agent"
+        text = (t.get("text") or "").strip()
+        if text:
+            lines.append(f"{role}: {text}")
+    return "\n".join(lines)
+
+
+async def route_conversation(turns: list[dict]) -> Optional[Action]:
+    """Whole-conversation intent router. Returns a forced Action or None (=continue).
+
+    Runs ONLY when the deterministic keyword gate is silent, so it can add coverage
+    but never weakens the compliance floor.
+    """
+    transcript = format_transcript(turns)
+    if not transcript:
         return None
     endpoint = os.getenv("AZURE_VOICE_LIVE_ENDPOINT", "").strip()
     if not endpoint:
         return None
 
-    # Lazy import: reuse the extractor's text-only Voice Live path (no new client).
     from app.conversation_extractor import (
         _build_extract_credential,
         _voicelive_text_completion,
@@ -82,16 +103,16 @@ async def classify_disengagement(utterance: str) -> Optional[Action]:
             endpoint,
             credential,
             resolve_extract_model(),
-            f'Caller just said: "{text}"',
-            instructions=_SYSTEM,
+            f"Conversation so far:\n{transcript}\n\nLabel the caller's current intent:",
+            instructions=_ROUTER_SYSTEM,
             temperature=0.0,
             max_output_tokens=16,
         )
     except Exception:
-        logger.debug("[Semantic] classification failed", exc_info=True)
+        logger.debug("[Router] classification failed", exc_info=True)
         return None
 
-    action = map_label(raw)
+    action = route_label(raw)
     if action is not None:
-        logger.info("[Semantic] '%s' -> %s (%s)", text[:60], raw.strip(), action)
+        logger.info("[Router] -> %s (%s)", raw.strip(), action)
     return action

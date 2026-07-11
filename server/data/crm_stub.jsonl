@@ -69,3 +69,14 @@
 {"call_id": "8a52b3c79306", "tool": "add_to_do_not_call", "args": {"reason": "caller opt-out"}, "result": {"ok": true}}
 {"call_id": "8a52b3c79306", "tool": "log_disposition", "args": {"disposition": "do_not_call"}, "result": {"ok": true, "disposition": "do_not_call"}}
 {"call_id": "8a52b3c79306", "tool": "end_call", "args": {"reason": "Caller chose not to proceed"}, "result": {"ok": true}}
+{"call_id": "ff1c1ac8bdf5", "tool": "log_disposition", "args": {"disposition": "callback_requested"}, "result": {"ok": true, "disposition": "callback_requested"}}
+{"call_id": "ff1c1ac8bdf5", "tool": "add_to_do_not_call", "args": {"reason": "caller opt-out"}, "result": {"ok": true}}
+{"call_id": "ff1c1ac8bdf5", "tool": "log_disposition", "args": {"disposition": "do_not_call"}, "result": {"ok": true, "disposition": "do_not_call"}}
+{"call_id": "11453f8c09ac", "tool": "log_disposition", "args": {"disposition": "callback_requested"}, "result": {"ok": true, "disposition": "callback_requested"}}
+{"call_id": "11453f8c09ac", "tool": "log_disposition", "args": {"disposition": "declined"}, "result": {"ok": true, "disposition": "declined"}}
+{"call_id": "af5b55f2b1e7", "tool": "log_disposition", "args": {"disposition": "declined"}, "result": {"ok": true, "disposition": "declined"}}
+{"call_id": "36dfb44bef10", "tool": "log_disposition", "args": {"disposition": "declined"}, "result": {"ok": true, "disposition": "declined"}}
+{"call_id": "94362ab44739", "tool": "log_disposition", "args": {"disposition": "declined"}, "result": {"ok": true, "disposition": "declined"}}
+{"call_id": "d7f6216b34dd", "tool": "add_to_do_not_call", "args": {"reason": "caller opt-out"}, "result": {"ok": true}}
+{"call_id": "d7f6216b34dd", "tool": "log_disposition", "args": {"disposition": "do_not_call"}, "result": {"ok": true, "disposition": "do_not_call"}}
+{"call_id": "d7f6216b34dd", "tool": "end_call", "args": {"reason": "Caller requested to be removed from the contact list."}, "result": {"ok": true}}

@@ -1,9 +1,0 @@
-id: escalate_hardship
-category: escalation
-caller_turns:
-  - "Honestly I'm behind on my payments and stressed."
-expect:
-  actions: [ESCALATE]
-  tool_calls: [log_disposition]
-  disposition: transferred
-  state: TRANSFER

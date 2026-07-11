@@ -1,30 +1,28 @@
-"""Disengagement / routing gate — compliance in code, never in a prompt.
+"""Compliance floor — the ONE deterministic gate, in code, never in a prompt.
 
-``gate()`` runs on every finalized caller turn BEFORE the model gets a vote. It
-returns a forced Action (deterministic) or None (let the model respond normally).
-Order is load-bearing: a hard opt-out outranks everything, including politeness.
+``gate()`` runs on every finalized caller turn before the model responds and fires
+ONLY on a hard opt-out ("do not call") — the single intent that legally must never
+be missed (TCPA). Every other intent (decline, callback, escalate, language) is
+understood semantically by the router (``app.orchestrator.semantic``), so the gate
+stays silent on those and lets the model's analysis decide.
 """
 
 from __future__ import annotations
 
 import re
-from typing import Literal, Optional, Protocol
+from typing import Any, Literal, Optional
 
 Action = Literal[
-    "DNC_CLOSE",       # hard opt-out — must be honored (TCPA)
-    "ESCALATE",        # hand to a human now (hardship / requested human / abuse)
-    "LANGUAGE_ROUTE",  # continue in another language
-    "CALLBACK_CLOSE",  # caller is busy — arrange a callback
-    "REBUTTAL_ONCE",   # first soft decline — one respectful nudge is allowed
-    "DECLINE_CLOSE",   # decline after the nudge is spent — close gracefully
+    "DNC_CLOSE",       # hard opt-out — must be honored (TCPA); the ONLY gated action
+    "ESCALATE",        # hand to a human (router-decided)
+    "LANGUAGE_ROUTE",  # continue in another language (router-decided)
+    "CALLBACK_CLOSE",  # arrange a callback (router-decided)
+    "DECLINE_CLOSE",   # caller declines — close gracefully (router-decided)
 ]
 
-
-class _HasRebuttal(Protocol):
-    rebuttal_used: bool
-
-
-# Case-insensitive substring/phrase patterns. Kept plain and readable on purpose.
+# Hard opt-out patterns — the compliance backstop. Deliberately broad: over-honoring
+# an opt-out is safe; MISSING one is a legal violation, so this stays deterministic
+# even though all other intent is now semantic.
 OPT_OUT_HARD = [
     r"\bstop calling\b",
     r"\bstop\b.*\bcall",
@@ -37,52 +35,7 @@ OPT_OUT_HARD = [
     r"\bunsubscribe\b",
     r"\bnever call\b",
     r"\bhang up\b",
-    r"\bsecond time i'?ve (told|asked)\b",  # the soft path already failed once
-]
-
-ESCALATE = [
-    r"\breal person\b",
-    r"\bspeak (to|with) (a )?(human|person|someone|agent|rep)\b",
-    r"\btalk to (a )?(human|person|someone)\b",
-    r"\bloan officer now\b",
-    r"\bbehind on (my )?payments?\b",
-    r"\bbankruptc",
-    r"\bforeclos",
-    r"\bgoing through a divorce\b",
-    r"\bhardship\b",
-]
-
-LANGUAGE = [
-    r"\bespa[nñ]ol\b",
-    r"\bspanish\b",
-    r"\bno hablo ingl[eé]s\b",
-    r"\bhablas espa[nñ]ol\b",
-]
-
-BUSY_CALLBACK = [
-    r"\bi'?m busy\b",
-    r"\bbad time\b",
-    r"\bnot a good time\b",
-    r"\bcall me (back )?later\b",
-    r"\bcall me back\b",
-    r"\bi'?m driving\b",
-    r"\bin a meeting\b",
-]
-
-END_NOW = [
-    r"\bend (this|the) call\b",
-    r"\bend (this|the) conversation\b",
-    r"\blet'?s end\b",
-]
-
-DECLINE_SOFT = [
-    r"\bnot interested\b",
-    r"\bno thanks?\b",
-    r"\bno thank you\b",
-    r"\bi'?m good\b",
-    r"\bnot right now\b",
-    r"\bdon'?t want\b",
-    r"\bnot looking\b",
+    r"\bsecond time i'?ve (told|asked)\b",
 ]
 
 
@@ -90,28 +43,15 @@ def _hit(patterns: list[str], text: str) -> bool:
     return any(re.search(p, text, re.IGNORECASE) for p in patterns)
 
 
-def gate(text: str, ctx: _HasRebuttal) -> Optional[Action]:
-    """Return a forced Action for this caller turn, or None to let the model act."""
+def gate(text: str, ctx: Any = None) -> Optional[Action]:
+    """Compliance floor: return ``DNC_CLOSE`` on a hard opt-out, otherwise None.
+
+    Anything that is not an unambiguous opt-out returns None so the semantic router
+    can analyse it. This is the only deterministic keyword check in the system.
+    """
     text = (text or "").strip()
     if not text:
         return None
-
     if _hit(OPT_OUT_HARD, text):
         return "DNC_CLOSE"
-    if _hit(ESCALATE, text):
-        return "ESCALATE"
-    if _hit(LANGUAGE, text):
-        return "LANGUAGE_ROUTE"
-    if _hit(BUSY_CALLBACK, text):
-        return "CALLBACK_CLOSE"
-    if _hit(END_NOW, text):
-        # Explicit termination request — close gracefully, never nudge. Ranks above
-        # DECLINE_SOFT so "end this call" doesn't burn a rebuttal on "don't want".
-        return "DECLINE_CLOSE"
-    if _hit(DECLINE_SOFT, text):
-        # Exactly one rebuttal, ever — enforced here in code, not by the prompt.
-        if getattr(ctx, "rebuttal_used", False):
-            return "DECLINE_CLOSE"
-        ctx.rebuttal_used = True
-        return "REBUTTAL_ONCE"
     return None
