@@ -1,0 +1,71 @@
+{"call_id": "5edf2ac8586d", "tool": "capture_borrower_field", "args": {"field": "property_location", "value": "Arizona, ZIP code 85219, single-story building", "confidence": 0.9}, "result": {"ok": true}}
+{"call_id": "5edf2ac8586d", "tool": "capture_borrower_field", "args": {"field": "timeline", "value": "30 to 40 days", "confidence": 0.9}, "result": {"ok": true}}
+{"call_id": "5edf2ac8586d", "tool": "capture_borrower_field", "args": {"field": "credit_range", "value": "600 to 630", "confidence": 0.9}, "result": {"ok": true}}
+{"call_id": "5edf2ac8586d", "tool": "log_disposition", "args": {"disposition": "declined"}, "result": {"ok": true, "disposition": "declined"}}
+{"call_id": "5edf2ac8586d", "tool": "log_disposition", "args": {"disposition": "declined"}, "result": {"ok": true, "disposition": "declined"}}
+{"call_id": "5edf2ac8586d", "tool": "end_call", "args": {"reason": "Caller declined to continue."}, "result": {"ok": true}}
+{"call_id": "03ff16efe1e3", "tool": "capture_borrower_field", "args": {"field": "credit_range", "value": "645", "confidence": 0.9}, "result": {"ok": true}}
+{"call_id": "d8376587c86f", "tool": "capture_borrower_field", "args": {"field": "location", "value": "California, ZIP 85167, single-family home", "confidence": 0.95}, "result": {"ok": true}}
+{"call_id": "d8376587c86f", "tool": "capture_borrower_field", "args": {"field": "timeline", "value": "30 days", "confidence": 0.95}, "result": {"ok": true}}
+{"call_id": "c8049391ee62", "tool": "capture_borrower_field", "args": {"field": "timeline", "value": "40 to 60 days", "confidence": 0.9}, "result": {"ok": true}}
+{"call_id": "c8049391ee62", "tool": "add_to_do_not_call", "args": {"reason": "caller opt-out"}, "result": {"ok": true}}
+{"call_id": "c8049391ee62", "tool": "log_disposition", "args": {"disposition": "do_not_call"}, "result": {"ok": true, "disposition": "do_not_call"}}
+{"call_id": "c8049391ee62", "tool": "end_call", "args": {"reason": "Caller requested to be removed from the list."}, "result": {"ok": true}}
+{"call_id": "e0a84b820859", "tool": "capture_borrower_field", "args": {"field": "state", "value": "Arizona", "confidence": 1.0}, "result": {"ok": true}}
+{"call_id": "e0a84b820859", "tool": "capture_borrower_field", "args": {"field": "ZIP code", "value": "51267", "confidence": 1.0}, "result": {"ok": true}}
+{"call_id": "e0a84b820859", "tool": "add_to_do_not_call", "args": {"reason": "caller opt-out"}, "result": {"ok": true}}
+{"call_id": "e0a84b820859", "tool": "log_disposition", "args": {"disposition": "do_not_call"}, "result": {"ok": true, "disposition": "do_not_call"}}
+{"call_id": "e0a84b820859", "tool": "end_call", "args": {"reason": "Caller requested to be removed from the list."}, "result": {"ok": true}}
+{"call_id": "5279a7c72272", "tool": "add_to_do_not_call", "args": {"reason": "caller opt-out"}, "result": {"ok": true}}
+{"call_id": "5279a7c72272", "tool": "log_disposition", "args": {"disposition": "do_not_call"}, "result": {"ok": true, "disposition": "do_not_call"}}
+{"call_id": "5279a7c72272", "tool": "end_call", "args": {"reason": "Caller requested to be removed and not contacted again."}, "result": {"ok": true}}
+{"call_id": "a520d386a2dd", "tool": "capture_borrower_field", "args": {"field": "location", "value": "California, ZIP 85192", "confidence": 0.95}, "result": {"ok": true}}
+{"call_id": "a520d386a2dd", "tool": "log_disposition", "args": {"disposition": "declined"}, "result": {"ok": true, "disposition": "declined"}}
+{"call_id": "a520d386a2dd", "tool": "end_call", "args": {"reason": "Caller requested to end the call."}, "result": {"ok": true}}
+{"call_id": "a520d386a2dd", "tool": "log_disposition", "args": {"disposition": "declined"}, "result": {"ok": true, "disposition": "declined"}}
+{"call_id": "a520d386a2dd", "tool": "end_call", "args": {"reason": "Caller requested to end the call."}, "result": {"ok": true}}
+{"call_id": "6bf54f51867e", "tool": "capture_borrower_field", "args": {"field": "location", "value": "California, multi-story building", "confidence": 0.95}, "result": {"ok": true}}
+{"call_id": "6bf54f51867e", "tool": "capture_borrower_field", "args": {"field": "credit range", "value": "620 to 650", "confidence": 0.95}, "result": {"ok": true}}
+{"call_id": "6bf54f51867e", "tool": "add_to_do_not_call", "args": {"reason": "caller opt-out"}, "result": {"ok": true}}
+{"call_id": "6bf54f51867e", "tool": "log_disposition", "args": {"disposition": "do_not_call"}, "result": {"ok": true, "disposition": "do_not_call"}}
+{"call_id": "6bf54f51867e", "tool": "end_call", "args": {"reason": "Caller requested to be removed from the list."}, "result": {"ok": true}}
+{"call_id": "77e534591bc2", "tool": "log_disposition", "args": {"disposition": "declined"}, "result": {"ok": true, "disposition": "declined"}}
+{"call_id": "77e534591bc2", "tool": "log_disposition", "args": {"disposition": "declined"}, "result": {"ok": true, "disposition": "declined"}}
+{"call_id": "77e534591bc2", "tool": "end_call", "args": {"reason": "Caller declined to proceed"}, "result": {"ok": true}}
+{"call_id": "ff52633b70f9", "tool": "log_disposition", "args": {"disposition": "declined"}, "result": {"ok": true, "disposition": "declined"}}
+{"call_id": "95080120d9cd", "tool": "log_disposition", "args": {"disposition": "declined"}, "result": {"ok": true, "disposition": "declined"}}
+{"call_id": "95080120d9cd", "tool": "log_disposition", "args": {"disposition": "declined"}, "result": {"ok": true, "disposition": "declined"}}
+{"call_id": "95080120d9cd", "tool": "end_call", "args": {"reason": "Caller declined to continue."}, "result": {"ok": true}}
+{"call_id": "bec098a29100", "tool": "log_disposition", "args": {"disposition": "declined"}, "result": {"ok": true, "disposition": "declined"}}
+{"call_id": "bec098a29100", "tool": "log_disposition", "args": {"disposition": "declined"}, "result": {"ok": true, "disposition": "declined"}}
+{"call_id": "bec098a29100", "tool": "end_call", "args": {"reason": "Caller requested to end the call."}, "result": {"ok": true}}
+{"call_id": "75cfca283233", "tool": "capture_borrower_field", "args": {"field": "location", "value": "Arizona, 51292, single-family home with two bedrooms and one bathroom", "confidence": 0.9}, "result": {"ok": true}}
+{"call_id": "75cfca283233", "tool": "capture_borrower_field", "args": {"field": "credit range", "value": "excellent", "confidence": 0.9}, "result": {"ok": true}}
+{"call_id": "75cfca283233", "tool": "log_disposition", "args": {"disposition": "declined"}, "result": {"ok": true, "disposition": "declined"}}
+{"call_id": "75cfca283233", "tool": "log_disposition", "args": {"disposition": "declined"}, "result": {"ok": true, "disposition": "declined"}}
+{"call_id": "75cfca283233", "tool": "end_call", "args": {"reason": "Caller chose to wrap up the conversation."}, "result": {"ok": true}}
+{"call_id": "2989e91b1b89", "tool": "log_disposition", "args": {"disposition": "declined"}, "result": {"ok": true, "disposition": "declined"}}
+{"call_id": "52f47fb16c1c", "tool": "log_disposition", "args": {"disposition": "declined"}, "result": {"ok": true, "disposition": "declined"}}
+{"call_id": "d36546a5e333", "tool": "capture_borrower_field", "args": {"field": "location_state", "value": "Alaska", "confidence": 1.0}, "result": {"ok": true}}
+{"call_id": "d36546a5e333", "tool": "schedule_callback", "args": {"preferred_time": "tomorrow at 8 AM", "channel": "call"}, "result": {"ok": true, "preferred_time": "tomorrow at 8 AM"}}
+{"call_id": "d36546a5e333", "tool": "log_disposition", "args": {"disposition": "completed"}, "result": {"ok": true, "disposition": "completed"}}
+{"call_id": "d36546a5e333", "tool": "end_call", "args": {"reason": "Call completed and disposition logged."}, "result": {"ok": true}}
+{"call_id": "763cd697b2f1", "tool": "capture_borrower_field", "args": {"field": "credit range", "value": "500 to 600", "confidence": 0.9}, "result": {"ok": true}}
+{"call_id": "763cd697b2f1", "tool": "log_disposition", "args": {"disposition": "declined"}, "result": {"ok": true, "disposition": "declined"}}
+{"call_id": "763cd697b2f1", "tool": "log_disposition", "args": {"disposition": "declined"}, "result": {"ok": true, "disposition": "declined"}}
+{"call_id": "763cd697b2f1", "tool": "end_call", "args": {"reason": "Caller chose to end the call"}, "result": {"ok": true}}
+{"call_id": "c126fab8be10", "tool": "log_disposition", "args": {"disposition": "declined"}, "result": {"ok": true, "disposition": "declined"}}
+{"call_id": "c126fab8be10", "tool": "log_disposition", "args": {"disposition": "declined"}, "result": {"ok": true, "disposition": "declined"}}
+{"call_id": "c126fab8be10", "tool": "end_call", "args": {"reason": "Caller requested to end the call."}, "result": {"ok": true}}
+{"call_id": "d669256d2973", "tool": "log_disposition", "args": {"disposition": "declined"}, "result": {"ok": true, "disposition": "declined"}}
+{"call_id": "d669256d2973", "tool": "log_disposition", "args": {"disposition": "declined"}, "result": {"ok": true, "disposition": "declined"}}
+{"call_id": "d669256d2973", "tool": "end_call", "args": {"reason": "Caller declined to proceed."}, "result": {"ok": true}}
+{"call_id": "bdb3293100b1", "tool": "capture_borrower_field", "args": {"field": "credit_range", "value": "680", "confidence": 0.9}, "result": {"ok": true}}
+{"call_id": "bdb3293100b1", "tool": "log_disposition", "args": {"disposition": "declined"}, "result": {"ok": true, "disposition": "declined"}}
+{"call_id": "eca0002afd97", "tool": "end_call", "args": {"reason": "Caller requested to end the call."}, "result": {"ok": false, "error": "refused: no disposition recorded"}}
+{"call_id": "eca0002afd97", "tool": "log_disposition", "args": {"disposition": "declined"}, "result": {"ok": true, "disposition": "declined"}}
+{"call_id": "eca0002afd97", "tool": "log_disposition", "args": {"disposition": "declined"}, "result": {"ok": true, "disposition": "declined"}}
+{"call_id": "eca0002afd97", "tool": "end_call", "args": {"reason": "Caller requested to end the call."}, "result": {"ok": true}}
+{"call_id": "8a52b3c79306", "tool": "add_to_do_not_call", "args": {"reason": "caller opt-out"}, "result": {"ok": true}}
+{"call_id": "8a52b3c79306", "tool": "log_disposition", "args": {"disposition": "do_not_call"}, "result": {"ok": true, "disposition": "do_not_call"}}
+{"call_id": "8a52b3c79306", "tool": "end_call", "args": {"reason": "Caller chose not to proceed"}, "result": {"ok": true}}

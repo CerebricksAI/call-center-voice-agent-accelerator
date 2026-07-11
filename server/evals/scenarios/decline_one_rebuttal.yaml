@@ -1,0 +1,11 @@
+id: decline_one_rebuttal
+category: decline
+caller_turns:
+  - "I'm not interested right now."
+  - "No thanks."
+expect:
+  actions: [REBUTTAL_ONCE, DECLINE_CLOSE]   # exactly one nudge, then close
+  tool_calls: [log_disposition]
+  disposition: declined
+  state: DECLINE_CLOSE
+forbid_phrases: ["we'll be in touch", "talk soon", "follow up", "reach out"]

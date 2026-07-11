@@ -2702,9 +2702,19 @@
     }
 
     function beginCallFinalizeUI() {
-      if (waitingForSummary) return;
+      // Always hang up (mic/playback/buttons/status) on any finalize trigger —
+      // CallEnded, agent-driven end_call, or manual End Call — even when the
+      // summary UI was already armed. This must run before the waitingForSummary
+      // guard: otherwise the second finalize trigger returned early, the mic
+      // stayed live, and the caller could keep talking after the agent ended it.
       stopMicrophone();
       stopPlayback();
+      const stopBtn = document.getElementById("stopBtn");
+      if (stopBtn) stopBtn.disabled = true;
+      const startBtn = document.getElementById("startBtn");
+      if (startBtn) startBtn.disabled = true;
+      setCallStatus(false);
+      if (waitingForSummary) return;
       insightsLoading = false;
       waitingForSummary = true;
       if (!callSummary && !summaryError) {
@@ -2719,11 +2729,6 @@
       }
       renderKeyDetails();
       scrollKeyDetailsToBottom();
-      const stopBtn = document.getElementById("stopBtn");
-      if (stopBtn) stopBtn.disabled = true;
-      const startBtn = document.getElementById("startBtn");
-      if (startBtn) startBtn.disabled = true;
-      setCallStatus(false);
     }
 
     function closeSocketAfterSummary() {

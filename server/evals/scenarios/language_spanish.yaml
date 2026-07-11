@@ -1,0 +1,9 @@
+id: language_spanish
+category: language
+caller_turns:
+  - "Can we continue in Spanish?"
+expect:
+  actions: [LANGUAGE_ROUTE]
+  tool_calls: [log_disposition]
+  disposition: language_routed
+  state: LANGUAGE_ROUTE

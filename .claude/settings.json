@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/scripts/eval_gate.sh\"",
+            "shell": "bash",
+            "statusMessage": "Running orchestrator evals"
+          }
+        ]
+      }
+    ]
+  }
+}
