@@ -187,3 +187,16 @@
 {"call_id": "5943d8b225cf", "tool": "capture_borrower_field", "args": {"field": "preferred_contact_method", "value": "Call", "confidence": 0.9}, "result": {"ok": true}}
 {"call_id": "5943d8b225cf", "tool": "schedule_callback", "args": {"preferred_time": "Tomorrow at 3 P.m"}, "result": {"ok": true, "preferred_time": "Tomorrow at 3 P.m"}}
 {"call_id": "5943d8b225cf", "tool": "capture_borrower_field", "args": {"field": "callback_confirmation", "value": "Yes", "confidence": 0.95}, "result": {"ok": true}}
+{"call_id": "8b1d0cec82be", "tool": "capture_borrower_field", "args": {"field": "consent_to_recording", "value": "Yes", "confidence": 1.0}, "result": {"ok": true}}
+{"call_id": "8b1d0cec82be", "tool": "capture_borrower_field", "args": {"field": "action", "value": "Purchase a home", "confidence": 0.9}, "result": {"ok": true}}
+{"call_id": "8b1d0cec82be", "tool": "transfer_to_lo", "args": {"reason": "caller requested escalation"}, "result": {"ok": true}}
+{"call_id": "8b1d0cec82be", "tool": "log_disposition", "args": {"disposition": "transferred"}, "result": {"ok": true, "disposition": "transferred"}}
+{"call_id": "8b1d0cec82be", "tool": "capture_borrower_field", "args": {"field": "request_for_call", "value": "Call from loan officer", "confidence": 0.9}, "result": {"ok": true}}
+{"call_id": "8b1d0cec82be", "tool": "capture_borrower_field", "args": {"field": "refinance_type", "value": "existing mortgage", "confidence": 0.9}, "result": {"ok": true}}
+{"call_id": "8b1d0cec82be", "tool": "capture_borrower_field", "args": {"field": "lead_source", "value": "website", "confidence": 0.9}, "result": {"ok": true}}
+{"call_id": "8b1d0cec82be", "tool": "end_call", "args": {"reason": "Call transferred to loan officer."}, "result": {"ok": true}}
+{"call_id": "85edeb13e94a", "tool": "capture_borrower_field", "args": {"field": "reason_for_call", "value": "Refinancing existing mortgage", "confidence": 0.95}, "result": {"ok": true}}
+{"call_id": "85edeb13e94a", "tool": "log_disposition", "args": {"disposition": "callback_requested"}, "result": {"ok": true, "disposition": "callback_requested"}}
+{"call_id": "85edeb13e94a", "tool": "capture_borrower_field", "args": {"field": "preferred_time", "value": "3 P.m. tomorrow", "confidence": 0.9}, "result": {"ok": true}}
+{"call_id": "85edeb13e94a", "tool": "schedule_callback", "args": {"preferred_time": "3 P.m. tomorrow"}, "result": {"ok": true, "preferred_time": "3 P.m. tomorrow"}}
+{"call_id": "85edeb13e94a", "tool": "capture_borrower_field", "args": {"field": "preferred_date", "value": "Tomorrow", "confidence": 0.9}, "result": {"ok": true}}
