@@ -200,3 +200,22 @@
 {"call_id": "85edeb13e94a", "tool": "capture_borrower_field", "args": {"field": "preferred_time", "value": "3 P.m. tomorrow", "confidence": 0.9}, "result": {"ok": true}}
 {"call_id": "85edeb13e94a", "tool": "schedule_callback", "args": {"preferred_time": "3 P.m. tomorrow"}, "result": {"ok": true, "preferred_time": "3 P.m. tomorrow"}}
 {"call_id": "85edeb13e94a", "tool": "capture_borrower_field", "args": {"field": "preferred_date", "value": "Tomorrow", "confidence": 0.9}, "result": {"ok": true}}
+{"call_id": "56e7320b397d", "tool": "capture_borrower_field", "args": {"field": "caller_confirmation", "value": "Real person", "confidence": 0.9}, "result": {"ok": true}}
+{"call_id": "56e7320b397d", "tool": "capture_borrower_field", "args": {"field": "refinance_location", "value": "Georgia", "confidence": 0.9}, "result": {"ok": true}}
+{"call_id": "56e7320b397d", "tool": "capture_borrower_field", "args": {"field": "refinance_timeline", "value": "Probably this week", "confidence": 0.75}, "result": {"ok": true}}
+{"call_id": "56e7320b397d", "tool": "log_disposition", "args": {"disposition": "declined"}, "result": {"ok": true, "disposition": "declined"}}
+{"call_id": "b8483f2ea65e", "tool": "capture_borrower_field", "args": {"field": "caller_confirmation", "value": "Talking to a human", "confidence": 0.95}, "result": {"ok": true}}
+{"call_id": "b8483f2ea65e", "tool": "capture_borrower_field", "args": {"field": "action", "value": "Refinance", "confidence": 0.9}, "result": {"ok": true}}
+{"call_id": "b8483f2ea65e", "tool": "capture_borrower_field", "args": {"field": "location", "value": "Georgia", "confidence": 0.9}, "result": {"ok": true}}
+{"call_id": "b8483f2ea65e", "tool": "capture_borrower_field", "args": {"field": "timeline", "value": "~this summer", "confidence": 0.7}, "result": {"ok": true}}
+{"call_id": "b8483f2ea65e", "tool": "capture_borrower_field", "args": {"field": "zip_code", "value": "Not remembered", "confidence": 0.0}, "result": {"ok": true}}
+{"call_id": "b8483f2ea65e", "tool": "capture_borrower_field", "args": {"field": "city_or_area", "value": "Not sure", "confidence": 0.5}, "result": {"ok": true}}
+{"call_id": "b8483f2ea65e", "tool": "capture_borrower_field", "args": {"field": "property_type", "value": "Single-family", "confidence": 0.95}, "result": {"ok": true}}
+{"call_id": "b8483f2ea65e", "tool": "capture_borrower_field", "args": {"field": "credit_range", "value": "~unknown", "confidence": 0.4}, "result": {"ok": true}}
+{"call_id": "b8483f2ea65e", "tool": "capture_borrower_field", "args": {"field": "credit_range", "value": "about 670", "confidence": 0.9}, "result": {"ok": true}}
+{"call_id": "b8483f2ea65e", "tool": "transfer_to_lo", "args": {"reason": "caller requested escalation"}, "result": {"ok": true}}
+{"call_id": "b8483f2ea65e", "tool": "log_disposition", "args": {"disposition": "transferred"}, "result": {"ok": true, "disposition": "transferred"}}
+{"call_id": "b8483f2ea65e", "tool": "capture_borrower_field", "args": {"field": "employment_status", "value": "Not stated", "confidence": 0.0}, "result": {"ok": true}}
+{"call_id": "b8483f2ea65e", "tool": "capture_borrower_field", "args": {"field": "employment_status", "value": "self-employed", "confidence": 0.9}, "result": {"ok": true}}
+{"call_id": "b8483f2ea65e", "tool": "capture_borrower_field", "args": {"field": "requested_rate", "value": "What rate can you get me", "confidence": 0.9}, "result": {"ok": true}}
+{"call_id": "b8483f2ea65e", "tool": "capture_borrower_field", "args": {"field": "interest_level", "value": "Not really interested", "confidence": 0.9}, "result": {"ok": true}}
