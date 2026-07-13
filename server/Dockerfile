@@ -23,12 +23,16 @@ RUN python -m venv --without-pip /app/.venv
 # Copy dependency files first for better layer caching
 COPY pyproject.toml uv.lock /app/
 
-# Install core dependencies plus the selected telephony provider's extras
-RUN uv sync --frozen --no-dev --no-install-project --no-editable --all-packages --extra ${TELEPHONY}
+# Install core dependencies, the selected telephony provider's extras, and the
+# LangGraph orchestration engine (ORCHESTRATOR_ENGINE=langgraph needs it at runtime).
+RUN uv sync --frozen --no-dev --no-install-project --no-editable --all-packages --extra ${TELEPHONY} --extra langgraph
 
 COPY *.py *.md /app/
 COPY app /app/app/
 COPY static /app/static/
+# The orchestrator composes per-stage behavior from these Markdown skill files at
+# runtime — without them, compose() fails when ORCHESTRATOR_ENABLED is on.
+COPY skills /app/skills/
 
 ###############
 # Final image #
