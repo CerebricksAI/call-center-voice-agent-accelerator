@@ -69,6 +69,32 @@ def test_build_app_compiles():
     assert build_app() is not None
 
 
+def test_router_actions_fire_tools_via_shared_apply_action():
+    """Router-decided hand-offs fire their tool in code, identically on both engines.
+
+    ESCALATE / LANGUAGE_ROUTE are never produced by the keyword gate — the handler
+    applies them (after the semantic router) through dialog.apply_action, which both
+    the FSM engine and the LangGraph engine import and reuse. Asserting the shared
+    function fires the tool proves the effect is engine- and model-independent.
+    """
+    from app.orchestrator import dialog as dialog_mod
+    from app.orchestrator import graph as graph_mod
+
+    # Both engines route decided actions through the SAME function object.
+    assert graph_mod.apply_action is dialog_mod.apply_action
+
+    for action, state, tool, disp in [
+        ("ESCALATE", "TRANSFER", "transfer_to_lo", "transferred"),
+        ("LANGUAGE_ROUTE", "LANGUAGE_ROUTE", "route_language", "language_routed"),
+    ]:
+        fsm = CallStateMachine()
+        ctx = CallContext()
+        fsm.transition("QUALIFY", reason="consent")
+        d = graph_mod.apply_action(action, fsm, ctx)
+        assert d.state == state and ctx.disposition == disp
+        assert tool in [r["tool"] for r in ctx.tool_log]
+
+
 if __name__ == "__main__":
     test_graph_matches_fsm_engine_on_every_scenario()
     test_graph_optout_fires_tools_before_close_and_isolates_skill()

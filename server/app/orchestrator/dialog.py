@@ -63,9 +63,21 @@ def apply_action(
     Shared by the plain-FSM engine and the LangGraph engine so both produce
     byte-identical effects — the graph only changes HOW the action is routed.
     """
-    # Compliance tools fire BEFORE the model speaks. Order is the guarantee.
+    # Compliance / hand-off tools fire BEFORE the model speaks, in code — so the
+    # effect is recorded regardless of whether the voice model calls the tool
+    # (gpt-4o-mini and gpt-realtime-mini differ in tool-calling reliability; this
+    # keeps behavior model-independent). Order is the guarantee: the primary action
+    # first, then the disposition. schedule_callback stays out of here — it is
+    # parametric (needs a time) and multi-turn; the handler fires it once the
+    # callback window is captured.
     if action == "DNC_CLOSE":
         execute_tool("add_to_do_not_call", {"reason": "caller opt-out"}, ctx, sink=sink)
+    elif action == "ESCALATE":
+        execute_tool(
+            "transfer_to_lo", {"reason": "caller requested escalation"}, ctx, sink=sink
+        )
+    elif action == "LANGUAGE_ROUTE":
+        execute_tool("route_language", {"language": "caller_requested"}, ctx, sink=sink)
     disposition = _DISPOSITION_FOR_ACTION.get(action)
     if disposition is not None:
         execute_tool("log_disposition", {"disposition": disposition}, ctx, sink=sink)

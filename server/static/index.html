@@ -1479,10 +1479,55 @@
     }
   </style>
   <style>
-
+    /* Orchestrator action pop-ups (toasts) */
+    .toast-host {
+      position: fixed;
+      top: 76px;
+      right: 20px;
+      z-index: 9999;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      max-width: min(360px, calc(100vw - 40px));
+      pointer-events: none;
+    }
+    .toast {
+      pointer-events: auto;
+      border: 1px solid var(--border);
+      border-left: 4px solid var(--accent-purple);
+      background: var(--bg-panel);
+      color: inherit;
+      border-radius: 10px;
+      padding: 12px 14px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+      font-size: 14px;
+      line-height: 1.35;
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      opacity: 0;
+      transform: translateX(16px);
+      transition: opacity 0.22s ease, transform 0.22s ease;
+    }
+    .toast.show { opacity: 1; transform: translateX(0); }
+    .toast .toast-icon { flex: 0 0 auto; font-size: 16px; line-height: 1.25; }
+    .toast .toast-text { flex: 1 1 auto; }
+    .toast--info    { border-left-color: var(--accent-purple); }
+    .toast--success { border-left-color: #1f9d55; }
+    .toast--crm     { border-left-color: var(--accent-cyan, #2b6cb0); }
+    .toast--danger  {
+      border-color: var(--danger);
+      border-left-color: var(--danger);
+      animation: toastPulse 1.4s ease-in-out 2;
+    }
+    @keyframes toastPulse {
+      0%, 100% { box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18); }
+      50% { box-shadow: 0 0 0 3px var(--danger), 0 8px 24px rgba(0, 0, 0, 0.28); }
+    }
   </style>
 </head>
 <body>
+  <div id="toastHost" class="toast-host" aria-live="polite" aria-atomic="false"></div>
   <nav class="app-nav">
     <div class="nav-brand">
       <img class="nav-brand-icon" src="/static/sales-agent-logo.png" alt="" width="36" height="36">
@@ -1675,6 +1720,9 @@
     let mediaStream, source, socket;
     let audioContext = new AudioContext({ sampleRate: 24000 });
     let playbackNode;
+    // Set by the server (AwaitPlaybackEnd) just before it ends the call; only then
+    // does the client report playback drains, so the channel stays quiet mid-call.
+    let awaitingPlaybackEnd = false;
     let micNode;
     let micTrack = null;
     let micMuted = false;
@@ -3108,7 +3156,37 @@
       }
     }
 
+    const TOAST_ICONS = { info: "ℹ️", success: "✅", crm: "📝", danger: "🚫", notice: "•" };
+    function showToast(text, level) {
+      const host = document.getElementById("toastHost");
+      if (!host || !text) return;
+      const lvl = (level || "info").toLowerCase();
+      const el = document.createElement("div");
+      el.className = "toast toast--" + lvl;
+      el.setAttribute("role", lvl === "danger" ? "alert" : "status");
+      const icon = document.createElement("span");
+      icon.className = "toast-icon";
+      icon.textContent = TOAST_ICONS[lvl] || TOAST_ICONS.notice;
+      const span = document.createElement("span");
+      span.className = "toast-text";
+      span.textContent = text;
+      el.appendChild(icon);
+      el.appendChild(span);
+      host.appendChild(el);
+      requestAnimationFrame(() => el.classList.add("show"));
+      const ttl = lvl === "danger" ? 7000 : 5000;
+      setTimeout(() => {
+        el.classList.remove("show");
+        setTimeout(() => el.remove(), 260);
+      }, ttl);
+    }
+
     function handleAgentEvent(msg) {
+      if (msg.event === "notice") {
+        console.log("[toast]", msg.level, "-", msg.text);
+        showToast(msg.text, msg.level);
+        return;
+      }
       if (msg.event === "call_ended" || msg.event === "end_call_requested") {
         handleCallEndedMsg({ callId: currentCallId, source: msg.event });
         return;
@@ -3179,6 +3257,15 @@
       await audioContext.audioWorklet.addModule("/static/mic-processor.js");
       playbackNode = new AudioWorkletNode(audioContext, "audio-processor");
       playbackNode.connect(audioContext.destination);
+      // The worklet reports when its buffer drains to empty (agent speech has
+      // finished playing). Forward that to the server so it can end the call
+      // only after the goodbye is fully delivered — never mid-sentence.
+      playbackNode.port.onmessage = (e) => {
+        if (e.data && e.data.drained && awaitingPlaybackEnd &&
+            socket?.readyState === WebSocket.OPEN) {
+          socket.send(JSON.stringify({ Kind: "PlaybackFinished" }));
+        }
+      };
     }
 
     async function playAudio(arrayBuffer) {
@@ -3299,6 +3386,7 @@
 
       socket.onopen = async () => {
         console.log("WebSocket opened");
+        awaitingPlaybackEnd = false;  // fresh call — don't report drains until armed
         setCallStatus(true);
         await audioContext.resume();
         await startMicrophone();
@@ -3312,6 +3400,9 @@
           const msg = JSON.parse(event.data);
           if (msg.Kind === "StopAudio") {
             stopPlayback();
+          }
+          if (msg.Kind === "AwaitPlaybackEnd") {
+            awaitingPlaybackEnd = true;  // report the next playback drain to the server
           }
           if (msg.Kind === "Transcript" || msg.Kind === "Transcription") {
             const role = msg.Role === "user" ? "user" : "assistant";

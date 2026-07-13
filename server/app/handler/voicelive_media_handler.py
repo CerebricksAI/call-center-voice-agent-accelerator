@@ -137,6 +137,14 @@ class VoiceLiveMediaHandler:
         # isolated from user turns so a stale audio chunk from a barged-over reply
         # can't be mis-attributed to the next turn's "first audio".
         self._active_response = None
+        # perf_counter of the last audio delta actually forwarded to the client.
+        # Used to detect that the agent's speech stream has settled before the
+        # orchestrator closes the call (so a goodbye is never cut off).
+        self._last_audio_delta_at = 0.0
+        # Leftover byte when an inbound PCM16 chunk arrives odd-length (a 2-byte
+        # sample split across WebSocket frames). Carried into the next chunk so
+        # every append stays even and no audio is dropped. See _align_pcm16.
+        self._pcm_carry = b""
 
         # Per-call persistence (one Cosmos document per call)
         self.call_id = None
@@ -348,19 +356,26 @@ class VoiceLiveMediaHandler:
                         if delta:
                             ar = self._active_response
                             rid = getattr(event, "response_id", None)
-                            if (
-                                ar is not None
-                                and ar["first_audio"] is None
-                                and (rid is None or rid == ar["id"])
-                            ):
-                                now = time.perf_counter()
-                                ar["first_audio"] = now
-                                await self._mark(
-                                    "first_audio",
-                                    ts=now,
-                                    ttfaMs=self._delta_ms(ar.get("created"), now),
+                            # Barge-in guard: after the caller interrupts,
+                            # _cancel_active_response_if_needed() clears _active_response.
+                            # Drop any audio still arriving from the cancelled (or a
+                            # mismatched) response so the agent does not audibly resume
+                            # for a beat after being talked over.
+                            if ar is None or not (rid is None or rid == ar["id"]):
+                                logger.debug(
+                                    "[VoiceLive] dropping stale audio delta (rid=%s)", rid
                                 )
-                            await self.on_audio_delta(delta)
+                            else:
+                                if ar["first_audio"] is None:
+                                    now = time.perf_counter()
+                                    ar["first_audio"] = now
+                                    await self._mark(
+                                        "first_audio",
+                                        ts=now,
+                                        ttfaMs=self._delta_ms(ar.get("created"), now),
+                                    )
+                                self._last_audio_delta_at = time.perf_counter()
+                                await self.on_audio_delta(delta)
 
                     case ServerEventType.RESPONSE_AUDIO_TRANSCRIPT_DELTA:
                         delta = getattr(event, "delta", None)
@@ -842,6 +857,23 @@ class VoiceLiveMediaHandler:
             return
         await self.handle_audio(pcm)
 
+    def _align_pcm16(self, pcm_bytes: bytes) -> bytes:
+        """Guarantee even-length PCM16 chunks across WebSocket frames.
+
+        A 16-bit sample is 2 bytes; a sample can be split across frames, leaving an
+        odd-length chunk that native Voice Live models reject
+        (``invalid_pcm_audio``), dropping that audio. Prepend any carried byte, emit
+        the even prefix, and carry a trailing odd byte into the next chunk so samples
+        reassemble exactly and nothing is dropped.
+        """
+        if self._pcm_carry:
+            pcm_bytes = self._pcm_carry + pcm_bytes
+            self._pcm_carry = b""
+        if len(pcm_bytes) % 2:
+            self._pcm_carry = pcm_bytes[-1:]
+            pcm_bytes = pcm_bytes[:-1]
+        return pcm_bytes
+
     async def handle_audio(self, data):
         """Process inbound audio: convert, mix ambient, forward to Voice Live."""
         pcm_bytes = _coerce_pcm_bytes(data)
@@ -849,6 +881,8 @@ class VoiceLiveMediaHandler:
             return
         pcm_bytes, chunk_size = self._receive_audio_from_client(pcm_bytes)
         await self._send_continuous_audio(chunk_size)
+        if pcm_bytes:
+            pcm_bytes = self._align_pcm16(pcm_bytes)
         if pcm_bytes:
             audio_b64 = base64.b64encode(pcm_bytes).decode("ascii")
             await self.send_audio(audio_b64)

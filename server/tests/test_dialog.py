@@ -82,10 +82,44 @@ def test_gate_still_catches_hard_optout_deterministically():
     assert d.action == "DNC_CLOSE" and ctx.dnc_recorded is True
 
 
+def test_escalate_fires_transfer_tool_in_code():
+    # ESCALATE is a router (model) decision. apply_action must fire transfer_to_lo
+    # in code so the hand-off is recorded regardless of whether the voice model
+    # calls the tool — this is what makes behavior model-independent.
+    fsm = CallStateMachine()
+    ctx = CallContext()
+    fsm.transition("QUALIFY", reason="consent")
+    d = apply_action("ESCALATE", fsm, ctx)
+    assert d.state == "TRANSFER" and ctx.disposition == "transferred"
+    assert [r["tool"] for r in ctx.tool_log] == ["transfer_to_lo", "log_disposition"]
+
+
+def test_language_route_fires_route_language_tool_in_code():
+    fsm = CallStateMachine()
+    ctx = CallContext()
+    fsm.transition("QUALIFY", reason="consent")
+    d = apply_action("LANGUAGE_ROUTE", fsm, ctx)
+    assert d.state == "LANGUAGE_ROUTE" and ctx.disposition == "language_routed"
+    assert [r["tool"] for r in ctx.tool_log] == ["route_language", "log_disposition"]
+
+
+def test_dnc_still_only_fires_compliance_tools():
+    # Guard: making router actions deterministic must NOT add tools to the opt-out
+    # path (no gate weakened, no extra effects).
+    fsm = CallStateMachine()
+    ctx = CallContext()
+    fsm.transition("QUALIFY", reason="consent")
+    apply_action("DNC_CLOSE", fsm, ctx)
+    assert [r["tool"] for r in ctx.tool_log] == ["add_to_do_not_call", "log_disposition"]
+
+
 if __name__ == "__main__":
     test_decline_close_effects_via_apply_action()
     test_hard_optout_fires_tools_before_the_close_speaks()
     test_end_call_refused_without_disposition()
     test_callback_close_effects_via_apply_action()
     test_gate_still_catches_hard_optout_deterministically()
+    test_escalate_fires_transfer_tool_in_code()
+    test_language_route_fires_route_language_tool_in_code()
+    test_dnc_still_only_fires_compliance_tools()
     print("dialog: OK")
