@@ -10,6 +10,7 @@ import base64
 import binascii
 import json
 import logging
+import os
 import time
 import uuid
 from datetime import datetime, timezone
@@ -45,6 +46,12 @@ from app.usage_cost import (
 Data = Union[str, bytes]
 
 logger = logging.getLogger(__name__)
+
+# Server error codes that are expected in web (non-avatar) mode or under fast
+# barge-in; logged at debug rather than error to avoid noise on every interruption.
+_BENIGN_SERVER_ERROR_CODES = frozenset(
+    {"avatar_not_configured", "conversation_already_has_active_response"}
+)
 
 # Default chunk size in bytes (100ms of audio at 24kHz, 16-bit mono)
 DEFAULT_CHUNK_SIZE = 4800  # 24000 samples/sec * 0.1 sec * 2 bytes
@@ -105,6 +112,13 @@ class VoiceLiveMediaHandler:
         self._tts_playback_started = False
         self._session_options = resolve_session_options()
         self._min_buffer_to_start = self._session_options.tts_playback_buffer_bytes
+        # Server-side output_audio_buffer.clear() is only supported by Voice Live in
+        # avatar sessions; in web audio-streaming mode it is rejected
+        # ("avatar_not_configured") on every barge-in. Off by default — barge-in
+        # relies on response.cancel + client StopAudio, which work in both modes.
+        self._avatar_mode = str(
+            config.get("VOICE_LIVE_AVATAR_MODE") or os.getenv("VOICE_LIVE_AVATAR_MODE", "")
+        ).strip().lower() in ("1", "true", "yes", "on")
 
         # Ambient mixer initialization
         self._ambient_mixer: Optional[AmbientMixer] = None
@@ -199,10 +213,13 @@ class VoiceLiveMediaHandler:
         return "realtime" in (self.model or "").strip().lower()
 
     async def _cancel_active_response_if_needed(self) -> None:
-        """Cancel a stale in-flight response when the caller starts speaking again."""
+        """Cancel a stale in-flight response when the caller starts speaking again.
+
+        Attempted for cascaded models too (not only native-realtime): stopping the
+        brain the instant real speech is detected is half of fast barge-in. The
+        call is best-effort — unsupported transports are caught and logged.
+        """
         if self._active_response is None or not self._voicelive_connected:
-            return
-        if not self._is_native_realtime_model():
             return
         rid = self._active_response.get("id")
         try:
@@ -396,9 +413,22 @@ class VoiceLiveMediaHandler:
                         await self.on_response_done(response)
                         self._active_response = None
 
+                    case ServerEventType.RESPONSE_FUNCTION_CALL_ARGUMENTS_DONE:
+                        await self.on_function_call(
+                            getattr(event, "name", None),
+                            getattr(event, "call_id", None),
+                            getattr(event, "arguments", None),
+                        )
+
                     case ServerEventType.ERROR:
-                        logger.error("[VoiceLive] Error: %s", event.error)
                         err = getattr(event, "error", None)
+                        code = getattr(err, "code", None)
+                        # Benign under web (non-avatar) mode / fast barge-in: these
+                        # fire on ordinary interruptions and would spam ERROR.
+                        if code in _BENIGN_SERVER_ERROR_CODES:
+                            logger.debug("[VoiceLive] benign server error (%s): %s", code, err)
+                        else:
+                            logger.error("[VoiceLive] Error: %s", err)
                         await self._mark(
                             "error", message=str(getattr(err, "message", err))
                         )
@@ -453,14 +483,35 @@ class VoiceLiveMediaHandler:
         """Hook: Voice Live session ended (override in web handler to auto-finalize)."""
 
     async def on_speech_started(self):
-        """Barge-in: send StopAudio to client and clear TTS buffer."""
+        """Barge-in: flush queued audio fast so the agent stops mid-word.
+
+        Flushes, because cancelling the model alone leaves seconds of
+        already-generated voice playing: (1) StopAudio to the client, (2) in avatar
+        mode only, clear the Voice Live server-side output buffer, (3) drop any
+        locally buffered (ambient-mixed) TTS. Works for cascaded and
+        native-realtime models.
+        """
+        t0 = time.perf_counter()
         stop_audio_data = {"Kind": "StopAudio", "AudioData": None, "StopAudio": {}}
         await self.send_message(json.dumps(stop_audio_data))
+
+        # Only avatar sessions support server-side buffer clear; calling it in web
+        # mode is rejected server-side and spams errors, so skip it there.
+        if self._avatar_mode and self._voicelive_connected and self.conn is not None:
+            try:
+                await self.conn.output_audio_buffer.clear()
+            except Exception as exc:
+                logger.debug("[VoiceLive] output_audio_buffer clear skipped: %s", exc)
 
         if self._ambient_mixer is not None:
             async with self._tts_buffer_lock:
                 self._tts_output_buffer.clear()
                 self._tts_playback_started = False
+
+        logger.info(
+            "[VoiceLive] barge_in flush dispatched in %.1f ms",
+            (time.perf_counter() - t0) * 1000.0,
+        )
 
     async def on_audio_delta(self, audio_bytes: bytes):
         """Handle audio from Voice Live — buffer for ambient or send directly."""
@@ -484,6 +535,14 @@ class VoiceLiveMediaHandler:
 
     async def on_user_transcript_done(self, transcript: str):
         """Hook: final user speech transcript (web client only)."""
+
+    async def on_function_call(self, name, call_id, arguments):
+        """Hook: model requested a tool/function call.
+
+        No-op by default (no tools are registered on the base session, so this
+        never fires). The orchestrated handler overrides it to execute the tool
+        and reply with a FunctionCallOutputItem.
+        """
 
     async def on_assistant_transcript_delta(self, transcript: str):
         """Hook: partial assistant speech transcript (web client only)."""

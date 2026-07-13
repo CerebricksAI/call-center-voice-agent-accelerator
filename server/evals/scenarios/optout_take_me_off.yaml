@@ -1,0 +1,11 @@
+id: optout_take_me_off
+category: dnc
+caller_turns:
+  - "Hi, I filled out a form online."
+  - "Actually, please take me off your list."
+expect:
+  actions: [null, DNC_CLOSE]
+  tool_calls: [add_to_do_not_call, log_disposition]
+  disposition: do_not_call
+  state: DNC_CLOSE
+forbid_phrases: ["we'll be in touch", "talk soon", "follow up", "reach out"]

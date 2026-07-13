@@ -180,6 +180,10 @@ class WebMediaHandler(VoiceLiveMediaHandler):
                     delay,
                 )
                 await asyncio.sleep(delay)
+            logger.info(
+                "[WebMediaHandler] auto-end timer elapsed (finalizing=%s) — ending call",
+                self._finalizing,
+            )
             if not self._finalizing:
                 await self.request_end_call(source="agent")
         except asyncio.CancelledError:
@@ -807,6 +811,11 @@ class WebMediaHandler(VoiceLiveMediaHandler):
 
     async def request_end_call(self, *, source: str = "client") -> None:
         """Start the same finalize flow as the End Call button."""
+        logger.info(
+            "[WebMediaHandler] request_end_call(source=%s, finalizing=%s)",
+            source,
+            self._finalizing,
+        )
         if self._finalizing:
             return
         self._cancel_auto_end_task()
