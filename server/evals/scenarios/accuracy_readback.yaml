@@ -1,0 +1,13 @@
+id: accuracy_readback
+category: accuracy
+# No gate fires — this asserts the anti-hallucination boundary is present in the
+# instructions the model actually receives while qualifying (Phase 1 win).
+caller_turns:
+  - "I'd like to refinance my house."
+expect:
+  actions: [null]
+  disposition: null
+  state: QUALIFY
+  instructions_contain:
+    - "Read back"
+    - "never guess or invent"

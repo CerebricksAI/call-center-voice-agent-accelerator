@@ -214,6 +214,28 @@ def resolve_session_options() -> VoiceLiveSessionOptions:
     )
 
 
+def resolve_model_temperature() -> float:
+    """Model sampling temperature (``VOICE_LIVE_MODEL_TEMPERATURE``, default 0.6).
+
+    This is the LLM's *output* randomness, and is distinct from the voice/TTS
+    temperature on ``AzureStandardVoice``. Voice Live's default is 0.7, which is
+    hot enough that a small model invents plausible-but-false answers when the
+    caller's input is short or garbled. Lowering it to 0.6 is the single biggest
+    lever against fabrication. ``RequestSession.temperature`` accepts 0.0–1.0.
+    """
+    raw = os.getenv("VOICE_LIVE_MODEL_TEMPERATURE", "").strip()
+    if not raw:
+        return 0.6
+    try:
+        value = float(raw)
+    except ValueError:
+        logger.warning(
+            "Invalid VOICE_LIVE_MODEL_TEMPERATURE=%r — using 0.6", raw
+        )
+        return 0.6
+    return max(0.0, min(1.0, value))
+
+
 def build_request_session(
     options: VoiceLiveSessionOptions | None = None,
     *,
@@ -252,6 +274,8 @@ def build_request_session(
         "input_audio_format": InputAudioFormat.PCM16,
         "output_audio_format": OutputAudioFormat.PCM16,
         "voice": AzureStandardVoice(**voice_kwargs),
+        # Model sampling temperature (anti-hallucination) — NOT the voice temp.
+        "temperature": resolve_model_temperature(),
     }
 
     if opts.noise_reduction:
@@ -272,7 +296,7 @@ def log_session_options(options: VoiceLiveSessionOptions, *, model: str) -> None
         "[VoiceLive] Latency profile=%s model=%s eou_mode=%s eou=%s "
         "eou_timeout_ms=%s silence_duration_ms=%s max_response_tokens=%s "
         "noise_reduction=%s echo_cancellation=%s tts_buffer_ms=%s voice=%s "
-        "voice_temp=%s prompt_chars=%s",
+        "voice_temp=%s model_temp=%s prompt_chars=%s",
         options.latency_mode,
         model.strip(),
         _resolve_eou_mode(model),
@@ -285,5 +309,6 @@ def log_session_options(options: VoiceLiveSessionOptions, *, model: str) -> None
         options.tts_playback_buffer_ms,
         resolve_agent_voice_name(),
         resolve_agent_voice_temperature(),
+        resolve_model_temperature(),
         len(resolve_lead_qualification_instructions()),
     )

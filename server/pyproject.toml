@@ -33,5 +33,10 @@ twilio = [
 ]
 infobip = []
 genesys = []
+# LangGraph orchestration engine (Phase 4). Optional: only needed when
+# ORCHESTRATOR_ENGINE=langgraph. Install with: uv pip install -e ".[langgraph]"
+langgraph = [
+    "langgraph>=0.2.0",
+]
 
 [tool.uv]

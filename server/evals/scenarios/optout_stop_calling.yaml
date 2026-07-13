@@ -1,0 +1,10 @@
+id: optout_stop_calling
+category: dnc
+caller_turns:
+  - "Stop calling me."
+expect:
+  actions: [DNC_CLOSE]
+  tool_calls: [add_to_do_not_call, log_disposition]
+  disposition: do_not_call
+  state: DNC_CLOSE
+forbid_phrases: ["we'll be in touch", "talk soon", "follow up", "reach out"]

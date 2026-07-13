@@ -1,0 +1,14 @@
+id: gate_defers_non_optout
+category: gate_scope
+# Architecture (2026-07): the deterministic gate is the COMPLIANCE FLOOR — it fires
+# ONLY on a hard opt-out. Decline / escalate / language / callback are now understood
+# semantically by the router (verified in tests/test_semantic.py + tests/test_graph.py
+# and against the live endpoint). This scenario is the regression guard that the gate
+# stays SILENT on those — i.e. no keyword matching creeps back in for non-opt-out.
+caller_turns:
+  - "I'm not interested right now."
+  - "let me speak to a human"
+  - "can we do this in Spanish"
+expect:
+  actions: [null, null, null]
+  state: QUALIFY

@@ -432,9 +432,17 @@ async def web_ws():
         voice_model,
         "yes" if system_prompt else "no",
     )
-    handler = WebMediaHandler(
-        app.config, voice_model=voice_model, system_prompt=system_prompt
-    )
+    if os.getenv("ORCHESTRATOR_ENABLED", "").strip().lower() in ("1", "true", "yes", "on"):
+        from app.orchestrator.handler import OrchestratedWebHandler
+
+        logger.info("Web call using ORCHESTRATED handler (skills + gate + tools)")
+        handler = OrchestratedWebHandler(
+            app.config, voice_model=voice_model, system_prompt=system_prompt
+        )
+    else:
+        handler = WebMediaHandler(
+            app.config, voice_model=voice_model, system_prompt=system_prompt
+        )
     await handler.init_websocket(websocket)
     handler.set_call_context(call_id, "web")
     try:

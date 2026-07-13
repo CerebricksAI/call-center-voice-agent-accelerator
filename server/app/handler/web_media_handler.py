@@ -47,6 +47,10 @@ class WebMediaHandler(VoiceLiveMediaHandler):
         self._assistant_partial = ""
         self._user_partial = ""
         self._mirror_turns: list[dict] = []
+        # perf_counter of the browser's last "playback drained" report (see
+        # _handle_control_message). Same clock as _last_audio_delta_at so the
+        # orchestrator can tell the goodbye finished playing before ending a call.
+        self._last_drain_at = 0.0
         self._extract_seq = 0
         self._emitted_insights: dict[str, dict] = {}
         self._last_published_seq = 0
@@ -180,6 +184,10 @@ class WebMediaHandler(VoiceLiveMediaHandler):
                     delay,
                 )
                 await asyncio.sleep(delay)
+            logger.info(
+                "[WebMediaHandler] auto-end timer elapsed (finalizing=%s) — ending call",
+                self._finalizing,
+            )
             if not self._finalizing:
                 await self.request_end_call(source="agent")
         except asyncio.CancelledError:
@@ -807,6 +815,11 @@ class WebMediaHandler(VoiceLiveMediaHandler):
 
     async def request_end_call(self, *, source: str = "client") -> None:
         """Start the same finalize flow as the End Call button."""
+        logger.info(
+            "[WebMediaHandler] request_end_call(source=%s, finalizing=%s)",
+            source,
+            self._finalizing,
+        )
         if self._finalizing:
             return
         self._cancel_auto_end_task()
@@ -859,7 +872,13 @@ class WebMediaHandler(VoiceLiveMediaHandler):
             payload = json.loads(text)
         except json.JSONDecodeError:
             return False
-        if payload.get("Kind") != "EndCall":
+        kind = payload.get("Kind")
+        if kind == "PlaybackFinished":
+            # The browser finished playing all buffered agent audio — the
+            # orchestrator's hard-close waits on this before tearing down.
+            self._last_drain_at = time.perf_counter()
+            return True
+        if kind != "EndCall":
             return False
         logger.info("[WebMediaHandler] EndCall received — closing session")
         await self.request_end_call(source="client")
