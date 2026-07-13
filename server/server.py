@@ -43,6 +43,7 @@ from app.logging_config import configure_logging, new_correlation_id
 from app.conversation_extractor import resolve_extract_model, resolve_summary_model
 from app.usage_cost import enrich_call_record
 from app.provider_registry import detect_provider, get_configured_providers, get_provider
+from telephone.handlers import handle_telephone_voice, handle_telephone_ws
 
 load_dotenv()
 
@@ -236,6 +237,25 @@ if _provider_ready and _provider_info:
     logger.info("Registered routes for provider: %s", _provider_info.display_name)
 else:
     logger.warning("Telephony routes not registered — only web client available")
+
+# ============================================================
+# Telephone Integration — start
+# ============================================================
+
+# Telephone Integration
+@app.route("/telephone/voice", methods=["GET", "POST"])
+async def telephone_voice():
+    return await handle_telephone_voice(request)
+
+
+# Telephone Integration
+@app.websocket("/telephone/ws")
+async def telephone_ws():
+    await handle_telephone_ws(websocket, call_manager)
+
+# ============================================================
+# Telephone Integration — end
+# ============================================================
 
 logger.info("Auth mode: %s (entra configured=%s)", auth_mode(), is_entra_configured())
 

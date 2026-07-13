@@ -19,6 +19,7 @@ PUBLIC_PREFIX_PATHS = (
     "/infobip/",
     "/genesys",
     "/voice",
+    "/telephone/",
 )
 
 
