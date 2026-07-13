@@ -1,8 +1,11 @@
 name: Deploy to Azure
 
-# Run when commits are pushed to main
+# Test on PRs and pushes to main; deploy only after tests pass on a push to main.
 on:
   push:
+      branches:
+          - main
+  pull_request:
       branches:
           - main
 
@@ -13,7 +16,30 @@ permissions:
   contents: read
 
 jobs:
+  # Compliance gate: the orchestrator gates + skills must stay green before any deploy.
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+      - name: Install dependencies (incl. langgraph engine)
+        working-directory: server
+        run: uv sync --extra langgraph
+      - name: Unit tests
+        working-directory: server
+        run: uv run python -m pytest -q
+      - name: Compliance evals (fsm + langgraph engines)
+        working-directory: server
+        run: |
+          uv run python evals/run_text.py --all
+          uv run python evals/run_text.py --all --engine langgraph
+
   build_and_deploy:
+    needs: test
+    # Deploy only on a real push to main — never on pull requests.
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     env:
       AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}

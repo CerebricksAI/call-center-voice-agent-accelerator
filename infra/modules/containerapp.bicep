@@ -24,8 +24,8 @@ param zoneRedundant bool = true
 @description('Model for an additional (second) container app, e.g. gpt-realtime-mini. Empty = do not create a second app.')
 param secondModelDeploymentName string = ''
 
-@description('Caller speech-to-text model (Voice Live input transcription) for both apps. gpt-4o-mini-transcribe honors the en language pin and matches the per-token cost rates; whisper-1 was the prior fallback.')
-param transcriptionModel string = 'gpt-4o-mini-transcribe'
+@description('Caller speech-to-text model (Voice Live input transcription) for both apps. gpt-4o-transcribe is markedly more accurate on names/numbers (validated live); gpt-4o-mini-transcribe is cheaper; whisper-1 was the prior fallback.')
+param transcriptionModel string = 'gpt-4o-transcribe'
 
 // Helper to sanitize environmentName for valid container app name
 var sanitizedEnvName = toLower(replace(replace(replace(environmentName, ' ', '-'), '--', '-'), '_', '-'))
@@ -145,6 +145,18 @@ resource containerApp 'Microsoft.App/containerApps@2024-10-02-preview' = {
             {
               name: 'DEBUG_MODE'
               value: string(debugMode)
+            }
+            {
+              name: 'ORCHESTRATOR_ENABLED'
+              value: 'true'
+            }
+            {
+              name: 'ORCHESTRATOR_ENGINE'
+              value: 'langgraph'
+            }
+            {
+              name: 'SEMANTIC_INTENT_ENABLED'
+              value: 'true'
             }
           ], !empty(acsConnectionStringSecretUri) ? [
             {
@@ -303,6 +315,18 @@ resource containerAppRt 'Microsoft.App/containerApps@2024-10-02-preview' = if (!
             {
               name: 'DEBUG_MODE'
               value: string(debugMode)
+            }
+            {
+              name: 'ORCHESTRATOR_ENABLED'
+              value: 'true'
+            }
+            {
+              name: 'ORCHESTRATOR_ENGINE'
+              value: 'langgraph'
+            }
+            {
+              name: 'SEMANTIC_INTENT_ENABLED'
+              value: 'true'
             }
           ], !empty(acsConnectionStringSecretUri) ? [
             {
