@@ -24,17 +24,19 @@ jobs:
         uses: actions/checkout@v4
       - name: Install uv
         uses: astral-sh/setup-uv@v5
-      - name: Install dependencies (incl. langgraph engine)
+      - name: Install dependencies (test tooling + langgraph engine)
         working-directory: server
         run: uv sync --extra langgraph
       - name: Unit tests
         working-directory: server
-        run: uv run python -m pytest -q
+        # --extra langgraph on every `uv run` so its re-sync keeps the graph engine
+        # installed; scope to tests/ so scripts/ helper files aren't collected.
+        run: uv run --extra langgraph python -m pytest tests/ -q
       - name: Compliance evals (fsm + langgraph engines)
         working-directory: server
         run: |
-          uv run python evals/run_text.py --all
-          uv run python evals/run_text.py --all --engine langgraph
+          uv run --extra langgraph python evals/run_text.py --all
+          uv run --extra langgraph python evals/run_text.py --all --engine langgraph
 
   build_and_deploy:
     needs: test

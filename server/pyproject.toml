@@ -40,3 +40,11 @@ langgraph = [
 ]
 
 [tool.uv]
+
+# Test-only tooling (pytest + the eval runner's YAML parser). Installed by
+# `uv sync` for dev/CI; excluded from the production image via `--no-dev`.
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "pyyaml>=6.0",
+]
