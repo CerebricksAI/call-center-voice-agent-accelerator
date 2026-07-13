@@ -42,6 +42,8 @@ _ROUTER_SYSTEM = """You route a mortgage pre-qualification phone call. Read the 
 Rules:
 - "Resume", "continue", "go on", "keep going", "proceed", "start" all mean CONTINUE — never CALLBACK.
 - Changing an earlier answer or SWITCHING loan type (purchase <-> refinance <-> cash-out <-> home equity) is CONTINUE — the caller is still engaged, just changing a detail. Never DECLINE.
+- Changing a TIMELINE or any single detail — "not this week", "not now", "actually next month", "sooner", "later this year", "make it Friday" — is CONTINUE. Adjusting WHEN or WHAT is not declining.
+- If the caller's latest turn is garbled, partial, or hard to parse (a likely mis-transcription: fragments, cut-off words, or words that do not fit the conversation, like "this is print"), answer CONTINUE. NEVER DECLINE or route on unclear speech — the agent will simply ask them to repeat.
 - "Changed my mind" followed by a NEW request (e.g. "...I'd like to refinance instead") is CONTINUE, not DECLINE.
 - When unsure, answer CONTINUE. Only route on an unmistakable intent in the latest turn.
 - Output the single label only — no punctuation, no explanation."""
