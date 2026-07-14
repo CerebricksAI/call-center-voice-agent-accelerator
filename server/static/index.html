@@ -1719,10 +1719,22 @@
   <script>
     let mediaStream, source, socket;
     let audioContext = new AudioContext({ sampleRate: 24000 });
+    // Voice Live expects PCM16 mono @ 24 kHz. Some browsers ignore the
+    // constructor hint and run at 48 kHz — sending that raw makes STT garble
+    // ("refinance" → "prevalence", consent → nonsense). Downsample when needed.
+    const VOICELIVE_SAMPLE_RATE = 24000;
+    if (audioContext.sampleRate !== VOICELIVE_SAMPLE_RATE) {
+      console.warn(
+        `[Audio] Context sampleRate=${audioContext.sampleRate} (wanted ${VOICELIVE_SAMPLE_RATE}) — will downsample mic PCM`
+      );
+    }
     let playbackNode;
     // Set by the server (AwaitPlaybackEnd) just before it ends the call; only then
     // does the client report playback drains, so the channel stays quiet mid-call.
     let awaitingPlaybackEnd = false;
+    // After End Call / CallEnded — drop inbound TTS so silence check-ins cannot
+    // keep speaking while the socket stays open for summary.
+    let callAudioMuted = false;
     let micNode;
     let micTrack = null;
     let micMuted = false;
@@ -2135,6 +2147,23 @@
 
     function isCallFinalizing() {
       return waitingForSummary || summaryLoading || waitingForCallSaved;
+    }
+
+    function unlockStartCallButton() {
+      // After End Call, beginCallFinalizeUI disables Start and only
+      // closeSocketAfterSummary re-enables it. If summary/socket timing stalls,
+      // Start stays dead. Allow a new call whenever no WS is live.
+      const startBtn = document.getElementById("startBtn");
+      const stopBtn = document.getElementById("stopBtn");
+      const live =
+        socket &&
+        (socket.readyState === WebSocket.OPEN ||
+          socket.readyState === WebSocket.CONNECTING);
+      if (!live) {
+        if (startBtn) startBtn.disabled = false;
+        if (stopBtn) stopBtn.disabled = true;
+        setCallStatus(false);
+      }
     }
 
     function historyUrlForCall(callId) {
@@ -2761,6 +2790,7 @@
       // summary UI was already armed. This must run before the waitingForSummary
       // guard: otherwise the second finalize trigger returned early, the mic
       // stayed live, and the caller could keep talking after the agent ended it.
+      callAudioMuted = true;
       stopMicrophone();
       stopPlayback();
       const stopBtn = document.getElementById("stopBtn");
@@ -3261,9 +3291,11 @@
       // finished playing). Forward that to the server so it can end the call
       // only after the goodbye is fully delivered — never mid-sentence.
       playbackNode.port.onmessage = (e) => {
-        if (e.data && e.data.drained && awaitingPlaybackEnd &&
-            socket?.readyState === WebSocket.OPEN) {
-          socket.send(JSON.stringify({ Kind: "PlaybackFinished" }));
+        if (e.data && e.data.drained) {
+          window.__mayaAgentPlaying = false;
+          if (awaitingPlaybackEnd && socket?.readyState === WebSocket.OPEN) {
+            socket.send(JSON.stringify({ Kind: "PlaybackFinished" }));
+          }
         }
       };
     }
@@ -3275,10 +3307,12 @@
       for (let i = 0; i < int16.length; i++) {
         float32[i] = int16[i] / (int16[i] < 0 ? 0x8000 : 0x7FFF);
       }
+      window.__mayaAgentPlaying = true;
       playbackNode.port.postMessage({ pcm: float32 });
     }
 
     function stopPlayback() {
+      window.__mayaAgentPlaying = false;
       if (playbackNode) playbackNode.port.postMessage({ clear: true });
     }
 
@@ -3291,6 +3325,17 @@
       return int16;
     }
 
+    function downsampleFloat32(float32Array, inRate, outRate) {
+      if (!inRate || inRate === outRate) return float32Array;
+      const ratio = inRate / outRate;
+      const newLen = Math.max(1, Math.floor(float32Array.length / ratio));
+      const out = new Float32Array(newLen);
+      for (let i = 0; i < newLen; i++) {
+        out[i] = float32Array[Math.min(float32Array.length - 1, Math.floor(i * ratio))];
+      }
+      return out;
+    }
+
     async function startMicrophone() {
       mediaStream = await navigator.mediaDevices.getUserMedia({
         audio: {
@@ -3298,18 +3343,42 @@
           noiseSuppression: true,
           autoGainControl: true,
           channelCount: 1,
+          sampleRate: VOICELIVE_SAMPLE_RATE,
         },
       });
       micTrack = mediaStream.getAudioTracks()[0] || null;
       micMuted = false;
       updateMuteButton();
+      console.info(
+        `[Audio] Mic capture ready; AudioContext.sampleRate=${audioContext.sampleRate}`
+      );
       source = audioContext.createMediaStreamSource(mediaStream);
       micNode = new AudioWorkletNode(audioContext, "mic-processor");
+      let _dbgMicN = 0;
       micNode.port.onmessage = (event) => {
         if (micMuted) return;
-        const pcm = float32ToInt16(event.data);
+        let floatIn = event.data;
+        // Duck mic while Maya is playing through speakers — without this, STT
+        // often captures her words as the caller's (hypothesis F). Keep barge-in:
+        // if the caller speaks loudly, still send full audio.
+        if (window.__mayaAgentPlaying && floatIn && floatIn.length) {
+          let peak = 0;
+          for (let i = 0; i < floatIn.length; i += Math.max(1, (floatIn.length / 64) | 0)) {
+            const a = Math.abs(floatIn[i]);
+            if (a > peak) peak = a;
+          }
+          if (peak < 0.045) {
+            floatIn = new Float32Array(floatIn.length); // silence → STT won't hear echo
+          }
+        }
+        const pcmFloat = downsampleFloat32(
+          floatIn,
+          audioContext.sampleRate,
+          VOICELIVE_SAMPLE_RATE
+        );
+        const pcm = float32ToInt16(pcmFloat);
         if (socket?.readyState === WebSocket.OPEN) {
-          socket.send(pcm.buffer);
+          socket.send(pcm.buffer.slice(pcm.byteOffset, pcm.byteOffset + pcm.byteLength));
         }
       };
       source.connect(micNode);
@@ -3362,14 +3431,32 @@
 
     function stopStreaming() {
       if (!socket) return;
+      const s = socket;
       removeEmptyUserPlaceholder();
+      // Mute TTS first so late silence check-ins cannot keep talking.
+      callAudioMuted = true;
+      stopPlayback();
       beginCallFinalizeUI();
-      if (socket.readyState === WebSocket.OPEN) {
-        socket.send(JSON.stringify({ Kind: "EndCall" }));
+      if (s.readyState === WebSocket.OPEN) {
+        try {
+          s.send(JSON.stringify({ Kind: "EndCall" }));
+        } catch (_) {}
       }
     }
 
     function startStreaming() {
+      // Recover from stuck finalize UI after a previous call (Start greyed out).
+      if (
+        socket &&
+        (socket.readyState === WebSocket.OPEN ||
+          socket.readyState === WebSocket.CONNECTING)
+      ) {
+        return; // already on a call
+      }
+      socket = null;
+      callAudioMuted = false;
+      awaitingPlaybackEnd = false;
+      unlockStartCallButton();
       clearTranscript();
       resetDashboard();
       let wsProtocol = window.location.protocol === "https:" ? "wss" : "ws";
@@ -3434,6 +3521,9 @@
           return;
         }
         if (event.data instanceof ArrayBuffer) {
+          if (callAudioMuted || waitingForSummary) {
+            return; // hung up — do not play silence nudges / late TTS
+          }
           playAudio(event.data);
         }
       };
@@ -3448,11 +3538,15 @@
           setCallStatus(false);
           stopMicrophone();
           stopPlayback();
-          document.getElementById("startBtn").disabled = false;
-          document.getElementById("stopBtn").disabled = true;
+          resetMicMute();
+        } else {
+          // Summary may still be loading — still free Start for the next call.
+          stopMicrophone();
+          stopPlayback();
           resetMicMute();
         }
         socket = null;
+        unlockStartCallButton();
       };
 
       socket.onerror = (err) => console.error("WebSocket error", err);
@@ -3489,6 +3583,7 @@
       initTheme();
       loadModelLabels();
       renderKeyDetails();
+      unlockStartCallButton();
       loadAudioProcessors();
     })();
   </script>

@@ -219,3 +219,223 @@
 {"call_id": "b8483f2ea65e", "tool": "capture_borrower_field", "args": {"field": "employment_status", "value": "self-employed", "confidence": 0.9}, "result": {"ok": true}}
 {"call_id": "b8483f2ea65e", "tool": "capture_borrower_field", "args": {"field": "requested_rate", "value": "What rate can you get me", "confidence": 0.9}, "result": {"ok": true}}
 {"call_id": "b8483f2ea65e", "tool": "capture_borrower_field", "args": {"field": "interest_level", "value": "Not really interested", "confidence": 0.9}, "result": {"ok": true}}
+{"call_id": "9faeef7aa160", "tool": "capture_borrower_field", "args": {"field": "consent_to_contact", "value": "Yes", "confidence": 1.0}, "result": {"ok": true}}
+{"call_id": "9faeef7aa160", "tool": "capture_borrower_field", "args": {"field": "loan_type", "value": "Refinance", "confidence": 0.95}, "result": {"ok": true}}
+{"call_id": "9faeef7aa160", "tool": "capture_borrower_field", "args": {"field": "property_state", "value": "Arizona", "confidence": 0.95}, "result": {"ok": true}}
+{"call_id": "9faeef7aa160", "tool": "capture_borrower_field", "args": {"field": "property_zip_code", "value": "85292", "confidence": 0.95}, "result": {"ok": true}}
+{"call_id": "9faeef7aa160", "tool": "capture_borrower_field", "args": {"field": "property_type", "value": "Single family home", "confidence": 0.95}, "result": {"ok": true}}
+{"call_id": "9faeef7aa160", "tool": "capture_borrower_field", "args": {"field": "timeline", "value": "Still researching", "confidence": 0.9}, "result": {"ok": true}}
+{"call_id": "9faeef7aa160", "tool": "transfer_to_lo", "args": {"reason": "caller requested escalation"}, "result": {"ok": true}}
+{"call_id": "9faeef7aa160", "tool": "log_disposition", "args": {"disposition": "transferred"}, "result": {"ok": true, "disposition": "transferred"}}
+{"call_id": "9faeef7aa160", "tool": "capture_borrower_field", "args": {"field": "credit_range", "value": "~630", "confidence": 0.75}, "result": {"ok": true}}
+{"call_id": "9faeef7aa160", "tool": "capture_borrower_field", "args": {"field": "existing_mortgage_status", "value": "Paid off", "confidence": 0.95}, "result": {"ok": true}}
+{"call_id": "9faeef7aa160", "tool": "capture_borrower_field", "args": {"field": "credit_score", "value": "around 630", "confidence": 0.9}, "result": {"ok": true}}
+{"call_id": "9faeef7aa160", "tool": "capture_borrower_field", "args": {"field": "property_state", "value": "Arizona", "confidence": 0.9}, "result": {"ok": true}}
+{"call_id": "9faeef7aa160", "tool": "capture_borrower_field", "args": {"field": "property_zip", "value": "85292", "confidence": 0.9}, "result": {"ok": true}}
+{"call_id": "72b04286c3c1", "tool": "capture_borrower_field", "args": {"field": "consent_to_contact", "value": "Yes", "confidence": 1.0}, "result": {"ok": true}}
+{"call_id": "72b04286c3c1", "tool": "capture_borrower_field", "args": {"field": "loan_type", "value": "Cash-out refinance", "confidence": 0.9}, "result": {"ok": true}}
+{"call_id": "72b04286c3c1", "tool": "capture_borrower_field", "args": {"field": "property_location", "value": "\u0c35\u0c46\u0c02\u0c1f\u0c3f\u0c24\u0c46\u0c02\u0c21\u0c3f", "confidence": 0.9}, "result": {"ok": true}}
+{"call_id": "72b04286c3c1", "tool": "capture_borrower_field", "args": {"field": "timeline", "value": "Still exploring", "confidence": 0.9}, "result": {"ok": true}}
+{"call_id": "72b04286c3c1", "tool": "add_to_do_not_call", "args": {"reason": "caller opt-out"}, "result": {"ok": true}}
+{"call_id": "72b04286c3c1", "tool": "log_disposition", "args": {"disposition": "do_not_call"}, "result": {"ok": true, "disposition": "do_not_call"}}
+{"call_id": "72b04286c3c1", "tool": "end_call", "args": {"reason": "Caller requested not to be contacted again."}, "result": {"ok": true}}
+{"call_id": "e24ffff38693", "tool": "capture_borrower_field", "args": {"field": "consent_to_contact", "value": "Yes", "confidence": 1.0}, "result": {"ok": true}}
+{"call_id": "e24ffff38693", "tool": "capture_borrower_field", "args": {"field": "refinance_status", "value": "Refinancing a home", "confidence": 0.95}, "result": {"ok": true}}
+{"call_id": "e24ffff38693", "tool": "capture_borrower_field", "args": {"field": "refinance_type", "value": "Standard refinance", "confidence": 0.95}, "result": {"ok": true}}
+{"call_id": "e24ffff38693", "tool": "capture_borrower_field", "args": {"field": "property_location", "value": "Europe", "confidence": 0.9}, "result": {"ok": true}}
+{"call_id": "e24ffff38693", "tool": "log_disposition", "args": {"disposition": "declined"}, "result": {"ok": true, "disposition": "declined"}}
+{"call_id": "e24ffff38693", "tool": "log_disposition", "args": {"disposition": "declined"}, "result": {"ok": true, "disposition": "declined"}}
+{"call_id": "e24ffff38693", "tool": "end_call", "args": {"reason": "Caller requested to end the call."}, "result": {"ok": true}}
+{"call_id": "bf59db6ac660", "tool": "capture_borrower_field", "args": {"field": "refinance_status", "value": "Refinancing a home", "confidence": 0.95}, "result": {"ok": true}}
+{"call_id": "bf59db6ac660", "tool": "capture_borrower_field", "args": {"field": "cash_out", "value": "Pulling out cash", "confidence": 0.9}, "result": {"ok": true}}
+{"call_id": "bf59db6ac660", "tool": "log_disposition", "args": {"disposition": "callback_requested"}, "result": {"ok": true, "disposition": "callback_requested"}}
+{"call_id": "bf59db6ac660", "tool": "capture_borrower_field", "args": {"field": "preferred_call_time", "value": "Tomorrow", "confidence": 0.9}, "result": {"ok": true}}
+{"call_id": "bf59db6ac660", "tool": "schedule_callback", "args": {"preferred_time": "Tomorrow"}, "result": {"ok": true, "preferred_time": "Tomorrow"}}
+{"call_id": "bf59db6ac660", "tool": "schedule_callback", "args": {"preferred_time": "4:30 to 5:00 PM"}, "result": {"ok": true, "preferred_time": "4:30 to 5:00 PM"}}
+{"call_id": "bf59db6ac660", "tool": "capture_borrower_field", "args": {"field": "preferred_call_time_specific", "value": "4:30 to 5 PM", "confidence": 0.75}, "result": {"ok": true}}
+{"call_id": "804fac28ad04", "tool": "capture_borrower_field", "args": {"field": "consent", "value": "Not interested", "confidence": 0.95}, "result": {"ok": true}}
+{"call_id": "804fac28ad04", "tool": "capture_borrower_field", "args": {"field": "refinance_home", "value": "Old home", "confidence": 0.95}, "result": {"ok": true}}
+{"call_id": "804fac28ad04", "tool": "capture_borrower_field", "args": {"field": "refinance_type", "value": "Standard refinance", "confidence": 0.95}, "result": {"ok": true}}
+{"call_id": "804fac28ad04", "tool": "capture_borrower_field", "args": {"field": "property_state_zip", "value": "Not sure", "confidence": 0.5}, "result": {"ok": true}}
+{"call_id": "804fac28ad04", "tool": "capture_borrower_field", "args": {"field": "timeline", "value": "Next 15 days", "confidence": 0.9}, "result": {"ok": true}}
+{"call_id": "804fac28ad04", "tool": "capture_borrower_field", "args": {"field": "credit_range", "value": "Between fair and excellent", "confidence": 0.75}, "result": {"ok": true}}
+{"call_id": "804fac28ad04", "tool": "capture_borrower_field", "args": {"field": "employment_status", "value": "Retired", "confidence": 0.95}, "result": {"ok": true}}
+{"call_id": "804fac28ad04", "tool": "capture_borrower_field", "args": {"field": "income", "value": "$50,000 per annum", "confidence": 0.9}, "result": {"ok": true}}
+{"call_id": "804fac28ad04", "tool": "capture_borrower_field", "args": {"field": "contact preference", "value": "email, afternoon 12 to 1 PM", "confidence": 0.9}, "result": {"ok": true}}
+{"call_id": "804fac28ad04", "tool": "transfer_to_lo", "args": {"reason": "Refinance inquiry with preference for email contact in the afternoon."}, "result": {"ok": true}}
+{"call_id": "804fac28ad04", "tool": "capture_borrower_field", "args": {"field": "preferred_contact_method", "value": "Email", "confidence": 0.95}, "result": {"ok": true}}
+{"call_id": "804fac28ad04", "tool": "capture_borrower_field", "args": {"field": "preferred_contact_time", "value": "Afternoon 12 to 1 pm", "confidence": 0.75}, "result": {"ok": true}}
+{"call_id": "804fac28ad04", "tool": "capture_borrower_field", "args": {"field": "preferred_contact_day", "value": "Tomorrow", "confidence": 0.9}, "result": {"ok": true}}
+{"call_id": "804fac28ad04", "tool": "capture_borrower_field", "args": {"field": "proceed_status", "value": "Not proceeding now", "confidence": 0.95}, "result": {"ok": true}}
+{"call_id": "804fac28ad04", "tool": "end_call", "args": {"reason": "caller requested to end the call"}, "result": {"ok": false, "error": "refused: no disposition recorded"}}
+{"call_id": "804fac28ad04", "tool": "end_call", "args": {"reason": "caller requested to end the call"}, "result": {"ok": false, "error": "refused: no disposition recorded"}}
+{"call_id": "aa7e4fa31b8c", "tool": "capture_borrower_field", "args": {"field": "loan_type", "value": "Refinance", "confidence": 0.95}, "result": {"ok": true}}
+{"call_id": "aa7e4fa31b8c", "tool": "capture_borrower_field", "args": {"field": "amount_to_pull_out", "value": "Fifty thousand dollars", "confidence": 0.9}, "result": {"ok": true}}
+{"call_id": "aa7e4fa31b8c", "tool": "log_disposition", "args": {"disposition": "declined"}, "result": {"ok": true, "disposition": "declined"}}
+{"call_id": "da99d47371bf", "tool": "capture_borrower_field", "args": {"field": "refinance_status", "value": "Refinancing existing home", "confidence": 0.95}, "result": {"ok": true}}
+{"call_id": "da99d47371bf", "tool": "log_disposition", "args": {"disposition": "declined"}, "result": {"ok": true, "disposition": "declined"}}
+{"call_id": "da99d47371bf", "tool": "log_disposition", "args": {"disposition": "declined"}, "result": {"ok": true, "disposition": "declined"}}
+{"call_id": "da99d47371bf", "tool": "end_call", "args": {"reason": "Caller requested to end the call quickly."}, "result": {"ok": true}}
+{"call_id": "a1be83248e9c", "tool": "capture_borrower_field", "args": {"field": "consent_to_contact", "value": "Yes", "confidence": 1.0}, "result": {"ok": true}}
+{"call_id": "a1be83248e9c", "tool": "capture_borrower_field", "args": {"field": "refinance_type", "value": "Existing home", "confidence": 0.95}, "result": {"ok": true}}
+{"call_id": "a1be83248e9c", "tool": "capture_borrower_field", "args": {"field": "refinance_cash_out", "value": "Thinking to pull some cash", "confidence": 0.9}, "result": {"ok": true}}
+{"call_id": "a1be83248e9c", "tool": "capture_borrower_field", "args": {"field": "property_state", "value": "Portugal", "confidence": 0.9}, "result": {"ok": true}}
+{"call_id": "a1be83248e9c", "tool": "capture_borrower_field", "args": {"field": "property_type", "value": "Single-family", "confidence": 0.9}, "result": {"ok": true}}
+{"call_id": "a1be83248e9c", "tool": "capture_borrower_field", "args": {"field": "timeline", "value": "~1.5 months", "confidence": 0.75}, "result": {"ok": true}}
+{"call_id": "a1be83248e9c", "tool": "capture_borrower_field", "args": {"field": "credit_range", "value": "~615", "confidence": 0.75}, "result": {"ok": true}}
+{"call_id": "a1be83248e9c", "tool": "add_to_do_not_call", "args": {"reason": "caller opt-out"}, "result": {"ok": true}}
+{"call_id": "a1be83248e9c", "tool": "log_disposition", "args": {"disposition": "do_not_call"}, "result": {"ok": true, "disposition": "do_not_call"}}
+{"call_id": "3ef3d3bfc2a1", "tool": "capture_borrower_field", "args": {"field": "consent_to_contact", "value": "Yes", "confidence": 1.0}, "result": {"ok": true}}
+{"call_id": "3ef3d3bfc2a1", "tool": "capture_borrower_field", "args": {"field": "refinance_status", "value": "Refinance", "confidence": 0.95}, "result": {"ok": true}}
+{"call_id": "3ef3d3bfc2a1", "tool": "capture_borrower_field", "args": {"field": "cash_out", "value": "Pulling out cash", "confidence": 0.9}, "result": {"ok": true}}
+{"call_id": "3ef3d3bfc2a1", "tool": "log_disposition", "args": {"disposition": "declined"}, "result": {"ok": true, "disposition": "declined"}}
+{"call_id": "c0f4245a3418", "tool": "capture_borrower_field", "args": {"field": "caller_request", "value": "Speak slowly", "confidence": 0.9}, "result": {"ok": true}}
+{"call_id": "c0f4245a3418", "tool": "log_disposition", "args": {"disposition": "declined"}, "result": {"ok": true, "disposition": "declined"}}
+{"call_id": "8b26f5baec13", "tool": "capture_borrower_field", "args": {"field": "loan_type", "value": "Refinancing", "confidence": 0.95}, "result": {"ok": true}}
+{"call_id": "8b26f5baec13", "tool": "capture_borrower_field", "args": {"field": "loan_type_details", "value": "Standard refinance", "confidence": 0.95}, "result": {"ok": true}}
+{"call_id": "8b26f5baec13", "tool": "capture_borrower_field", "args": {"field": "property_state", "value": "California", "confidence": 0.95}, "result": {"ok": true}}
+{"call_id": "8b26f5baec13", "tool": "capture_borrower_field", "args": {"field": "property_zip_code", "value": "85921", "confidence": 0.95}, "result": {"ok": true}}
+{"call_id": "8b26f5baec13", "tool": "capture_borrower_field", "args": {"field": "property_type", "value": "Something else", "confidence": 0.9}, "result": {"ok": true}}
+{"call_id": "fe557d656f88", "tool": "capture_borrower_field", "args": {"field": "loan_type", "value": "Refinance", "confidence": 0.95}, "result": {"ok": true}}
+{"call_id": "fe557d656f88", "tool": "log_disposition", "args": {"disposition": "declined"}, "result": {"ok": true, "disposition": "declined"}}
+{"call_id": "fe557d656f88", "tool": "log_disposition", "args": {"disposition": "declined"}, "result": {"ok": true, "disposition": "declined"}}
+{"call_id": "fe557d656f88", "tool": "end_call", "args": {"reason": "Caller declined to continue."}, "result": {"ok": true}}
+{"call_id": "da7316d95ff2", "tool": "log_disposition", "args": {"disposition": "declined"}, "result": {"ok": true, "disposition": "declined"}}
+{"call_id": "da7316d95ff2", "tool": "capture_borrower_field", "args": {"field": "call_termination_request", "value": "End the call now", "confidence": 0.9}, "result": {"ok": true}}
+{"call_id": "0a3db43b3e43", "tool": "capture_borrower_field", "args": {"field": "consent_to_contact", "value": "Yes", "confidence": 1.0}, "result": {"ok": true}}
+{"call_id": "0a3db43b3e43", "tool": "capture_borrower_field", "args": {"field": "home_purchase_or_refinance", "value": "Refinance", "confidence": 0.9}, "result": {"ok": true}}
+{"call_id": "0a3db43b3e43", "tool": "capture_borrower_field", "args": {"field": "location", "value": "California", "confidence": 0.9}, "result": {"ok": true}}
+{"call_id": "0a3db43b3e43", "tool": "capture_borrower_field", "args": {"field": "zip_code", "value": "Still figuring it out", "confidence": 0.65}, "result": {"ok": true}}
+{"call_id": "0a3db43b3e43", "tool": "capture_borrower_field", "args": {"field": "timeline", "value": "~45 days", "confidence": 0.9}, "result": {"ok": true}}
+{"call_id": "0a3db43b3e43", "tool": "capture_borrower_field", "args": {"field": "credit_range", "value": "650 to 680", "confidence": 0.75}, "result": {"ok": true}}
+{"call_id": "0a3db43b3e43", "tool": "capture_borrower_field", "args": {"field": "employment_status", "value": "Not preferred to share", "confidence": 0.9}, "result": {"ok": true}}
+{"call_id": "0a3db43b3e43", "tool": "capture_borrower_field", "args": {"field": "preferred_contact_method", "value": "Any time", "confidence": 0.9}, "result": {"ok": true}}
+{"call_id": "0a3db43b3e43", "tool": "capture_borrower_field", "args": {"field": "preferred_time", "value": "Flexible", "confidence": 0.9}, "result": {"ok": true}}
+{"call_id": "0a3db43b3e43", "tool": "log_disposition", "args": {"disposition": "callback_requested"}, "result": {"ok": true, "disposition": "callback_requested"}}
+{"call_id": "0a3db43b3e43", "tool": "capture_borrower_field", "args": {"field": "preferred_callback_date", "value": "Tomorrow", "confidence": 0.9}, "result": {"ok": true}}
+{"call_id": "0a3db43b3e43", "tool": "schedule_callback", "args": {"preferred_time": "Flexible"}, "result": {"ok": true, "preferred_time": "Flexible"}}
+{"call_id": "e387d76bb658", "tool": "capture_borrower_field", "args": {"field": "financing_type", "value": "Finance home", "confidence": 0.9}, "result": {"ok": true}}
+{"call_id": "e387d76bb658", "tool": "capture_borrower_field", "args": {"field": "property_state", "value": "Arizona", "confidence": 0.95}, "result": {"ok": true}}
+{"call_id": "e387d76bb658", "tool": "log_disposition", "args": {"disposition": "callback_requested"}, "result": {"ok": true, "disposition": "callback_requested"}}
+{"call_id": "e387d76bb658", "tool": "schedule_callback", "args": {"preferred_time": "later this afternoon"}, "result": {"ok": true, "preferred_time": "later this afternoon"}}
+{"call_id": "e387d76bb658", "tool": "capture_borrower_field", "args": {"field": "preferred_contact_time", "value": "Later afternoon", "confidence": 0.9}, "result": {"ok": true}}
+{"call_id": "6fca17d4f199", "tool": "log_disposition", "args": {"disposition": "no_response"}, "result": {"ok": true, "disposition": "no_response"}}
+{"call_id": "b2edf9a8770f", "tool": "log_disposition", "args": {"disposition": "no_response"}, "result": {"ok": true, "disposition": "no_response"}}
+{"call_id": "b2edf9a8770f", "tool": "capture_borrower_field", "args": {"field": "consent_to_contact", "value": "Yes", "confidence": 1.0}, "result": {"ok": true}}
+{"call_id": "03e57208e730", "tool": "capture_borrower_field", "args": {"field": "consent_to_contact", "value": "Yes", "confidence": 1.0}, "result": {"ok": true}}
+{"call_id": "03e57208e730", "tool": "capture_borrower_field", "args": {"field": "refinance_status", "value": "Refinance home", "confidence": 0.95}, "result": {"ok": true}}
+{"call_id": "03e57208e730", "tool": "capture_borrower_field", "args": {"field": "refinance_type", "value": "Standard refinance", "confidence": 0.9}, "result": {"ok": true}}
+{"call_id": "03e57208e730", "tool": "capture_borrower_field", "args": {"field": "gathered_thoughts", "value": "Already gathered", "confidence": 0.9}, "result": {"ok": true}}
+{"call_id": "03e57208e730", "tool": "capture_borrower_field", "args": {"field": "current_mortgage_balance", "value": "$50,000", "confidence": 0.95}, "result": {"ok": true}}
+{"call_id": "03e57208e730", "tool": "capture_borrower_field", "args": {"field": "questions_for_caller", "value": "How would you like to ask questions? What questions you have with me to ask?", "confidence": 0.6}, "result": {"ok": true}}
+{"call_id": "03e57208e730", "tool": "transfer_to_lo", "args": {"reason": "caller requested escalation"}, "result": {"ok": true}}
+{"call_id": "03e57208e730", "tool": "log_disposition", "args": {"disposition": "transferred"}, "result": {"ok": true, "disposition": "transferred"}}
+{"call_id": "03e57208e730", "tool": "capture_borrower_field", "args": {"field": "credit_score_range", "value": "630 to 650", "confidence": 0.75}, "result": {"ok": true}}
+{"call_id": "03e57208e730", "tool": "capture_borrower_field", "args": {"field": "preferred_call_time", "value": "Tomorrow 3 PM", "confidence": 0.9}, "result": {"ok": true}}
+{"call_id": "03e57208e730", "tool": "capture_borrower_field", "args": {"field": "phone_number", "value": "592-212", "confidence": 0.9}, "result": {"ok": true}}
+{"call_id": "03e57208e730", "tool": "capture_borrower_field", "args": {"field": "best_phone_number", "value": "592212", "confidence": 0.9}, "result": {"ok": true}}
+{"call_id": "1b0bb88c08f0", "tool": "capture_borrower_field", "args": {"field": "purpose_of_call", "value": "Buy a home", "confidence": 0.95}, "result": {"ok": true}}
+{"call_id": "1b0bb88c08f0", "tool": "capture_borrower_field", "args": {"field": "location", "value": "Still there", "confidence": 0.5}, "result": {"ok": true}}
+{"call_id": "1b0bb88c08f0", "tool": "log_disposition", "args": {"disposition": "callback_requested"}, "result": {"ok": true, "disposition": "callback_requested"}}
+{"call_id": "1b0bb88c08f0", "tool": "capture_borrower_field", "args": {"field": "preferred_date", "value": "Tomorrow", "confidence": 0.9}, "result": {"ok": true}}
+{"call_id": "1b0bb88c08f0", "tool": "schedule_callback", "args": {"preferred_time": "tomorrow at 4 PM"}, "result": {"ok": true, "preferred_time": "tomorrow at 4 PM"}}
+{"call_id": "1b0bb88c08f0", "tool": "capture_borrower_field", "args": {"field": "preferred_time", "value": "4 PM", "confidence": 0.9}, "result": {"ok": true}}
+{"call_id": "9bad8109d965", "tool": "capture_borrower_field", "args": {"field": "loan_type", "value": "Refinance", "confidence": 0.95}, "result": {"ok": true}}
+{"call_id": "9bad8109d965", "tool": "capture_borrower_field", "args": {"field": "property_type", "value": "Single-family home", "confidence": 0.9}, "result": {"ok": true}}
+{"call_id": "9bad8109d965", "tool": "capture_borrower_field", "args": {"field": "state_zip", "value": "Not clear", "confidence": 0.5}, "result": {"ok": true}}
+{"call_id": "9bad8109d965", "tool": "capture_borrower_field", "args": {"field": "timeline", "value": "Not clear", "confidence": 0.5}, "result": {"ok": true}}
+{"call_id": "9bad8109d965", "tool": "log_disposition", "args": {"disposition": "declined"}, "result": {"ok": true, "disposition": "declined"}}
+{"call_id": "9bad8109d965", "tool": "log_disposition", "args": {"disposition": "declined"}, "result": {"ok": true, "disposition": "declined"}}
+{"call_id": "9bad8109d965", "tool": "end_call", "args": {"reason": "Caller declined to proceed."}, "result": {"ok": true}}
+{"call_id": "eebd79644437", "tool": "capture_borrower_field", "args": {"field": "consent_to_contact", "value": "Yes", "confidence": 1.0}, "result": {"ok": true}}
+{"call_id": "eebd79644437", "tool": "capture_borrower_field", "args": {"field": "service_inquiry", "value": "What kind of services do you provide?", "confidence": 0.9}, "result": {"ok": true}}
+{"call_id": "eebd79644437", "tool": "capture_borrower_field", "args": {"field": "interest_type", "value": "Refinancing existing mortgage", "confidence": 0.9}, "result": {"ok": true}}
+{"call_id": "eebd79644437", "tool": "capture_borrower_field", "args": {"field": "refinance_type", "value": "Standard refinance", "confidence": 0.9}, "result": {"ok": true}}
+{"call_id": "eebd79644437", "tool": "capture_borrower_field", "args": {"field": "refinance_interest", "value": "Shifting towards refinancing", "confidence": 0.9}, "result": {"ok": true}}
+{"call_id": "eebd79644437", "tool": "capture_borrower_field", "args": {"field": "cash_out_interest", "value": "Not specified", "confidence": 0.4}, "result": {"ok": true}}
+{"call_id": "eebd79644437", "tool": "log_disposition", "args": {"disposition": "callback_requested"}, "result": {"ok": true, "disposition": "callback_requested"}}
+{"call_id": "eebd79644437", "tool": "capture_borrower_field", "args": {"field": "property_location_request", "value": "Call tomorrow", "confidence": 0.7}, "result": {"ok": true}}
+{"call_id": "402519117fcf", "tool": "log_disposition", "args": {"disposition": "no_response"}, "result": {"ok": true, "disposition": "no_response"}}
+{"call_id": "402519117fcf", "tool": "capture_borrower_field", "args": {"field": "reported_issue", "value": "Unable to do transactions", "confidence": 0.95}, "result": {"ok": true}}
+{"call_id": "219563167990", "tool": "capture_borrower_field", "args": {"field": "reported_issue", "value": "Unable to make payment", "confidence": 0.95}, "result": {"ok": true}}
+{"call_id": "219563167990", "tool": "capture_borrower_field", "args": {"field": "payment_method", "value": "Not specified", "confidence": 0.4}, "result": {"ok": true}}
+{"call_id": "219563167990", "tool": "end_call", "args": {"reason": "The user requested to end the call."}, "result": {"ok": false, "error": "refused: no disposition recorded"}}
+{"call_id": "219563167990", "tool": "capture_borrower_field", "args": {"field": "company_name", "value": "Grandix Corp", "confidence": 0.9}, "result": {"ok": true}}
+{"call_id": "219563167990", "tool": "end_call", "args": {"reason": "The user requested to end the call."}, "result": {"ok": false, "error": "refused: no disposition recorded"}}
+{"call_id": "219563167990", "tool": "log_disposition", "args": {"disposition": "declined"}, "result": {"ok": true, "disposition": "declined"}}
+{"call_id": "53884582228e", "tool": "capture_borrower_field", "args": {"field": "consent_to_contact", "value": "Yes", "confidence": 0.95}, "result": {"ok": true}}
+{"call_id": "53884582228e", "tool": "capture_borrower_field", "args": {"field": "loan_type", "value": "Refinance", "confidence": 0.9}, "result": {"ok": true}}
+{"call_id": "53884582228e", "tool": "capture_borrower_field", "args": {"field": "cash_out_option", "value": "Pulling cash out", "confidence": 0.9}, "result": {"ok": true}}
+{"call_id": "53884582228e", "tool": "capture_borrower_field", "args": {"field": "cash_out_amount", "value": "Sons and daughters", "confidence": 0.5}, "result": {"ok": true}}
+{"call_id": "53884582228e", "tool": "capture_borrower_field", "args": {"field": "cash_out_amount", "value": "20,000 dollars", "confidence": 0.9}, "result": {"ok": true}}
+{"call_id": "53884582228e", "tool": "transfer_to_lo", "args": {"reason": "caller requested escalation"}, "result": {"ok": true}}
+{"call_id": "53884582228e", "tool": "log_disposition", "args": {"disposition": "transferred"}, "result": {"ok": true, "disposition": "transferred"}}
+{"call_id": "53884582228e", "tool": "capture_borrower_field", "args": {"field": "frustration", "value": "Little bit frustrated", "confidence": 0.8}, "result": {"ok": true}}
+{"call_id": "53884582228e", "tool": "capture_borrower_field", "args": {"field": "preferred_contact_time", "value": "Tomorrow", "confidence": 0.9}, "result": {"ok": true}}
+{"call_id": "53884582228e", "tool": "capture_borrower_field", "args": {"field": "requested_human", "value": "true", "confidence": 1.0}, "result": {"ok": true}}
+{"call_id": "53884582228e", "tool": "transfer_to_lo", "args": {"reason": "requested_human", "context_summary": "Caller requested to speak with a licensed loan officer directly."}, "result": {"ok": true}}
+{"call_id": "8b916dd9aacd", "tool": "capture_borrower_field", "args": {"field": "loan_type", "value": "Refinance", "confidence": 0.95}, "result": {"ok": true}}
+{"call_id": "8b916dd9aacd", "tool": "capture_borrower_field", "args": {"field": "refinance_type", "value": "Standard refinance", "confidence": 0.95}, "result": {"ok": true}}
+{"call_id": "8b916dd9aacd", "tool": "capture_borrower_field", "args": {"field": "property_issue", "value": "Frustrated with property", "confidence": 0.9}, "result": {"ok": true}}
+{"call_id": "8b916dd9aacd", "tool": "capture_borrower_field", "args": {"field": "property_location_request", "value": "State and ZIP code", "confidence": 0.9}, "result": {"ok": true}}
+{"call_id": "8b916dd9aacd", "tool": "capture_borrower_field", "args": {"field": "caller_request", "value": "Speak in a calm voice", "confidence": 0.9}, "result": {"ok": true}}
+{"call_id": "8b916dd9aacd", "tool": "log_disposition", "args": {"disposition": "callback_requested"}, "result": {"ok": true, "disposition": "callback_requested"}}
+{"call_id": "8b916dd9aacd", "tool": "schedule_callback", "args": {"preferred_time": "tomorrow morning"}, "result": {"ok": true, "preferred_time": "tomorrow morning"}}
+{"call_id": "8b916dd9aacd", "tool": "capture_borrower_field", "args": {"field": "reschedule_request", "value": "Tomorrow", "confidence": 0.9}, "result": {"ok": true}}
+{"call_id": "490a3210c90f", "tool": "capture_borrower_field", "args": {"field": "consent_to_contact", "value": "Yes", "confidence": 1.0}, "result": {"ok": true}}
+{"call_id": "490a3210c90f", "tool": "capture_borrower_field", "args": {"field": "refinance_status", "value": "Refinance existing home", "confidence": 0.95}, "result": {"ok": true}}
+{"call_id": "490a3210c90f", "tool": "capture_borrower_field", "args": {"field": "caller_frustration", "value": "A little bit frustrated with my existing home", "confidence": 0.9}, "result": {"ok": true}}
+{"call_id": "490a3210c90f", "tool": "capture_borrower_field", "args": {"field": "refinance_type", "value": "Standard refinance", "confidence": 0.9}, "result": {"ok": true}}
+{"call_id": "490a3210c90f", "tool": "capture_borrower_field", "args": {"field": "property_location_request", "value": "State or ZIP code", "confidence": 0.9}, "result": {"ok": true}}
+{"call_id": "490a3210c90f", "tool": "capture_borrower_field", "args": {"field": "property_state", "value": "Not sure about state name", "confidence": 0.4}, "result": {"ok": true}}
+{"call_id": "490a3210c90f", "tool": "capture_borrower_field", "args": {"field": "property_type", "value": "Single-family home", "confidence": 0.95}, "result": {"ok": true}}
+{"call_id": "490a3210c90f", "tool": "capture_borrower_field", "args": {"field": "timeline", "value": "Not specified", "confidence": 0.4}, "result": {"ok": true}}
+{"call_id": "490a3210c90f", "tool": "log_disposition", "args": {"disposition": "callback_requested"}, "result": {"ok": true, "disposition": "callback_requested"}}
+{"call_id": "490a3210c90f", "tool": "capture_borrower_field", "args": {"field": "preferred_contact_time", "value": "Morning", "confidence": 0.9}, "result": {"ok": true}}
+{"call_id": "490a3210c90f", "tool": "schedule_callback", "args": {"preferred_time": "Morning"}, "result": {"ok": true, "preferred_time": "Morning"}}
+{"call_id": "490a3210c90f", "tool": "schedule_callback", "args": {"preferred_time": "tomorrow morning at 9:30 AM"}, "result": {"ok": true, "preferred_time": "tomorrow morning at 9:30 AM"}}
+{"call_id": "490a3210c90f", "tool": "capture_borrower_field", "args": {"field": "preferred_contact_time_specific", "value": "9:30 A.M", "confidence": 0.9}, "result": {"ok": true}}
+{"call_id": "b925f859e5be", "tool": "capture_borrower_field", "args": {"field": "consent_to_contact", "value": "Yes", "confidence": 1.0}, "result": {"ok": true}}
+{"call_id": "b925f859e5be", "tool": "capture_borrower_field", "args": {"field": "time_reference", "value": "4 million years ago", "confidence": 0.9}, "result": {"ok": true}}
+{"call_id": "b925f859e5be", "tool": "capture_borrower_field", "args": {"field": "loan_type", "value": "Refinance", "confidence": 0.95}, "result": {"ok": true}}
+{"call_id": "b925f859e5be", "tool": "capture_borrower_field", "args": {"field": "refinance_type", "value": "Standard refinance", "confidence": 0.9}, "result": {"ok": true}}
+{"call_id": "b925f859e5be", "tool": "transfer_to_lo", "args": {"reason": "caller requested escalation"}, "result": {"ok": true}}
+{"call_id": "b925f859e5be", "tool": "log_disposition", "args": {"disposition": "transferred"}, "result": {"ok": true, "disposition": "transferred"}}
+{"call_id": "cb09a5c8fe5f", "tool": "capture_borrower_field", "args": {"field": "consent_to_contact", "value": "Yes", "confidence": 0.95}, "result": {"ok": true}}
+{"call_id": "cb09a5c8fe5f", "tool": "capture_borrower_field", "args": {"field": "home_status", "value": "Buy a home", "confidence": 0.95}, "result": {"ok": true}}
+{"call_id": "cb09a5c8fe5f", "tool": "capture_borrower_field", "args": {"field": "property_state", "value": "Not aware of what to do", "confidence": 0.5}, "result": {"ok": true}}
+{"call_id": "cb09a5c8fe5f", "tool": "capture_borrower_field", "args": {"field": "property_type", "value": "Something else", "confidence": 0.6}, "result": {"ok": true}}
+{"call_id": "cb09a5c8fe5f", "tool": "capture_borrower_field", "args": {"field": "timeline", "value": "Next 30 days", "confidence": 0.9}, "result": {"ok": true}}
+{"call_id": "cb09a5c8fe5f", "tool": "log_disposition", "args": {"disposition": "callback_requested"}, "result": {"ok": true, "disposition": "callback_requested"}}
+{"call_id": "cb09a5c8fe5f", "tool": "schedule_callback", "args": {"preferred_time": "tomorrow morning"}, "result": {"ok": true, "preferred_time": "tomorrow morning"}}
+{"call_id": "cb09a5c8fe5f", "tool": "capture_borrower_field", "args": {"field": "follow_up_request", "value": "Call from loan officer tomorrow", "confidence": 0.9}, "result": {"ok": true}}
+{"call_id": "6874f13c5663", "tool": "log_disposition", "args": {"disposition": "no_response"}, "result": {"ok": true, "disposition": "no_response"}}
+{"call_id": "6874f13c5663", "tool": "capture_borrower_field", "args": {"field": "consent_to_contact", "value": "Yes", "confidence": 1.0}, "result": {"ok": true}}
+{"call_id": "27be537c6b92", "tool": "capture_borrower_field", "args": {"field": "consent_to_contact", "value": "Yes", "confidence": 1.0}, "result": {"ok": true}}
+{"call_id": "27be537c6b92", "tool": "log_disposition", "args": {"disposition": "no_response"}, "result": {"ok": true, "disposition": "no_response"}}
+{"call_id": "27be537c6b92", "tool": "capture_borrower_field", "args": {"field": "home_status", "value": "Buying a home", "confidence": 0.9}, "result": {"ok": true}}
+{"call_id": "27be537c6b92", "tool": "end_call", "args": {"reason": "caller silent"}, "result": {"ok": true}}
+{"call_id": "7c02cb7c39cf", "tool": "capture_borrower_field", "args": {"field": "consent_to_contact", "value": "Yes", "confidence": 0.95}, "result": {"ok": true}}
+{"call_id": "7c02cb7c39cf", "tool": "capture_borrower_field", "args": {"field": "reason_for_call", "value": "Purchase a home", "confidence": 0.9}, "result": {"ok": true}}
+{"call_id": "7c02cb7c39cf", "tool": "capture_borrower_field", "args": {"field": "location", "value": "Arizona", "confidence": 0.9}, "result": {"ok": true}}
+{"call_id": "7c02cb7c39cf", "tool": "capture_borrower_field", "args": {"field": "property_count", "value": "2", "confidence": 0.9}, "result": {"ok": true}}
+{"call_id": "7c02cb7c39cf", "tool": "log_disposition", "args": {"disposition": "declined"}, "result": {"ok": true, "disposition": "declined"}}
+{"call_id": "7c02cb7c39cf", "tool": "log_disposition", "args": {"disposition": "declined"}, "result": {"ok": true, "disposition": "declined"}}
+{"call_id": "7c02cb7c39cf", "tool": "end_call", "args": {"reason": "Client declined to continue"}, "result": {"ok": true}}
+{"call_id": "39ae7b1817ef", "tool": "capture_borrower_field", "args": {"field": "purchase_or_refinance", "value": "Purchase a home", "confidence": 0.95}, "result": {"ok": true}}
+{"call_id": "39ae7b1817ef", "tool": "capture_borrower_field", "args": {"field": "property_location", "value": "California", "confidence": 0.9}, "result": {"ok": true}}
+{"call_id": "39ae7b1817ef", "tool": "log_disposition", "args": {"disposition": "no_response"}, "result": {"ok": true, "disposition": "no_response"}}
+{"call_id": "39ae7b1817ef", "tool": "capture_borrower_field", "args": {"field": "specific_location", "value": "Not sure about city or ZIP code", "confidence": 0.6}, "result": {"ok": true}}
+{"call_id": "c5a4d0a4247f", "tool": "log_disposition", "args": {"disposition": "no_response"}, "result": {"ok": true, "disposition": "no_response"}}
+{"call_id": "c5a4d0a4247f", "tool": "capture_borrower_field", "args": {"field": "consent_to_contact", "value": "Yes", "confidence": 0.95}, "result": {"ok": true}}
+{"call_id": "84637a7d9d5b", "tool": "log_disposition", "args": {"disposition": "no_response"}, "result": {"ok": true, "disposition": "no_response"}}
+{"call_id": "623a9b0a0e0e", "tool": "capture_borrower_field", "args": {"field": "consent_to_contact", "value": "Yes", "confidence": 0.95}, "result": {"ok": true}}
+{"call_id": "623a9b0a0e0e", "tool": "log_disposition", "args": {"disposition": "no_response"}, "result": {"ok": true, "disposition": "no_response"}}
+{"call_id": "623a9b0a0e0e", "tool": "capture_borrower_field", "args": {"field": "home_purchase_or_refinance", "value": "Buy a home", "confidence": 0.95}, "result": {"ok": true}}
+{"call_id": "c-test", "tool": "log_disposition", "args": {"disposition": "no_response"}, "result": {"ok": true, "disposition": "no_response"}}
+{"call_id": "c-test", "tool": "log_disposition", "args": {"disposition": "no_response"}, "result": {"ok": true, "disposition": "no_response"}}
+{"call_id": "e7c37588cab1", "tool": "log_disposition", "args": {"disposition": "no_response"}, "result": {"ok": true, "disposition": "no_response"}}
+{"call_id": "e7c37588cab1", "tool": "capture_borrower_field", "args": {"field": "consent_to_contact", "value": "Yes", "confidence": 1.0}, "result": {"ok": true}}
+{"call_id": "c-test", "tool": "log_disposition", "args": {"disposition": "no_response"}, "result": {"ok": true, "disposition": "no_response"}}
+{"call_id": "5efbb10d4085", "tool": "log_disposition", "args": {"disposition": "no_response"}, "result": {"ok": true, "disposition": "no_response"}}
+{"call_id": "5efbb10d4085", "tool": "capture_borrower_field", "args": {"field": "consent_to_contact", "value": "Yes", "confidence": 1.0}, "result": {"ok": true}}

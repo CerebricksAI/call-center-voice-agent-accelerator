@@ -39,6 +39,7 @@ SKILL_FOR_STATE: dict[str, str] = {
     "DECLINE_CLOSE": "30_decline_close.md",
     "DNC_CLOSE": "31_optout_dnc_close.md",
     "CALLBACK_CLOSE": "32_callback_close.md",
+    "NO_RESPONSE_CLOSE": "33_no_response_close.md",
     "TRANSFER": "40_transfer_escalation.md",
     "LANGUAGE_ROUTE": "50_language_route.md",
 }

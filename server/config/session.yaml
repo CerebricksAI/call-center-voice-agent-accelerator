@@ -1,56 +1,70 @@
 # Voice Live session tuning — the human-like knobs.
 #
-# STATUS: this file is the SPEC / target config. Today these values are applied
-# through the existing env vars in app/voice_live_session.py (see the `env:` note
-# on each). Phase 3 adds a typed loader that reads this file directly and overrides
-# _session_config(). Until then, set the noted env vars to change live behavior.
+# STATUS: values below are the target. Live behavior is applied through
+# app/voice_live_session.py + app/agent_persona.py (env overrides win).
+# Do not invent Azure fields — check the azure-ai-voicelive SDK first.
 #
-# Fields map to azure.ai.voicelive.models (RequestSession, AzureSemanticVad,
-# AzureStandardVoice, AudioInputTranscriptionOptions, ...). Do not invent fields —
-# check the SDK before adding one.
+# Human-likeness levers (does NOT change qualify/compliance flow):
+#   voice name/temp/rate  → how she sounds
+#   mood style map + cues → match frustrated / excited / rushed / hesitant
+#   reaction-first + think pause (VOICE_LEAD_SILENCE_MS) → natural turn shape
+#   EOU timeout + filler removal → patient turn-taking
+#   short max tokens + skills → short, conversational turns
+# Barge-in flush stays in the media handler (Story 3).
 
 model:
   # LLM sampling temperature — anti-hallucination. NOT the voice temperature.
-  # ACTIVE now via env VOICE_LIVE_MODEL_TEMPERATURE (default 0.6). Range 0.0-1.0.
+  # ACTIVE via VOICE_LIVE_MODEL_TEMPERATURE (default 0.6).
   temperature: 0.6
-  # Short turns create natural openings for the caller to speak — a turn-taking
-  # feature disguised as a cost cap. env VOICE_LIVE_MAX_RESPONSE_TOKENS.
+  # Short turns create natural openings for the caller.
+  # ACTIVE via default latency preset / VOICE_LIVE_MAX_RESPONSE_TOKENS.
   max_response_output_tokens: 400
 
 voice:
-  # env VOICE_NAME. DragonHD multilingual voice (100+ locales).
-  name: en-US-Ava:DragonHDLatestNeural
+  # env VOICE_NAME. Emma2 = more distinctive phone presence than Ava (common default).
+  name: en-US-Emma2:DragonHDLatestNeural
   # Voice/TTS expressiveness (AzureStandardVoice.temperature). env VOICE_TEMPERATURE.
-  temperature: 0.9
+  temperature: 0.95
+  rate: "-8%"
+  pitch: "+2%"
+  volume: "+5%"
+  style: chat
+  # Post-caller think pause (ms) before response.create — env VOICE_LEAD_SILENCE_MS.
+  # Wired in orchestrator (not an Azure voice field). Skip on DNC / silence nudges.
+  # Target feel: 150–300ms. Default 220 in agent_persona.
+  lead_silence_ms: 220
 
-# Turn detection — the difference between "responsive" and "jumpy".
-# Today driven by the latency presets + VOICE_LIVE_EOU_* / VOICE_LIVE_SILENCE_*
-# env vars. interrupt_response + auto_truncate are already ON in code.
+# Turn detection — patient, not jumpy. interrupt_response + auto_truncate +
+# remove_filler_words are ACTIVE in voice_live_session._build_turn_detection.
 turn_detection:
   type: azure_semantic_vad
   threshold: 0.4
   prefix_padding_ms: 200
   silence_duration_ms: 600
-  remove_filler_words: true      # "umm" won't trigger a barge-in
-  interrupt_response: true       # server halts generation on real speech (ACTIVE)
-  auto_truncate: true            # (ACTIVE)
+  remove_filler_words: true
+  interrupt_response: true
+  auto_truncate: true
   end_of_utterance_detection:
     model: semantic_detection_v1
+    # Patient thinking window (ms) — env VOICE_LIVE_EOU_TIMEOUT_MS / default preset.
+    timeout_ms: 1500
 
-# Caller transcription — REQUIRED for the compliance gates (Phase 3), which run on
-# finalized transcripts. phrase_list biases STT toward compliance-critical terms.
+# Caller transcription — required for compliance gates.
+# phrase_list only works with azure-speech / azure-fast-transcription / mai-*;
+# gpt-4o-transcribe rejects it (invalid_session_update). Live wiring skips phrases
+# unless INPUT_TRANSCRIPTION_MODEL is one of the azure-speech family.
 input_audio_transcription:
   model: azure-speech
-  phrase_list: [refinance, cash out, cash-out, HELOC, escrow, do not call, take me off]
+  phrase_list: [refinance, cash out, cash-out, HELOC, home equity, escrow, mortgage, purchase, single-family, condo, credit score, researching, do not call, take me off, call me back, yes, no]
 
-# Audio pre-processing so a nearby TV doesn't produce phantom turns.
-# env VOICE_LIVE_NOISE_REDUCTION / VOICE_LIVE_ECHO_CANCELLATION (ACTIVE).
+# Audio pre-processing — env VOICE_LIVE_NOISE_REDUCTION / VOICE_LIVE_ECHO_CANCELLATION.
 input_audio_noise_reduction:
   type: azure_deep_noise_suppression
 input_audio_echo_cancellation: {}
 
-# Silence policy (Phase 3 — needs the FSM turn counter).
+# Wired by app/orchestrator/silence.py + handler (T11).
+# Quiet-seconds after Maya finishes — room to think before nudges.
 silence:
-  reprompt_at_s: [8, 16]         # two VARIED reprompts, never "are you still there?" x3
-  close_at_s: 25
+  reprompt_at_s: [15, 30]
+  close_at_s: 45
   disposition: no_response

@@ -75,6 +75,31 @@ def _coerce_pcm_bytes(data) -> bytes | None:
     return None
 
 
+def _boost_quiet_pcm16(pcm_bytes: bytes, *, gain: float = 1.5) -> bytes:
+    """Mild raise for quiet web mics. Kept modest — 3× boosted speaker echo into STT."""
+    if not pcm_bytes or gain <= 1.0 or len(pcm_bytes) < 2:
+        return pcm_bytes
+    import array
+
+    samples = array.array("h")
+    samples.frombytes(pcm_bytes[: len(pcm_bytes) - (len(pcm_bytes) % 2)])
+    if not samples:
+        return pcm_bytes
+    peak = max(abs(s) for s in samples)
+    # Already audible — don't amplify (avoids clipping + speaker-bleed into STT).
+    if peak >= 2500:
+        return pcm_bytes
+    out = array.array("h")
+    for s in samples:
+        v = int(s * gain)
+        if v > 32767:
+            v = 32767
+        elif v < -32768:
+            v = -32768
+        out.append(v)
+    return out.tobytes()
+
+
 class VoiceLiveMediaHandler:
     """Handles the connection to Azure Voice Live API and web clients.
 
@@ -880,6 +905,8 @@ class VoiceLiveMediaHandler:
         if not pcm_bytes:
             return
         pcm_bytes, chunk_size = self._receive_audio_from_client(pcm_bytes)
+        # Quiet web mics (median peak ~560/32767 in repro) confuse gpt/azure STT.
+        pcm_bytes = _boost_quiet_pcm16(pcm_bytes, gain=1.5)
         await self._send_continuous_audio(chunk_size)
         if pcm_bytes:
             pcm_bytes = self._align_pcm16(pcm_bytes)

@@ -19,6 +19,7 @@ STATES = frozenset(
         "DECLINE_CLOSE",
         "DNC_CLOSE",
         "CALLBACK_CLOSE",
+        "NO_RESPONSE_CLOSE",
         "TRANSFER",
         "LANGUAGE_ROUTE",
         "ENDED",
@@ -27,7 +28,14 @@ STATES = frozenset(
 
 # Close states — reachable from any active state via a gate, and lead to ENDED.
 CLOSE_STATES = frozenset(
-    {"DECLINE_CLOSE", "DNC_CLOSE", "CALLBACK_CLOSE", "LANGUAGE_ROUTE", "TRANSFER"}
+    {
+        "DECLINE_CLOSE",
+        "DNC_CLOSE",
+        "CALLBACK_CLOSE",
+        "NO_RESPONSE_CLOSE",
+        "LANGUAGE_ROUTE",
+        "TRANSFER",
+    }
 )
 
 

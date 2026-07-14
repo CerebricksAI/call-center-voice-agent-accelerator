@@ -21,16 +21,21 @@ from azure.ai.voicelive.models import (
     EouThresholdLevel,
     InputAudioFormat,
     Modality,
+    OpenAIVoice,
     OutputAudioFormat,
     RequestSession,
 )
 
 from app.agent_persona import (
+    describe_effective_voice,
     resolve_agent_voice_name,
+    resolve_agent_voice_pitch,
     resolve_agent_voice_rate,
     resolve_agent_voice_style,
     resolve_agent_voice_temperature,
+    resolve_agent_voice_volume,
     resolve_lead_qualification_instructions,
+    voice_name_is_openai,
 )
 
 logger = logging.getLogger(__name__)
@@ -42,15 +47,18 @@ _EOU_LEVELS: dict[str, EouThresholdLevel] = {
     "high": EouThresholdLevel.HIGH,
 }
 
+# default = patient / human-paced (wait through thinking pauses).
+# balanced / aggressive = snappier TTFA (can feel jumpy on phone).
+# Barge-in flush stays in the handler — these knobs only affect when a turn ends.
 _LATENCY_PRESETS: dict[str, dict[str, Any]] = {
     "default": {
-        "eou": "medium",
-        "timeout_ms": None,
-        "silence_duration_ms": 500,
-        "max_tokens": None,
+        "eou": "low",
+        "timeout_ms": 1500,
+        "silence_duration_ms": 600,
+        "max_tokens": 400,
         "noise_reduction": True,
         "echo_cancellation": True,
-        "tts_buffer_ms": 200,
+        "tts_buffer_ms": 100,
     },
     "balanced": {
         "eou": "low",
@@ -144,7 +152,14 @@ def _build_turn_detection(
 ) -> AzureSemanticVad:
     """Build turn detection compatible with the deployed Voice Live model."""
     mode = _resolve_eou_mode(model)
-    common: dict[str, Any] = {"interrupt_response": True, "auto_truncate": True}
+    # remove_filler_words: "umm"/"uh" should not end the caller's turn early.
+    # interrupt_response + auto_truncate: Story-3 barge-in (server-side halt).
+    common: dict[str, Any] = {
+        "interrupt_response": True,
+        "auto_truncate": True,
+        "remove_filler_words": True,
+        "prefix_padding_ms": 200,
+    }
 
     if mode == "text":
         eou_kwargs: dict[str, Any] = {"threshold_level": opts.eou_threshold}
@@ -152,6 +167,7 @@ def _build_turn_detection(
             eou_kwargs["timeout_ms"] = opts.eou_timeout_ms
         return AzureSemanticVad(
             end_of_utterance_detection=AzureSemanticDetection(**eou_kwargs),
+            silence_duration_ms=opts.silence_duration_ms,
             **common,
         )
 
@@ -163,7 +179,11 @@ def _build_turn_detection(
         }
         if opts.eou_timeout_ms is not None:
             eou["timeout_ms"] = opts.eou_timeout_ms
-        return AzureSemanticVad(end_of_utterance_detection=eou, **common)
+        return AzureSemanticVad(
+            end_of_utterance_detection=eou,
+            silence_duration_ms=opts.silence_duration_ms,
+            **common,
+        )
 
     if mode != "vad":
         logger.warning("Unknown VOICE_LIVE_EOU_MODE=%r — using vad", mode)
@@ -262,10 +282,24 @@ def build_request_session(
     }
     style = resolve_agent_voice_style()
     rate = resolve_agent_voice_rate()
+    pitch = resolve_agent_voice_pitch()
+    volume = resolve_agent_voice_volume()
     if style:
         voice_kwargs["style"] = style
     if rate:
         voice_kwargs["rate"] = rate
+    if pitch:
+        voice_kwargs["pitch"] = pitch
+    if volume:
+        voice_kwargs["volume"] = volume
+
+    # OpenAI realtime voices (alloy/coral/…) vs Azure neural/DragonHD.
+    # VOICE_NAME selects which; DragonHD ignores style/rate for the most part.
+    voice_name = resolve_agent_voice_name()
+    if voice_name_is_openai(voice_name):
+        session_voice: Any = OpenAIVoice(name=voice_name.lower())
+    else:
+        session_voice = AzureStandardVoice(**voice_kwargs)
 
     session_kwargs: dict[str, Any] = {
         "modalities": [Modality.TEXT, Modality.AUDIO],
@@ -273,7 +307,7 @@ def build_request_session(
         "turn_detection": _build_turn_detection(opts, model=voice_model),
         "input_audio_format": InputAudioFormat.PCM16,
         "output_audio_format": OutputAudioFormat.PCM16,
-        "voice": AzureStandardVoice(**voice_kwargs),
+        "voice": session_voice,
         # Model sampling temperature (anti-hallucination) — NOT the voice temp.
         "temperature": resolve_model_temperature(),
     }
@@ -291,12 +325,13 @@ def build_request_session(
 
 
 def log_session_options(options: VoiceLiveSessionOptions, *, model: str) -> None:
-    """Log the active latency profile once per call connect."""
+    """Log the active latency profile + effective voice once per call connect."""
+    voice = describe_effective_voice()
     logger.info(
         "[VoiceLive] Latency profile=%s model=%s eou_mode=%s eou=%s "
         "eou_timeout_ms=%s silence_duration_ms=%s max_response_tokens=%s "
-        "noise_reduction=%s echo_cancellation=%s tts_buffer_ms=%s voice=%s "
-        "voice_temp=%s model_temp=%s prompt_chars=%s",
+        "noise_reduction=%s echo_cancellation=%s tts_buffer_ms=%s "
+        "model_temp=%s prompt_chars=%s",
         options.latency_mode,
         model.strip(),
         _resolve_eou_mode(model),
@@ -307,8 +342,19 @@ def log_session_options(options: VoiceLiveSessionOptions, *, model: str) -> None
         options.noise_reduction,
         options.echo_cancellation,
         options.tts_playback_buffer_ms,
-        resolve_agent_voice_name(),
-        resolve_agent_voice_temperature(),
         resolve_model_temperature(),
         len(resolve_lead_qualification_instructions()),
+    )
+    logger.info(
+        "[VoiceLive] EFFECTIVE VOICE name=%s source=%s openai=%s "
+        "temp=%s rate=%s pitch=%s volume=%s style=%s "
+        "(DragonHD mostly ignores style/rate — change VOICE_NAME to hear a new timbre)",
+        voice["name"],
+        voice["source"],
+        voice["openai"],
+        voice["temperature"],
+        voice["rate"],
+        voice["pitch"],
+        voice["volume"],
+        voice["style"],
     )

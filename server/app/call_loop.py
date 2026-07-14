@@ -51,14 +51,34 @@ async def run_call_loop(
                 break
             if call_manager.is_expired(call_id):
                 logger.warning("Call expired, disconnecting: call_id=%s", call_id)
-                request_end = getattr(handler, "request_end_call", None)
-                if callable(request_end):
+                forced_silence_close = False
+                try_close = getattr(handler, "try_silence_close_before_expiry", None)
+                if callable(try_close):
                     try:
-                        await request_end(source="timeout")
+                        forced_silence_close = await try_close()
                     except Exception:
                         logger.exception(
-                            "Failed to auto-end expired call: call_id=%s", call_id
+                            "Failed silence close before expiry: call_id=%s", call_id
                         )
+                if forced_silence_close:
+                    hard = getattr(handler, "_hard_close_task", None)
+                    if hard is not None:
+                        try:
+                            await asyncio.wait_for(hard, timeout=35.0)
+                        except Exception:
+                            logger.debug(
+                                "Hard-close wait on expiry ended early: call_id=%s",
+                                call_id,
+                            )
+                else:
+                    request_end = getattr(handler, "request_end_call", None)
+                    if callable(request_end):
+                        try:
+                            await request_end(source="timeout")
+                        except Exception:
+                            logger.exception(
+                                "Failed to auto-end expired call: call_id=%s", call_id
+                            )
                 break
             try:
                 msg = await asyncio.wait_for(ws.receive(), timeout=call_manager.receive_timeout)

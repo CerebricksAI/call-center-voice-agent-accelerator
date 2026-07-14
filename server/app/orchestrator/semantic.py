@@ -36,7 +36,7 @@ _ROUTER_SYSTEM = """You route a mortgage pre-qualification phone call. Read the 
 - OPT_OUT — the caller explicitly wants to NEVER be contacted again / be removed from the list / stop all future contact ("take me off your list", "don't ever call me", "remove me").
 - DECLINE — the caller clearly does NOT want to continue this application at all ("I'm not interested", "I don't want to do this", "stop the application", "I'm done"). Note: a single "I don't want to proceed right now" may just be hesitation — only DECLINE if they clearly want to stop.
 - CALLBACK — the caller explicitly wants to be contacted LATER or do this ANOTHER time ("call me back", "can we do this tomorrow", "not now, later", "I'm busy, another time"). NOT for "let's resume/continue now".
-- ESCALATE — the caller wants a human / real loan officer, wants a specific rate/quote/program, is in financial hardship, or is hostile.
+- ESCALATE — the caller EXPLICITLY asks for a human / real loan officer right now, demands a specific rate/quote/program now, or is hostile/abusive. Frustration, confusion, "I'm stuck", "not sure", hesitation, or asking Maya for suggestions is CONTINUE — she keeps helping on the call. Never ESCALATE on emotion or hardship alone.
 - LANGUAGE — the caller would rather continue in another language.
 
 Rules:
@@ -45,6 +45,7 @@ Rules:
 - Changing a TIMELINE or any single detail — "not this week", "not now", "actually next month", "sooner", "later this year", "make it Friday" — is CONTINUE. Adjusting WHEN or WHAT is not declining.
 - If the caller's latest turn is garbled, partial, or hard to parse (a likely mis-transcription: fragments, cut-off words, or words that do not fit the conversation, like "this is print"), answer CONTINUE. NEVER DECLINE or route on unclear speech — the agent will simply ask them to repeat.
 - "Changed my mind" followed by a NEW request (e.g. "...I'd like to refinance instead") is CONTINUE, not DECLINE.
+- If the caller is frustrated, stuck, unsure of a detail (state/ZIP/amount), or asks for advice/suggestions, answer CONTINUE. That is still qualifying — not a request for a transfer.
 - When unsure, answer CONTINUE. Only route on an unmistakable intent in the latest turn.
 - Output the single label only — no punctuation, no explanation."""
 
