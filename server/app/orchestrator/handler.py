@@ -29,6 +29,7 @@ from app.handler.web_media_handler import WebMediaHandler
 from app.agent_persona import (
     resolve_agent_voice_lead_silence_ms,
     resolve_agent_voice_name,
+    resolve_agent_voice_rate,
     resolve_agent_voice_style,
     voice_name_is_openai,
 )
@@ -40,6 +41,8 @@ from app.orchestrator.mood import (
     detect_mood,
     mood_cue,
     mood_voice_context,
+    pace_cue,
+    resolve_delivery_pace,
 )
 from app.orchestrator.semantic import semantic_enabled
 from app.orchestrator.silence import (
@@ -148,6 +151,7 @@ class OrchestratorMixin:
         self._open_question: str | None = None
         self._silence_awaiting_transcript = False
         self._mood: Mood = "neutral"
+        self._last_user_text: str = ""
         logger.info("[Orchestrator] enabled — starting in %s", self._fsm.state)
 
     def set_call_context(self, call_id, channel="web"):
@@ -699,18 +703,40 @@ class OrchestratorMixin:
             f"{SILENCE_CHECKIN_RULES}"
         )
 
+    def _current_delivery_pace(self):
+        """Turn pace from mood, FSM stage, and high-stakes content hints."""
+        return resolve_delivery_pace(
+            self._mood,
+            self._fsm.state,
+            open_question=self._open_question or "",
+            user_text=self._last_user_text or "",
+        )
+
     def _delivery_suffix(self) -> str:
-        """Mood cue + reaction-first — skills and custom prompt edges."""
-        return f"\n\n{mood_cue(self._mood)}\n{REACTION_FIRST}"
+        """Mood cue + pace + reaction-first — skills and custom prompt edges."""
+        pace = self._current_delivery_pace()
+        return f"\n\n{mood_cue(self._mood)}\n{pace_cue(pace)}\n{REACTION_FIRST}"
 
     def _apply_mood_voice(self, session) -> None:
-        """Refresh Azure voice style from mood (OpenAI voices have no style)."""
+        """Refresh Azure voice style + rate from mood/pace (OpenAI voices: skip)."""
         if voice_name_is_openai(resolve_agent_voice_name()):
             return
         voice = getattr(session, "voice", None)
-        if voice is None or not hasattr(voice, "style"):
+        if voice is None:
             return
-        voice.style = resolve_agent_voice_style(mood_voice_context(self._mood))
+        pace = self._current_delivery_pace()
+        if hasattr(voice, "style"):
+            voice.style = resolve_agent_voice_style(mood_voice_context(self._mood))
+        if hasattr(voice, "rate"):
+            rate = resolve_agent_voice_rate(pace=pace)
+            if rate:
+                voice.rate = rate
+                logger.debug(
+                    "[Orchestrator] voice pace=%s rate=%s style=%s",
+                    pace,
+                    rate,
+                    getattr(voice, "style", None),
+                )
 
     def _qualify_instructions(self) -> str:
         """Qualify skill (+ open-thread resume so pauses don't lose the agenda)."""
@@ -982,7 +1008,8 @@ class OrchestratorMixin:
 
         self._silence_awaiting_transcript = False
 
-        # Mood from this turn — drives delivery cues + voice style on session.update.
+        # Mood from this turn — drives delivery cues + voice style/rate on session.update.
+        self._last_user_text = text
         self._mood = detect_mood(text)
         if self._mood != "neutral":
             logger.info("[Orchestrator] mood=%s", self._mood)

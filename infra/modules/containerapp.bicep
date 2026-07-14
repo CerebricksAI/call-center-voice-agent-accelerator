@@ -24,8 +24,101 @@ param zoneRedundant bool = true
 @description('Model for an additional (second) container app, e.g. gpt-realtime-mini. Empty = do not create a second app.')
 param secondModelDeploymentName string = ''
 
-@description('Caller speech-to-text model (Voice Live input transcription) for both apps. gpt-4o-transcribe is markedly more accurate on names/numbers (validated live); gpt-4o-mini-transcribe is cheaper; whisper-1 was the prior fallback.')
-param transcriptionModel string = 'gpt-4o-transcribe'
+@description('Caller speech-to-text model (Voice Live input transcription) for both apps. azure-speech matches local tuning and avoids gpt-4o-transcribe hallucinations on short/accented speech.')
+param transcriptionModel string = 'azure-speech'
+
+// Human-likeness / latency knobs — mirrored once from server/.env (non-secret).
+// Secrets (API keys, Cosmos key, Entra secret) stay out of Bicep — MSI / Key Vault / code.
+var agentRuntimeEnv = [
+  {
+    name: 'ORCHESTRATOR_ENABLED'
+    value: 'true'
+  }
+  {
+    name: 'ORCHESTRATOR_ENGINE'
+    value: 'langgraph'
+  }
+  {
+    name: 'SEMANTIC_INTENT_ENABLED'
+    value: 'true'
+  }
+  {
+    name: 'VOICE_LIVE_PROMPT_MODE'
+    value: 'compact'
+  }
+  {
+    name: 'VOICE_NAME'
+    value: 'en-US-Emma2:DragonHDLatestNeural'
+  }
+  {
+    name: 'VOICE_TEMPERATURE'
+    value: '0.78'
+  }
+  {
+    name: 'VOICE_RATE'
+    value: '-2.5%'
+  }
+  {
+    name: 'VOICE_PITCH'
+    value: '-3%'
+  }
+  {
+    name: 'VOICE_VOLUME'
+    value: '+1%'
+  }
+  {
+    name: 'VOICE_STYLE_DEGREE'
+    value: '2'
+  }
+  {
+    name: 'VOICE_LEAD_SILENCE_MS'
+    value: '220'
+  }
+  {
+    name: 'VOICE_LIVE_LATENCY_MODE'
+    value: 'default'
+  }
+  {
+    name: 'VOICE_LIVE_MODEL_TEMPERATURE'
+    value: '0.75'
+  }
+  {
+    name: 'VOICE_LIVE_EOU_THRESHOLD'
+    value: 'low'
+  }
+  {
+    name: 'VOICE_LIVE_EOU_TIMEOUT_MS'
+    value: '1500'
+  }
+  {
+    name: 'VOICE_LIVE_SILENCE_DURATION_MS'
+    value: '600'
+  }
+  {
+    name: 'VOICE_LIVE_MAX_RESPONSE_TOKENS'
+    value: '400'
+  }
+  {
+    name: 'VOICE_LIVE_NOISE_REDUCTION'
+    value: 'true'
+  }
+  {
+    name: 'TTS_PLAYBACK_BUFFER_MS'
+    value: '100'
+  }
+  {
+    name: 'AMBIENT_PRESET'
+    value: 'none'
+  }
+  {
+    name: 'BARGE_INVITE_DEFER_MS'
+    value: '1500'
+  }
+  {
+    name: 'CALLER_FLOW_ROUTING_ENABLED'
+    value: 'false'
+  }
+]
 
 // Helper to sanitize environmentName for valid container app name
 var sanitizedEnvName = toLower(replace(replace(replace(environmentName, ' ', '-'), '--', '-'), '_', '-'))
@@ -146,19 +239,7 @@ resource containerApp 'Microsoft.App/containerApps@2024-10-02-preview' = {
               name: 'DEBUG_MODE'
               value: string(debugMode)
             }
-            {
-              name: 'ORCHESTRATOR_ENABLED'
-              value: 'true'
-            }
-            {
-              name: 'ORCHESTRATOR_ENGINE'
-              value: 'langgraph'
-            }
-            {
-              name: 'SEMANTIC_INTENT_ENABLED'
-              value: 'true'
-            }
-          ], !empty(acsConnectionStringSecretUri) ? [
+          ], agentRuntimeEnv, !empty(acsConnectionStringSecretUri) ? [
             {
               name: 'ACS_CONNECTION_STRING'
               secretRef: 'acs-connection-string'
@@ -305,30 +386,10 @@ resource containerAppRt 'Microsoft.App/containerApps@2024-10-02-preview' = if (!
               value: 'gpt-4o-mini'
             }
             {
-              name: 'VOICE_LIVE_EOU_THRESHOLD'
-              value: 'medium'
-            }
-            {
-              name: 'VOICE_LIVE_EOU_TIMEOUT_MS'
-              value: '900'
-            }
-            {
               name: 'DEBUG_MODE'
               value: string(debugMode)
             }
-            {
-              name: 'ORCHESTRATOR_ENABLED'
-              value: 'true'
-            }
-            {
-              name: 'ORCHESTRATOR_ENGINE'
-              value: 'langgraph'
-            }
-            {
-              name: 'SEMANTIC_INTENT_ENABLED'
-              value: 'true'
-            }
-          ], !empty(acsConnectionStringSecretUri) ? [
+          ], agentRuntimeEnv, !empty(acsConnectionStringSecretUri) ? [
             {
               name: 'ACS_CONNECTION_STRING'
               secretRef: 'acs-connection-string'

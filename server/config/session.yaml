@@ -7,6 +7,7 @@
 # Human-likeness levers (does NOT change qualify/compliance flow):
 #   voice name/temp/rate  → how she sounds
 #   mood style map + cues → match frustrated / excited / rushed / hesitant
+#   dynamic pace (rate + wording) → unhurried / careful / conversational / crisp
 #   reaction-first + think pause (VOICE_LEAD_SILENCE_MS) → natural turn shape
 #   EOU timeout + filler removal → patient turn-taking
 #   short max tokens + skills → short, conversational turns

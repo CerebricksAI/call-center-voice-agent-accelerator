@@ -30,6 +30,7 @@ VOICE HUMANNESS (defaults — override via VOICE_* env without code changes):
 """
 
 import os
+import re
 
 # --- Brokerage / business --------------------------------------------------
 BROKERAGE_NAME = "Quadrant Financial Services"
@@ -93,6 +94,31 @@ _RATE_ALIASES = {
     "x-fast": "+30%",
 }
 
+# Relative offset (percentage points) from the session baseline rate.
+# Baseline is often -8%; unhurried ≈ -15%, crisp ≈ 0%.
+AGENT_VOICE_RATE_PACE_OFFSET: dict[str, int] = {
+    "unhurried": -7,
+    "careful": -5,
+    "conversational": 0,
+    "bright": 4,
+    "crisp": 8,
+}
+
+
+def _parse_rate_percent(rate: str | None) -> int | None:
+    """Parse ``-8%`` / ``+10%`` / ``0%`` → int; None if not a relative percent."""
+    if not rate:
+        return None
+    m = re.fullmatch(r"([+-]?\d+)\s*%", rate.strip())
+    if not m:
+        return None
+    return int(m.group(1))
+
+
+def _format_rate_percent(n: int) -> str:
+    n = max(-30, min(30, n))
+    return f"{n:+d}%"
+
 
 def resolve_agent_voice_name() -> str:
     """Voice name from VOICE_NAME env, else persona default."""
@@ -128,18 +154,27 @@ def resolve_agent_voice_style_degree() -> str:
     return os.getenv("VOICE_STYLE_DEGREE", "").strip() or AGENT_VOICE_STYLE_DEGREE
 
 
-def resolve_agent_voice_rate() -> str | None:
-    """Voice rate from VOICE_RATE env, else persona default.
+def resolve_agent_voice_rate(*, pace: str | None = None) -> str | None:
+    """Voice rate from VOICE_RATE env / persona default, shifted by delivery pace.
 
-    Accepts SSML percentages (``-8%``) or aliases (``slow`` → ``-15%``).
+    ``pace`` is a DeliveryPace key (unhurried / careful / conversational / …).
+    When unset, returns the static baseline only.
     """
     raw = os.getenv("VOICE_RATE", "").strip()
     if not raw:
-        return AGENT_VOICE_RATE
-    alias = _RATE_ALIASES.get(raw.lower())
-    if alias is not None:
-        return alias
-    return raw
+        base = AGENT_VOICE_RATE
+    else:
+        alias = _RATE_ALIASES.get(raw.lower())
+        base = alias if alias is not None else raw
+    if not pace:
+        return base
+    offset = AGENT_VOICE_RATE_PACE_OFFSET.get(pace, 0)
+    if offset == 0:
+        return base
+    parsed = _parse_rate_percent(base)
+    if parsed is None:
+        return base
+    return _format_rate_percent(parsed + offset)
 
 
 def resolve_agent_voice_pitch() -> str | None:
@@ -263,8 +298,10 @@ ANTI-GENERIC (never sound like every other voice bot):
 
 LENGTH & PACING:
 One or two sentences per turn — NEVER more than three.
-One question per turn. Match the caller's pace. Don't fill silence.
-Prefer spoken phrasing over brochure wording. Contractions always.
+One question per turn. Vary speaking pace like a person: slower for
+empathy/consent/readbacks and amounts; crisper when they sound busy;
+livelier on good news; natural mid rhythm for ordinary answers.
+Don't fill silence. Prefer spoken phrasing over brochure wording. Contractions always.
 
 ACK VARIETY — never the same one twice in a row:
   Positive: "Nice." "Oh cool." "Love that." "That's great." "Sounds good."

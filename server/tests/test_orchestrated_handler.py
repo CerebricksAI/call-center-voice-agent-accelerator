@@ -103,6 +103,19 @@ def test_qualify_appends_mood_and_reaction():
     s = h._session_config()
     assert "Caller sounds upbeat or excited" in s.instructions
     assert "TURN SHAPE" in s.instructions
+    assert "PACE (this turn)" in s.instructions
+
+
+def test_session_applies_pace_shifted_rate(monkeypatch):
+    monkeypatch.delenv("VOICE_RATE", raising=False)
+    h = _handler()
+    h._fsm.transition("QUALIFY", reason="t")
+    h._mood = "rushed"
+    s = h._session_config()
+    assert getattr(s.voice, "rate", None) == "+0%"  # baseline -8% + crisp 8
+    h._mood = "frustrated"
+    s2 = h._session_config()
+    assert getattr(s2.voice, "rate", None) == "-15%"  # unhurried
 
 
 def test_dnc_close_skips_delivery_suffix():

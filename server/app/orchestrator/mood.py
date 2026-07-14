@@ -117,3 +117,75 @@ def mood_cue(mood: Mood) -> str:
 
 def mood_voice_context(mood: Mood) -> str:
     return MOOD_TO_VOICE_CONTEXT.get(mood, "default")
+
+
+# --- Human pace (turn-level) -------------------------------------------------
+# TTS rate is one knob per reply; wording cues cover mid-turn feel. DragonHD
+# may under-apply rate — cues still matter.
+
+DeliveryPace = Literal["unhurried", "careful", "conversational", "bright", "crisp"]
+
+_CLOSE_STATES_SLOW = frozenset(
+    {"GREETING", "DNC_CLOSE", "DECLINE_CLOSE", "NO_RESPONSE_CLOSE"}
+)
+
+_CAREFUL_HINT = re.compile(
+    r"\b("
+    r"consent|disclosure|read\s*back|spell|zip|ssn|social|"
+    r"dollar|amount|balance|percent|rate\b|exactly|"
+    r"account\s*number|phone\s*number"
+    r")\b",
+    re.I,
+)
+
+PACE_CUES: dict[DeliveryPace, str] = {
+    "unhurried": (
+        "PACE (this turn): Unhurried — slightly slower, warm, leave a natural beat "
+        "before the question. Soften empathy; never rush past feelings."
+    ),
+    "careful": (
+        "PACE (this turn): Careful — slow slightly for numbers, names, ZIPs, or "
+        "consent. Clear enunciation; short pause before the key detail."
+    ),
+    "conversational": (
+        "PACE (this turn): Natural conversation — mid energy, slight rises and "
+        "falls, not a flat clerk pace. Vary rhythm between the reaction and the ask."
+    ),
+    "bright": (
+        "PACE (this turn): A touch livelier and a hair quicker on the reaction — "
+        "still one short question, not bubbly."
+    ),
+    "crisp": (
+        "PACE (this turn): Crisp and respectful of time — tighter wording, snappier "
+        "cadence, still warm. One tight question only."
+    ),
+}
+
+
+def resolve_delivery_pace(
+    mood: Mood,
+    state: str,
+    *,
+    open_question: str = "",
+    user_text: str = "",
+) -> DeliveryPace:
+    """Pick a turn pace from mood, stage, and high-stakes content hints."""
+    st = (state or "").strip().upper()
+    if st in _CLOSE_STATES_SLOW:
+        return "unhurried"
+    if st == "CALLBACK_CLOSE":
+        return "careful"
+    if mood == "frustrated" or mood == "hesitant":
+        return "unhurried"
+    if mood == "rushed":
+        return "crisp"
+    if mood == "excited":
+        return "bright"
+    # Numbers / consent / readback agenda → careful.
+    if _CAREFUL_HINT.search(open_question or "") or _CAREFUL_HINT.search(user_text or ""):
+        return "careful"
+    return "conversational"
+
+
+def pace_cue(pace: DeliveryPace) -> str:
+    return PACE_CUES.get(pace, PACE_CUES["conversational"])
