@@ -89,6 +89,7 @@ TOOLS_FOR_STATE: dict[str, list[str]] = {
     "DECLINE_CLOSE": ["log_disposition", "end_call"],
     "DNC_CLOSE": ["end_call"],
     "CALLBACK_CLOSE": ["schedule_callback", "log_disposition", "capture_borrower_field", "end_call"],
+    "NO_RESPONSE_CLOSE": ["end_call"],
     "TRANSFER": ["capture_borrower_field", "transfer_to_lo", "end_call"],
     "LANGUAGE_ROUTE": ["route_language", "transfer_to_lo", "schedule_callback", "end_call"],
 }
@@ -149,6 +150,10 @@ def execute_tool(
         result = {"ok": True, "disposition": ctx.disposition}
     elif name == "schedule_callback":
         ctx.callback_scheduled = True
+        # Record the outcome so a follow-up end_call isn't refused (a hand-off tool
+        # called directly by the model would otherwise leave no disposition).
+        if getattr(ctx, "disposition", None) is None:
+            ctx.disposition = "callback_requested"
         result = {"ok": True, "preferred_time": args.get("preferred_time")}
     elif name == "capture_borrower_field":
         field_name = args.get("field")
@@ -159,6 +164,10 @@ def execute_tool(
             }
         result = {"ok": bool(field_name)}
     elif name in ("transfer_to_lo", "route_language"):
+        # Hand-off tools record their outcome too, so end_call can proceed and the
+        # call can actually close after a model-initiated transfer/route.
+        if getattr(ctx, "disposition", None) is None:
+            ctx.disposition = "transferred" if name == "transfer_to_lo" else "language_routed"
         result = {"ok": True}
     else:
         result = {"ok": False, "error": f"unknown tool {name!r}"}

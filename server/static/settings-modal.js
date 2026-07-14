@@ -84,7 +84,7 @@
             '<p class="settings-note">Applies to your next call. The selected model is recorded with each call and shown in Call History.</p>' +
             '<label class="settings-label" for="systemPromptInput" style="margin-top:1rem">Custom system prompt (optional)</label>' +
             '<textarea id="systemPromptInput" class="settings-textarea" rows="12" maxlength="8000" placeholder="Leave blank to use the built-in agent persona. If you enter instructions here, they fully replace how the agent behaves for your next call."></textarea>' +
-            '<p class="settings-note">Optional. Blank = built-in persona. If provided, it overrides the agent\'s behaviour/context for your next call (max 8000 chars).</p>' +
+            '<p class="settings-note">Optional. Blank = Maya mortgage skills. If provided, replaces what she says (persona/script) for the next call — voice timbre still comes from Voice settings / env. With the orchestrator on: compliance gates, mood delivery cues, and reaction-before-question still apply on top. Max 8000 chars.</p>' +
           '</div>' +
           '<div class="settings-foot">' +
             '<button type="button" class="settings-cancel">Cancel</button>' +

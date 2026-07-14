@@ -7,6 +7,7 @@ from datetime import timedelta
 from urllib.parse import quote
 
 from dotenv import load_dotenv
+from pathlib import Path
 from quart import Quart, jsonify, redirect, request, session, websocket
 
 from app.auth import (
@@ -43,8 +44,11 @@ from app.logging_config import configure_logging, new_correlation_id
 from app.conversation_extractor import resolve_extract_model, resolve_summary_model
 from app.usage_cost import enrich_call_record
 from app.provider_registry import detect_provider, get_configured_providers, get_provider
+from app.orchestrator.handler import orchestrator_enabled
 
-load_dotenv()
+# Always load server/.env (not cwd-dependent). override=True so edits in .env
+# win over stale shell exports after a restart.
+load_dotenv(Path(__file__).resolve().parent / ".env", override=True)
 
 # ---------------------------------------------------------------------------
 # Structured logging (with correlation ID support)
@@ -53,6 +57,24 @@ load_dotenv()
 _debug = os.getenv("DEBUG_MODE", "false").lower() == "true"
 configure_logging(level=logging.DEBUG if _debug else logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Make voice wiring visible at boot (orchestrator does not override voice —
+# only instructions/tools). If this still shows Ava after you edited code,
+# your server/.env VOICE_NAME is winning.
+try:
+    from app.agent_persona import describe_effective_voice
+
+    _v = describe_effective_voice()
+    logger.info(
+        "[Boot] Effective agent voice: %s (source=%s, rate=%s, temp=%s, orchestrator=%s)",
+        _v["name"],
+        _v["source"],
+        _v["rate"],
+        _v["temperature"],
+        orchestrator_enabled(),
+    )
+except Exception:
+    logger.exception("[Boot] Failed to resolve effective voice")
 
 # ---------------------------------------------------------------------------
 # App configuration
@@ -95,14 +117,14 @@ logger.info(
     os.getenv("VOICE_LIVE_MODEL", "gpt-4o-mini").strip(),
     resolve_extract_model(),
     resolve_summary_model(),
-    os.getenv("INPUT_TRANSCRIPTION_MODEL", "whisper-1").strip(),
+    os.getenv("INPUT_TRANSCRIPTION_MODEL", "azure-speech").strip(),
 )
 
 
 def _resolved_models() -> dict[str, str]:
     """Active model names for UI labels (matches handler / extractor defaults)."""
     voice = os.getenv("VOICE_LIVE_MODEL", "gpt-4o-mini").strip()
-    transcribe = os.getenv("INPUT_TRANSCRIPTION_MODEL", "whisper-1").strip()
+    transcribe = os.getenv("INPUT_TRANSCRIPTION_MODEL", "azure-speech").strip()
     extract = resolve_extract_model()
     summary = resolve_summary_model()
     return {
@@ -432,7 +454,7 @@ async def web_ws():
         voice_model,
         "yes" if system_prompt else "no",
     )
-    if os.getenv("ORCHESTRATOR_ENABLED", "").strip().lower() in ("1", "true", "yes", "on"):
+    if orchestrator_enabled():
         from app.orchestrator.handler import OrchestratedWebHandler
 
         logger.info("Web call using ORCHESTRATED handler (skills + gate + tools)")

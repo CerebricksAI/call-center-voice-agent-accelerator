@@ -202,19 +202,79 @@ class WebMediaHandler(VoiceLiveMediaHandler):
     def _session_config(self) -> RequestSession:
         session = super()._session_config()
         transcription_model = os.getenv(
-            "INPUT_TRANSCRIPTION_MODEL", "whisper-1"
-        )
-        session.input_audio_transcription = AudioInputTranscriptionOptions(
+            "INPUT_TRANSCRIPTION_MODEL", "azure-speech"
+        ).strip() or "azure-speech"
+        # gpt-4o-transcribe / whisper hallucinate short mortgage turns on quiet web
+        # mics (repro evidence: "Sheep for something else", "have a handy"). Prefer
+        # azure-speech + phrase_list unless explicitly opted in.
+        allow_gpt_stt = os.getenv(
+            "INPUT_TRANSCRIPTION_ALLOW_GPT_STT", ""
+        ).strip().lower() in {"1", "true", "yes"}
+        openai_stt = {
+            "gpt-4o-transcribe",
+            "gpt-4o-mini-transcribe",
+            "whisper-1",
+        }
+        if not allow_gpt_stt and transcription_model.lower() in openai_stt:
+            logger.warning(
+                "Remapping STT model %s -> azure-speech for accuracy "
+                "(set INPUT_TRANSCRIPTION_ALLOW_GPT_STT=true to keep OpenAI STT)",
+                transcription_model,
+            )
+            transcription_model = "azure-speech"
+        # phrase_list is ONLY valid for azure-speech-family models. Sending it with
+        # gpt-4o-transcribe / whisper-1 rejects the session.update and kills the call.
+        phrase_supported = transcription_model.lower() in {
+            "azure-speech",
+            "azure-fast-transcription",
+            "azure-mrs",
+            "mai-transcribe",
+            "mai-transcribe-1.5",
+        }
+        kwargs: dict = {
             # ISO-639-1 ("en"), not a BCP-47 locale ("en-US"): whisper-1 / gpt-4o-transcribe
             # only honor ISO-639-1, and an unrecognized locale silently falls back to
             # language auto-detection — which mis-transcribes short English speech into
             # other scripts (e.g. Urdu) on the native-realtime model's side-channel STT.
-            model=transcription_model,
-            language="en",
-        )
+            "model": transcription_model,
+            "language": "en",
+        }
+        if phrase_supported:
+            phrase_list = [
+                "refinance",
+                "cash out",
+                "cash-out",
+                "HELOC",
+                "home equity",
+                "escrow",
+                "mortgage",
+                "purchase",
+                "single-family",
+                "condo",
+                "credit score",
+                "researching",
+                "do not call",
+                "take me off",
+                "call me back",
+                "twenty thousand",
+                "yes",
+                "no",
+                "Georgia",
+                "Texas",
+                "California",
+                "morning",
+                "afternoon",
+                "evening",
+            ]
+            raw_phrases = os.getenv("INPUT_TRANSCRIPTION_PHRASE_LIST", "").strip()
+            if raw_phrases:
+                phrase_list = [p.strip() for p in raw_phrases.split(",") if p.strip()]
+            kwargs["phrase_list"] = phrase_list
+        session.input_audio_transcription = AudioInputTranscriptionOptions(**kwargs)
         logger.info(
-            "Web client input transcription enabled: model=%s",
+            "Web client input transcription enabled: model=%s phrases=%s",
             transcription_model,
+            len(kwargs.get("phrase_list") or []),
         )
         return session
 
@@ -776,7 +836,7 @@ class WebMediaHandler(VoiceLiveMediaHandler):
                 "extractModel": resolve_extract_model(),
                 "summaryModel": resolve_summary_model(),
                 "transcriptionModel": os.getenv(
-                    "INPUT_TRANSCRIPTION_MODEL", "whisper-1"
+                    "INPUT_TRANSCRIPTION_MODEL", "azure-speech"
                 ).strip(),
             }
             await call_store.save_call(record)
@@ -885,7 +945,13 @@ class WebMediaHandler(VoiceLiveMediaHandler):
         return True
 
     async def on_message(self, msg):
-        """Unwrap Quart ASGI websocket frames before forwarding audio."""
+        """Handle browser control text and PCM audio from Quart receive().
+
+        Quart's ``Websocket.receive()`` yields a raw ``str`` / ``bytes`` payload
+        (not an ASGI dict). Text frames must be routed to control handling —
+        otherwise EndCall / PlaybackFinished are latin-1-"encoded" into fake PCM
+        and never hang up the call.
+        """
         if isinstance(msg, dict):
             if msg.get("type") == "websocket.disconnect":
                 return
@@ -895,6 +961,10 @@ class WebMediaHandler(VoiceLiveMediaHandler):
             data = msg.get("bytes")
             if data is None:
                 return
+        elif isinstance(msg, str):
+            if await self._handle_control_message(msg):
+                return
+            return
         else:
             data = msg
         pcm = _coerce_pcm_bytes(data)

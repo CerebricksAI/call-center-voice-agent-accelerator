@@ -13,7 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.orchestrator.dialog import apply_action, handle_caller_turn  # noqa: E402
 from app.orchestrator.fsm import CallContext, CallStateMachine  # noqa: E402
-from app.orchestrator.tools import execute_tool  # noqa: E402
+from app.orchestrator.tools import execute_tool, tools_for  # noqa: E402
 
 
 def test_decline_close_effects_via_apply_action():
@@ -80,6 +80,21 @@ def test_gate_still_catches_hard_optout_deterministically():
     fsm.transition("QUALIFY", reason="consent")
     d = handle_caller_turn("please take me off your list", fsm, ctx)
     assert d.action == "DNC_CLOSE" and ctx.dnc_recorded is True
+
+
+def test_handoff_tools_record_disposition_so_end_call_works():
+    # When the MODEL calls a hand-off tool directly (not via the router's apply_action),
+    # execute_tool must still record a disposition — otherwise the follow-up end_call is
+    # refused and the call can never close (observed live on a model-initiated transfer).
+    for tool, expected in [
+        ("transfer_to_lo", "transferred"),
+        ("route_language", "language_routed"),
+        ("schedule_callback", "callback_requested"),
+    ]:
+        ctx = CallContext()
+        execute_tool(tool, {}, ctx)
+        assert ctx.disposition == expected, tool
+        assert execute_tool("end_call", {}, ctx)["ok"] is True, tool
 
 
 def test_escalate_fires_transfer_tool_in_code():

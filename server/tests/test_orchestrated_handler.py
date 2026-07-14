@@ -59,6 +59,71 @@ def test_dnc_close_locks_to_end_call_only():
     assert "LOAN PURPOSE" not in s.instructions
 
 
+def test_no_response_close_locks_to_end_call_only():
+    h = _handler()
+    h._fsm.transition("NO_RESPONSE_CLOSE", reason="silence")
+    s = h._session_config()
+    assert [t.name for t in s.tools] == ["end_call"]
+    assert "lost you" in s.instructions.lower() or "wrap up" in s.instructions.lower()
+    assert "LOAN PURPOSE" not in s.instructions
+
+
+def test_silence_checkin_instructions_exclude_qualify():
+    """Silence check-ins must not carry the QUALIFY skill (invented answers)."""
+    h = _handler()
+    h._fsm.transition("QUALIFY", reason="t")
+    h._silence_cue = "Say ONE short check-in."
+    s = h._session_config()
+    text = s.instructions.lower()
+    assert "hard rules" in text
+    assert "buy vs refinance" in text
+    assert "got it" in text  # mentioned as forbidden example
+    assert s.tools == []
+    # Must not include the qualify stage agenda.
+    assert "so — let's start with this" not in text
+    assert "approximate loan amount" not in text
+
+
+def test_custom_prompt_overrides_skills():
+    h = _handler()
+    h.system_prompt = "you are a bank advisor — ask about banking problems only."
+    s = h._session_config()
+    assert "bank advisor" in s.instructions
+    assert "Global guardrails" not in s.instructions
+    assert [t.name for t in s.tools] == ["end_call"]
+    # Mood + reaction-first still harden custom-prompt conversational edges.
+    assert "TURN SHAPE" in s.instructions
+    assert "MOOD (this turn)" in s.instructions
+
+
+def test_qualify_appends_mood_and_reaction():
+    h = _handler()
+    h._fsm.transition("QUALIFY", reason="t")
+    h._mood = "excited"
+    s = h._session_config()
+    assert "Caller sounds upbeat or excited" in s.instructions
+    assert "TURN SHAPE" in s.instructions
+
+
+def test_dnc_close_skips_delivery_suffix():
+    h = _handler()
+    h._fsm.transition("DNC_CLOSE", reason="t")
+    h._mood = "frustrated"
+    s = h._session_config()
+    assert "TURN SHAPE" not in s.instructions
+    assert "MOOD (this turn)" not in s.instructions
+
+
+def test_silence_checkin_skips_mood_suffix():
+    h = _handler()
+    h._fsm.transition("QUALIFY", reason="t")
+    h._mood = "rushed"
+    h._silence_cue = "Say ONE short check-in."
+    s = h._session_config()
+    assert "TURN SHAPE" not in s.instructions
+    assert "MOOD (this turn)" not in s.instructions
+
+
 def test_orchestrator_owns_responses_disables_auto_reply():
     # The orchestrated session must turn OFF the server's automatic response so the
     # handler creates exactly one reply per turn (no double / no race).
@@ -97,6 +162,87 @@ def test_playback_finished_control_message_records_drain():
     handled = asyncio.run(h._handle_control_message('{"Kind": "PlaybackFinished"}'))
     assert handled is True
     assert h._last_drain_at > 0.0
+
+
+def test_on_message_quart_str_endcall_hangs_up():
+    # Quart Websocket.receive() yields a raw str for text frames — not an ASGI
+    # dict. EndCall must hang up, not be coerced into fake PCM.
+    import asyncio
+
+    h = _handler()
+    calls: list[str] = []
+
+    async def _end(*, source: str = "client") -> None:
+        calls.append(source)
+        h._finalizing = True
+
+    h.request_end_call = _end  # type: ignore[method-assign]
+    audio_calls: list[bytes] = []
+    h.handle_audio = lambda pcm: audio_calls.append(pcm)  # type: ignore[method-assign]
+
+    asyncio.run(h.on_message('{"Kind": "EndCall"}'))
+    assert calls == ["client"]
+    assert audio_calls == []
+
+    asyncio.run(h.on_message('{"Kind": "PlaybackFinished"}'))
+    assert h._last_drain_at > 0.0
+    assert audio_calls == []
+
+
+def test_silence_close_pending_after_both_reprompts():
+    h = _handler()
+    h._fsm.transition("QUALIFY", reason="t")
+    assert h._silence_close_pending() is False
+    h._silence_fired = {"reprompt:0", "reprompt:1"}
+    assert h._silence_close_pending() is True
+    h._silence_fired.add("close")
+    assert h._silence_close_pending() is False
+
+
+def test_silence_tail_junk_transcript_rearms_close():
+    import asyncio
+
+    h = _handler()
+    h._fsm.transition("QUALIFY", reason="t")
+    h._silence_fired = {"reprompt:0", "reprompt:1"}
+    armed: list[bool] = []
+    h._arm_silence_watch = lambda *, clear_fired=True: armed.append(clear_fired)  # type: ignore[method-assign]
+    h._engine.handle_caller_turn = lambda *a, **k: None  # type: ignore[method-assign]
+    h._spawn_router = lambda: None  # type: ignore[method-assign]
+
+    asyncio.run(h.on_user_transcript_done("Sheep for something else"))
+    assert armed == [False]
+
+
+def test_silence_close_schedules_hard_close_before_goodbye():
+    import asyncio
+
+    h = _handler()
+    h._fsm.transition("QUALIFY", reason="t")
+    h._silence_fired = {"reprompt:0", "reprompt:1"}
+    h._last_audio_delta_at = 100.0
+    h._last_drain_at = 100.0
+    order: list[str] = []
+    created: list[bool] = []
+
+    def _sched():
+        order.append(f"sched:{getattr(h, '_close_wait_since_audio', -1)}")
+
+    h._schedule_hard_close = _sched  # type: ignore[method-assign]
+    h._update_session = lambda: asyncio.sleep(0)  # type: ignore[method-assign]
+
+    async def _create(**kwargs):
+        order.append("create")
+        created.append(True)
+
+    h._create_response = _create  # type: ignore[method-assign]
+    asyncio.run(h._silence_close())
+    # Create goodbye first, then arm hard-close (baseline locked before create).
+    assert order == ["create", "sched:100.0"]
+    assert created == [True]
+    assert h._hard_close_baseline_locked is True
+    assert h._fsm.state == "NO_RESPONSE_CLOSE"
+    assert "close" in h._silence_fired
 
 
 def test_bridge_insights_populate_ctx_fields_and_sink():

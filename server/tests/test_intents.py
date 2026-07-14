@@ -30,6 +30,11 @@ def test_hard_optout_variants_all_map_to_dnc():
         "I want to be removed",
         "just remove me",
         "that's the second time I've told you",
+        # T9 creative opt-outs (scorecard)
+        "No. Cancel it.",
+        "Quit calling my phone.",
+        "please quit calling me",
+        "cancel this call",
     ]:
         assert gate(phrase, Ctx()) == "DNC_CLOSE", phrase
 

@@ -36,6 +36,9 @@ OPT_OUT_HARD = [
     r"\bnever call\b",
     r"\bhang up\b",
     r"\bsecond time i'?ve (told|asked)\b",
+    # T9 creative opt-outs — honor over-broadly (missing one is the legal risk)
+    r"\bquit calling\b",
+    r"\bcancel (it|this|the call)\b",
 ]
 
 
