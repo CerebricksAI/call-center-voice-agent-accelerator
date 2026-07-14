@@ -439,3 +439,4 @@
 {"call_id": "c-test", "tool": "log_disposition", "args": {"disposition": "no_response"}, "result": {"ok": true, "disposition": "no_response"}}
 {"call_id": "5efbb10d4085", "tool": "log_disposition", "args": {"disposition": "no_response"}, "result": {"ok": true, "disposition": "no_response"}}
 {"call_id": "5efbb10d4085", "tool": "capture_borrower_field", "args": {"field": "consent_to_contact", "value": "Yes", "confidence": 1.0}, "result": {"ok": true}}
+{"call_id": "2c96bc84bf3d", "tool": "capture_borrower_field", "args": {"field": "consent_to_contact", "value": "Yes", "confidence": 1.0}, "result": {"ok": true}}
