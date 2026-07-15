@@ -10,9 +10,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from app.orchestrator.trust_ui import (  # noqa: E402
     briefing_for_state,
     dnc_record_id,
+    fsm_state_history,
     ribbon_stages,
     stage_label,
 )
+from app.orchestrator.fsm import CallStateMachine  # noqa: E402
 
 
 def test_stage_labels():
@@ -42,6 +44,35 @@ def test_ribbon_qualify_active():
 def test_ribbon_dnc_close_active():
     nodes = ribbon_stages("DNC_CLOSE")
     assert any(n["label"] == "DNC CLOSE" and n["status"] == "active" for n in nodes)
+
+
+def test_ribbon_keeps_callback_when_moving_to_dnc():
+    # CALLBACK → DNC must leave CALLBACK visible (done), not overwrite it.
+    hist = ["GREETING", "QUALIFY", "CALLBACK_CLOSE", "DNC_CLOSE"]
+    nodes = ribbon_stages("DNC_CLOSE", history=hist)
+    labels = [n["label"] for n in nodes]
+    assert labels == [
+        "CLASSIFY · human",
+        "INTRO",
+        "QUALIFY",
+        "CALLBACK CLOSE",
+        "DNC CLOSE",
+    ]
+    assert nodes[-2]["status"] == "done"
+    assert nodes[-1]["status"] == "active"
+
+
+def test_fsm_state_history_walks_transitions():
+    fsm = CallStateMachine(state="GREETING", call_id="t")
+    fsm.transition("QUALIFY", reason="consent")
+    fsm.transition("CALLBACK_CLOSE", reason="CALLBACK_CLOSE")
+    fsm.transition("DNC_CLOSE", reason="DNC_CLOSE")
+    assert fsm_state_history(fsm) == [
+        "GREETING",
+        "QUALIFY",
+        "CALLBACK_CLOSE",
+        "DNC_CLOSE",
+    ]
 
 
 def test_briefing_has_bytes():

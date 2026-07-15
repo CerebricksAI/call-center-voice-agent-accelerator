@@ -68,6 +68,7 @@ from app.orchestrator.trust_ui import (
     call_short_id,
     caller_quote,
     dnc_record_id,
+    fsm_state_history,
     receipt_event_label,
     ribbon_stages,
     stage_label,
@@ -271,7 +272,9 @@ class OrchestratorMixin:
         self._trust(
             "snapshot",
             reason=reason,
-            ribbon=ribbon_stages(self._fsm.state),
+            ribbon=ribbon_stages(
+                self._fsm.state, history=fsm_state_history(self._fsm)
+            ),
             rebuttalUsed=bool(getattr(self._ctx, "rebuttal_used", False)),
             rebuttalBudget=1,
             briefing=brief,
@@ -633,6 +636,15 @@ class OrchestratorMixin:
             self._trust("receipt_total", held=True, label="RECORD BEFORE PROMISE")
         self._hard_close_task = asyncio.create_task(self._hard_close_after_grace())
 
+    def _abort_pending_hard_close(self) -> None:
+        """Cancel an in-flight hang-up so a late DNC/decline goodbye can play."""
+        pending = getattr(self, "_hard_close_task", None)
+        if pending is not None and not pending.done():
+            pending.cancel()
+            self._hard_close_task = None
+        self._hard_close_baseline_locked = False
+        self._trust_close_receipt_sent = False
+
     async def request_end_call(self, *, source: str = "client") -> None:
         """Client/agent hang-up — never let a silence nudge speak after this.
 
@@ -896,6 +908,27 @@ class OrchestratorMixin:
             if self._fsm.state in _TERMINAL_CLOSE_STATES:
                 self._schedule_hard_close()
             return
+
+        # CALLBACK CLOSE: still honor late opt-out / decline (must never miss DNC).
+        if started_in == "CALLBACK_CLOSE" and self._fsm.state == "CALLBACK_CLOSE":
+            if action in ("DNC_CLOSE", "DECLINE_CLOSE"):
+                logger.info("[Orchestrator] router callback -> %s", action)
+                # Abort any pending callback hang-up so the DNC/decline goodbye can play.
+                self._abort_pending_hard_close()
+                apply_action(action, self._fsm, self._ctx, sink=self._sink)
+                self._notice_action(action)
+                await self._emit_gate_trust(action, self._last_user_text)
+                await self._update_session()
+                await self._create_response(
+                    cancel=True,
+                    think_pause=action not in _URGENT_NO_PAUSE,
+                )
+                if self._fsm.state in _TERMINAL_CLOSE_STATES:
+                    self._schedule_hard_close()
+                return
+            await self._create_response()
+            return
+
         await self._create_response()
 
     # --- silence policy (T11): 8s / 16s quiet check-ins → no_response ~25s -----
@@ -1544,6 +1577,8 @@ class OrchestratorMixin:
             logger.info(
                 "[Orchestrator] gate=%s -> %s", decision.action, decision.state
             )
+            if decision.action == "DNC_CLOSE":
+                self._abort_pending_hard_close()
             self._notice_action(decision.action)
             await self._emit_gate_trust(decision.action, text)
             await self._update_session()
@@ -1590,11 +1625,10 @@ class OrchestratorMixin:
             await self._create_response(cancel=True)
             return
 
-        # Ordinary qualifying turn. Push OPEN THREAD (last ask) before the reply so
-        # "I'm ready / still here" resumes the agenda instead of soft-stalling.
+        # Ordinary qualifying / mid-callback turn.
         if self._fsm.state == "QUALIFY":
             await self._update_session()
-        if semantic_enabled() and self._fsm.state == "QUALIFY":
+        if semantic_enabled() and self._fsm.state in ("QUALIFY", "CALLBACK_CLOSE"):
             self._spawn_router()
         else:
             await self._create_response()

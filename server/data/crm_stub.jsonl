@@ -541,3 +541,13 @@
 {"call_id": "c-test", "tool": "log_disposition", "args": {"disposition": "no_response"}, "result": {"ok": true, "disposition": "no_response"}}
 {"call_id": "1abf5a0cf89e", "tool": "log_disposition", "args": {"disposition": "no_response"}, "result": {"ok": true, "disposition": "no_response"}}
 {"call_id": "1abf5a0cf89e", "tool": "capture_borrower_field", "args": {"field": "consent_to_contact", "value": "Yes", "confidence": 1.0}, "result": {"ok": true}}
+{"call_id": "cc20eaca831a", "tool": "log_disposition", "args": {"disposition": "callback_requested"}, "result": {"ok": true, "disposition": "callback_requested"}}
+{"call_id": "cc20eaca831a", "tool": "capture_borrower_field", "args": {"field": "preferred_contact_time", "value": "Tomorrow", "confidence": 0.9}, "result": {"ok": true}}
+{"call_id": "cc20eaca831a", "tool": "add_to_do_not_call", "args": {"reason": "caller opt-out"}, "result": {"ok": true, "record_id": "DNC 831A"}}
+{"call_id": "cc20eaca831a", "tool": "log_disposition", "args": {"disposition": "do_not_call"}, "result": {"ok": true, "disposition": "do_not_call"}}
+{"call_id": "e4b757b42614", "tool": "capture_borrower_field", "args": {"field": "consent_to_contact", "value": "Yes", "confidence": 1.0}, "result": {"ok": true}}
+{"call_id": "e4b757b42614", "tool": "log_disposition", "args": {"disposition": "callback_requested"}, "result": {"ok": true, "disposition": "callback_requested"}}
+{"call_id": "e4b757b42614", "tool": "capture_borrower_field", "args": {"field": "refinance_or_buy", "value": "Refinance my home", "confidence": 0.95}, "result": {"ok": true}}
+{"call_id": "e4b757b42614", "tool": "capture_borrower_field", "args": {"field": "request_for_loan_officer", "value": "Call with loan officer", "confidence": 0.9}, "result": {"ok": true}}
+{"call_id": "e4b757b42614", "tool": "add_to_do_not_call", "args": {"reason": "caller opt-out"}, "result": {"ok": true, "record_id": "DNC 2614"}}
+{"call_id": "e4b757b42614", "tool": "log_disposition", "args": {"disposition": "do_not_call"}, "result": {"ok": true, "disposition": "do_not_call"}}

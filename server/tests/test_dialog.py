@@ -73,13 +73,20 @@ def test_callback_close_effects_via_apply_action():
     assert d.state == "CALLBACK_CLOSE" and ctx.disposition == "callback_requested"
 
 
-def test_gate_still_catches_hard_optout_deterministically():
-    # The one intent that stays deterministic: a hard opt-out, via handle_caller_turn.
+def test_hard_optout_from_callback_promotes_to_dnc():
+    # Mid-callback (already dispositioned callback_requested), a hard opt-out must
+    # still fire add_to_do_not_call and overwrite disposition to do_not_call.
     fsm = CallStateMachine()
     ctx = CallContext()
     fsm.transition("QUALIFY", reason="consent")
-    d = handle_caller_turn("please take me off your list", fsm, ctx)
-    assert d.action == "DNC_CLOSE" and ctx.dnc_recorded is True
+    apply_action("CALLBACK_CLOSE", fsm, ctx)
+    assert fsm.state == "CALLBACK_CLOSE" and ctx.disposition == "callback_requested"
+    d = handle_caller_turn("don't want to be contacted again", fsm, ctx)
+    assert d is not None and d.action == "DNC_CLOSE"
+    assert fsm.state == "DNC_CLOSE"
+    assert ctx.disposition == "do_not_call"
+    assert ctx.dnc_recorded is True
+
 
 
 def test_handoff_tools_record_disposition_so_end_call_works():
@@ -134,6 +141,7 @@ if __name__ == "__main__":
     test_end_call_refused_without_disposition()
     test_callback_close_effects_via_apply_action()
     test_gate_still_catches_hard_optout_deterministically()
+    test_hard_optout_from_callback_promotes_to_dnc()
     test_escalate_fires_transfer_tool_in_code()
     test_language_route_fires_route_language_tool_in_code()
     test_dnc_still_only_fires_compliance_tools()

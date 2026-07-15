@@ -54,8 +54,15 @@ def test_optout_off_your_list_variants():
         assert gate(phrase, Ctx()) == "DNC_CLOSE", phrase
 
 
-def test_optout_matches_even_amid_other_words():
-    assert gate("no thanks, take me off your list", Ctx()) == "DNC_CLOSE"
+def test_optout_contact_again_phrases():
+    for phrase in [
+        "I don't want to be contacted again",
+        "do not contact me again",
+        "please never contact me",
+        "no more contact please",
+    ]:
+        assert gate(phrase, Ctx()) == "DNC_CLOSE", phrase
+
 
 
 def test_gate_fires_only_on_opt_out_everything_else_defers_to_router():

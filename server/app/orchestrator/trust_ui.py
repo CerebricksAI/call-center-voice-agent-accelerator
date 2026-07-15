@@ -44,6 +44,19 @@ GATE_TURNS_AFTER_OPT_OUT = 1
 # Linear stage order for the ribbon (classify is always armable on live web).
 RIBBON_CORE = ("CLASSIFY · human", "INTRO", "QUALIFY")
 
+# Side / close stages that append onto the ribbon (kept visible when moving on).
+_RIBBON_BRANCH = frozenset(
+    {
+        "DECLINE_CLOSE",
+        "DNC_CLOSE",
+        "CALLBACK_CLOSE",
+        "NO_RESPONSE_CLOSE",
+        "TRANSFER",
+        "LANGUAGE_ROUTE",
+        "ENDED",
+    }
+)
+
 
 def stage_label(state: str) -> str:
     return STAGE_LABEL.get(state, state.replace("_", " "))
@@ -70,14 +83,36 @@ def briefing_for_state(state: str) -> dict[str, Any]:
     }
 
 
-def ribbon_stages(state: str) -> list[dict[str, str]]:
+def fsm_state_history(fsm: Any) -> list[str]:
+    """Ordered unique-adjacent FSM states visited this call (for the ribbon trail)."""
+    transitions = list(getattr(fsm, "transitions", None) or [])
+    current = getattr(fsm, "state", None)
+    if not transitions:
+        return [str(current)] if current else []
+    out = [str(transitions[0].get("from") or "")]
+    for t in transitions:
+        to = str(t.get("to") or "")
+        if to and (not out or out[-1] != to):
+            out.append(to)
+    if current and (not out or out[-1] != str(current)):
+        out.append(str(current))
+    return [s for s in out if s]
+
+
+def ribbon_stages(
+    state: str, *, history: list[str] | None = None
+) -> list[dict[str, str]]:
     """Build ribbon nodes with status done | active | pending.
 
     Progression the UI expects:
       PRE_CALL / IDLE  → CLASSIFY active (before Start Call / connecting)
       GREETING           → CLASSIFY done, INTRO active (live call started)
       QUALIFY            → INTRO done, QUALIFY active (consent / first real turn)
-      close states       → … + active terminal node (DNC / CALLBACK / …)
+      close states       → … + each visited branch (CALLBACK then DNC stays visible)
+
+    ``history`` is the ordered FSM trail (e.g. from ``fsm_state_history``). When
+    the caller moves CALLBACK → DNC, both close nodes remain on the ribbon —
+    earlier branches are ``done``, the current state is ``active``.
     """
     st = (state or "PRE_CALL").strip().upper()
     if st in ("PRE_CALL", "IDLE", "CLASSIFY", ""):
@@ -87,25 +122,41 @@ def ribbon_stages(state: str) -> list[dict[str, str]]:
             {"id": "qualify", "label": "QUALIFY", "status": "pending"},
         ]
 
-    active = stage_label(st)
-    terminal = st not in ("GREETING", "QUALIFY")
+    hist = [str(s).strip().upper() for s in (history or []) if s]
+    if not hist or hist[-1] != st:
+        hist = hist + [st]
+
     nodes: list[dict[str, str]] = [
         {"id": "classify", "label": RIBBON_CORE[0], "status": "done"},
     ]
     if st == "GREETING":
         nodes.append({"id": "intro", "label": "INTRO", "status": "active"})
         nodes.append({"id": "qualify", "label": "QUALIFY", "status": "pending"})
-    elif st == "QUALIFY":
+        return nodes
+    if st == "QUALIFY":
         nodes.append({"id": "intro", "label": "INTRO", "status": "done"})
         nodes.append({"id": "qualify", "label": "QUALIFY", "status": "active"})
-    else:
-        nodes.append({"id": "intro", "label": "INTRO", "status": "done"})
-        nodes.append({"id": "qualify", "label": "QUALIFY", "status": "done"})
+        return nodes
+
+    # Past QUALIFY (or jumped into a branch): core done, then every visited branch.
+    nodes.append({"id": "intro", "label": "INTRO", "status": "done"})
+    nodes.append({"id": "qualify", "label": "QUALIFY", "status": "done"})
+
+    branch: list[str] = []
+    for s in hist:
+        if s in _RIBBON_BRANCH and s not in branch:
+            branch.append(s)
+    if st in _RIBBON_BRANCH and st not in branch:
+        branch.append(st)
+    if not branch:
+        branch = [st]
+
+    for s in branch:
         nodes.append(
             {
-                "id": "close",
-                "label": active,
-                "status": "active" if terminal or st == "ENDED" else "pending",
+                "id": f"branch-{s.lower()}",
+                "label": stage_label(s),
+                "status": "active" if s == st else "done",
             }
         )
     return nodes
