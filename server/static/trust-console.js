@@ -589,9 +589,14 @@
     }
 
     if (kind === "freeze") {
-      state.intakeFrozen = true;
-      state.freezeAt = msg.at || new Date().toLocaleTimeString();
-      state.opt_out_seen = true;
+      const frozen = msg.frozen !== false;
+      state.intakeFrozen = frozen;
+      if (frozen) {
+        state.freezeAt = msg.at || new Date().toLocaleTimeString();
+        state.opt_out_seen = true;
+      } else {
+        state.freezeAt = null;
+      }
       renderFreeze();
       // Do not rewrite earlier transcript bubbles (feedback turns must stay clean).
       return;

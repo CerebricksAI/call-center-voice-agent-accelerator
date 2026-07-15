@@ -92,6 +92,28 @@ def test_gate_fires_only_on_opt_out_everything_else_defers_to_router():
         assert gate(phrase, Ctx()) is None, phrase
 
 
+def test_wants_resume_qualify_phrases():
+    from app.orchestrator.intents import wants_resume_qualify
+
+    for phrase in [
+        "Proceed with your questions.",
+        "Let's continue",
+        "I want to keep going",
+        "please continue with the call",
+        "go ahead with the questions",
+    ]:
+        assert wants_resume_qualify(phrase) is True, phrase
+    for phrase in [
+        "Yes",
+        "okay",
+        "I continue to get spam calls",
+        "don't call me again",
+        "I don't want to proceed",
+        "Too many calls and the rates felt high",
+    ]:
+        assert wants_resume_qualify(phrase) is False, phrase
+
+
 if __name__ == "__main__":
     for fn in list(globals().values()):
         if callable(fn) and getattr(fn, "__name__", "").startswith("test_"):

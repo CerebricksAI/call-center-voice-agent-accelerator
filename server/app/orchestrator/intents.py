@@ -80,3 +80,39 @@ def gate(text: str, ctx: Any = None) -> Optional[Action]:
     if _hit(OPT_OUT_HARD, text):
         return "DNC_CLOSE"
     return None
+
+
+# Explicit "keep going / do the questions" while already in a close stage.
+# Deliberately stronger than a bare "yes"/"ok" (and stronger than "continue to …"
+# feedback) so DNC answers don't accidentally reopen the funnel.
+_RESUME_QUALIFY = [
+    r"\bproceed with (your |the )?questions?\b",
+    r"\bcontinue with (your |the )?(questions?|call|qualif|application)\b",
+    r"\bkeep (asking|going)( (with )?(your |the )?questions?)?\b",
+    r"\b(let'?s|please) (continue|resume|keep going|go on)\b",
+    r"\bi (want|would like|'d like) to (continue|proceed|keep going|resume)\b",
+    r"\bgo ahead\b(.{0,24}\bquestions?)?\b",
+    r"\b(resume|restart) (the )?(call|qualif|application|conversation)\b",
+    r"\bnever ?mind\b.{0,24}\b(continue|proceed|keep going)\b",
+    r"\bi changed my mind\b.{0,40}\b(continue|proceed|keep going|questions?)\b",
+]
+
+
+def wants_resume_qualify(text: str) -> bool:
+    """True when the caller clearly wants to reopen qualifying after a close.
+
+    Used only while already in DNC_CLOSE / CALLBACK_CLOSE. Negatives and fresh
+    opt-out phrasing never resume.
+    """
+    raw = (text or "").strip()
+    if not raw:
+        return False
+    if matched_opt_out(raw):
+        return False
+    lowered = raw.lower()
+    if re.search(
+        r"\b(don'?t|do not|never|not)\b.{0,24}\b(continue|proceed|resume|go on|keep going)\b",
+        lowered,
+    ):
+        return False
+    return _hit(_RESUME_QUALIFY, raw)
