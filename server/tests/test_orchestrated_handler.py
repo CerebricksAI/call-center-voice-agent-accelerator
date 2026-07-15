@@ -279,7 +279,13 @@ def test_silence_tail_junk_transcript_rearms_close():
     h._silence_fired = {"reprompt:0", "reprompt:1"}
     armed: list[bool] = []
     h._arm_silence_watch = lambda *, clear_fired=True: armed.append(clear_fired)  # type: ignore[method-assign]
-    h._engine.handle_caller_turn = lambda *a, **k: None  # type: ignore[method-assign]
+    # Never mutate dialog.handle_caller_turn on the shared module — that breaks later
+    # scorecard/evals in the same pytest process (CI fails 2/4 DNC scenarios).
+    h._engine = type(
+        "StubEngine",
+        (),
+        {"handle_caller_turn": staticmethod(lambda *a, **k: None)},
+    )()
     h._spawn_router = lambda: None  # type: ignore[method-assign]
 
     asyncio.run(h.on_user_transcript_done("Sheep for something else"))
