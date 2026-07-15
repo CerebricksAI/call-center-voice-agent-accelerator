@@ -3648,7 +3648,7 @@
       clearTranscript();
       resetDashboard();
       let wsProtocol = window.location.protocol === "https:" ? "wss" : "ws";
-      let wsHost = window.location.host;
+      let wsHost = window.location.host; 
       const wsParams = [];
       const chosenModel = (window.effectiveVoiceModel && window.effectiveVoiceModel()) || "";
       if (chosenModel) wsParams.push("model=" + encodeURIComponent(chosenModel));

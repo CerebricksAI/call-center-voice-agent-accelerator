@@ -597,3 +597,16 @@
 {"call_id": "1c3e53250e3a", "tool": "log_disposition", "args": {"disposition": "do_not_call"}, "result": {"ok": true, "disposition": "do_not_call"}}
 {"call_id": "1c3e53250e3a", "tool": "capture_borrower_field", "args": {"field": "dnc_feedback", "value": "I would give you a brief feedback. I didn't find good about the interest rates and the services which you're providing in the last three months.", "confidence": 1.0}, "result": {"ok": true}}
 {"call_id": "1c3e53250e3a", "tool": "capture_borrower_field", "args": {"field": "dnc_feedback_followup", "value": "Yeah, I'm there. So I didn't like to proceed now. Just let's end this one now.", "confidence": 1.0}, "result": {"ok": true}}
+{"call_id": "ccee29c71176", "tool": "transfer_to_lo", "args": {"reason": "caller requested escalation"}, "result": {"ok": true}}
+{"call_id": "ccee29c71176", "tool": "log_disposition", "args": {"disposition": "transferred"}, "result": {"ok": true, "disposition": "transferred"}}
+{"call_id": "a66d894c19e2", "tool": "capture_borrower_field", "args": {"field": "consent_to_contact", "value": "Yes", "confidence": 1.0}, "result": {"ok": true}}
+{"call_id": "a66d894c19e2", "tool": "capture_borrower_field", "args": {"field": "purchase_type", "value": "Refinance a home", "confidence": 0.95}, "result": {"ok": true}}
+{"call_id": "a66d894c19e2", "tool": "capture_borrower_field", "args": {"field": "caller_complaints", "value": "Called twice when busy", "confidence": 0.9}, "result": {"ok": true}}
+{"call_id": "a66d894c19e2", "tool": "capture_borrower_field", "args": {"field": "refinance_type", "value": "Standard refinance", "confidence": 0.9}, "result": {"ok": true}}
+{"call_id": "a66d894c19e2", "tool": "add_to_do_not_call", "args": {"reason": "caller opt-out"}, "result": {"ok": true, "record_id": "DNC 19E2"}}
+{"call_id": "a66d894c19e2", "tool": "log_disposition", "args": {"disposition": "do_not_call"}, "result": {"ok": true, "disposition": "do_not_call"}}
+{"call_id": "a66d894c19e2", "tool": "rescind_close", "args": {"from": "DNC_CLOSE", "reason": "caller_resumed"}, "result": {"ok": true, "to": "QUALIFY"}}
+{"call_id": "a66d894c19e2", "tool": "add_to_do_not_call", "args": {"reason": "caller opt-out"}, "result": {"ok": true, "record_id": "DNC 19E2"}}
+{"call_id": "a66d894c19e2", "tool": "log_disposition", "args": {"disposition": "do_not_call"}, "result": {"ok": true, "disposition": "do_not_call"}}
+{"call_id": "a66d894c19e2", "tool": "capture_borrower_field", "args": {"field": "dnc_feedback", "value": "Yeah, I didn't didn't work like you guys have called me twice yesterday night when I was busy, so this is really frustrating and interest rates which you guys are giving is not up to the mark, which I feel satisfied for.", "confidence": 1.0}, "result": {"ok": true}}
+{"call_id": "a66d894c19e2", "tool": "capture_borrower_field", "args": {"field": "dnc_feedback_followup", "value": "The rates were too low.", "confidence": 1.0}, "result": {"ok": true}}

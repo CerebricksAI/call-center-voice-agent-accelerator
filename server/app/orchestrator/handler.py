@@ -35,9 +35,9 @@ from app.agent_persona import (
 )
 from app.orchestrator.callback_time import is_concrete_callback_time
 from app.orchestrator.consent import is_consent_affirm, is_consent_refusal
-from app.orchestrator.dialog import apply_action
+from app.orchestrator.dialog import apply_action, resume_qualify_after_close
 from app.orchestrator.fsm import CallContext, CallStateMachine
-from app.orchestrator.intents import matched_opt_out
+from app.orchestrator.intents import matched_opt_out, wants_resume_qualify
 from app.orchestrator.mood import (
     Mood,
     REACTION_FIRST,
@@ -688,6 +688,36 @@ class OrchestratorMixin:
             self._hard_close_task = None
         self._hard_close_baseline_locked = False
         self._trust_close_receipt_sent = False
+
+    async def _resume_qualify_from_close(self, text: str) -> None:
+        """Caller explicitly asked to continue — rescind DNC/callback and reopen QUALIFY."""
+        from_state = self._fsm.state
+        logger.info(
+            "[Orchestrator] resume QUALIFY after %s (caller asked to continue)",
+            from_state,
+        )
+        self._abort_pending_hard_close()
+        self._abort_silence_close()
+        self._cancel_silence_watch(reset=True)
+        self._silence_pending_arm = False
+        resume_qualify_after_close(
+            self._fsm, self._ctx, sink=self._sink, reason="caller_resumed"
+        )
+        self._qualify_locked = False
+        self._intake_frozen = False
+        self._dnc_awaiting_feedback = False
+        self._dnc_awaiting_followup = False
+        self._opt_out_at = None
+        self._turns_after_opt_out = 0
+        self._trust("freeze", frozen=False)
+        self._trust_receipt_line(
+            f"caller resumed · {from_state} rescinded · back to qualify",
+            ok=True,
+            once_key=f"resume:{from_state}",
+        )
+        self._trust_snapshot(reason="caller_resumed")
+        await self._update_session()
+        await self._create_response(cancel=True, think_pause=False)
 
     async def request_end_call(self, *, source: str = "client") -> None:
         """Client/agent hang-up — never let a silence nudge speak after this.
@@ -1914,6 +1944,13 @@ class OrchestratorMixin:
             # Single-turn goodbyes hang up after speech. DNC stays open for feedback.
             if self._fsm.state in _TERMINAL_CLOSE_STATES:
                 self._schedule_hard_close()
+            return
+
+        # Explicit continue after DNC / callback → rescind close and reopen QUALIFY.
+        if self._fsm.state in ("DNC_CLOSE", "CALLBACK_CLOSE") and wants_resume_qualify(
+            text
+        ):
+            await self._resume_qualify_from_close(text)
             return
 
         # DNC multi-turn: feedback ask → optional soft follow-up → then freeze + close.

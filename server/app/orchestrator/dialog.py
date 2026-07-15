@@ -94,6 +94,35 @@ def apply_action(
     )
 
 
+def resume_qualify_after_close(
+    fsm: CallStateMachine,
+    ctx: CallContext,
+    *,
+    sink: Optional[Callable[[str, dict[str, Any]], None]] = None,
+    reason: str = "caller_resumed",
+) -> None:
+    """Rescind DNC/callback close and return to QUALIFY when the caller asks to continue.
+
+    Clears disposition + DNC flags so the call is open again. Leaves already-captured
+    borrower fields intact. Appends an audit tool_log row for the paper trail.
+    """
+    from_state = fsm.state
+    ctx.disposition = None
+    ctx.dnc_recorded = False
+    if from_state == "CALLBACK_CLOSE":
+        ctx.callback_scheduled = False
+    record = {
+        "tool": "rescind_close",
+        "args": {"from": from_state, "reason": reason},
+        "result": {"ok": True, "to": "QUALIFY"},
+    }
+    ctx.tool_log.append(record)
+    if sink is not None:
+        sink(getattr(ctx, "call_id", "local"), record)
+    if fsm.state != "QUALIFY":
+        fsm.transition("QUALIFY", reason=reason)
+
+
 def handle_caller_turn(
     text: str,
     fsm: CallStateMachine,

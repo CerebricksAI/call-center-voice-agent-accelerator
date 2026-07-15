@@ -88,6 +88,19 @@ def test_hard_optout_from_callback_promotes_to_dnc():
     assert ctx.dnc_recorded is True
 
 
+def test_resume_qualify_after_close_clears_dnc():
+    from app.orchestrator.dialog import resume_qualify_after_close
+
+    fsm = CallStateMachine()
+    ctx = CallContext()
+    apply_action("DNC_CLOSE", fsm, ctx)
+    assert ctx.dnc_recorded and ctx.disposition == "do_not_call"
+    resume_qualify_after_close(fsm, ctx, reason="caller_resumed")
+    assert fsm.state == "QUALIFY"
+    assert ctx.disposition is None
+    assert ctx.dnc_recorded is False
+    assert any(r["tool"] == "rescind_close" for r in ctx.tool_log)
+
 
 def test_handoff_tools_record_disposition_so_end_call_works():
     # When the MODEL calls a hand-off tool directly (not via the router's apply_action),

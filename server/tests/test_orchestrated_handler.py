@@ -291,6 +291,68 @@ def test_dnc_feedback_turn_records_and_closes():
     asyncio.run(run())
 
 
+def test_proceed_after_dnc_resets_and_resumes_qualify():
+    """Explicit continue after DNC must rescind DNC and return to QUALIFY questions."""
+    import asyncio
+
+    from app.orchestrator.dialog import apply_action
+
+    h = _handler()
+    h._sink = lambda cid, rec: None
+    h._fsm.transition("QUALIFY", reason="t")
+    closes: list[bool] = []
+    aborts: list[bool] = []
+    h._schedule_hard_close = lambda: closes.append(True)
+    h._abort_pending_hard_close = lambda: aborts.append(True)
+    receipts: list[str] = []
+    h._trust_receipt_line = lambda text, **kw: receipts.append(text)  # type: ignore[method-assign]
+    h._trust = lambda *_a, **_k: None  # type: ignore[method-assign]
+    h._notice_action = lambda *_a, **_k: None  # type: ignore[method-assign]
+    h._spawn_router = lambda: None  # type: ignore[method-assign]
+
+    async def _noop_update():
+        return None
+
+    creates: list[bool] = []
+
+    async def _noop_create(**_k):
+        creates.append(True)
+
+    async def _noop_emit(action, _text):
+        if action == "DNC_CLOSE":
+            h._dnc_awaiting_feedback = True
+            h._qualify_locked = True
+            h._intake_frozen = False
+
+    h._update_session = _noop_update  # type: ignore[method-assign]
+    h._create_response = _noop_create  # type: ignore[method-assign]
+    h._emit_gate_trust = _noop_emit  # type: ignore[method-assign]
+
+    async def run():
+        apply_action("DNC_CLOSE", h._fsm, h._ctx, sink=h._sink)
+        await h._emit_gate_trust("DNC_CLOSE", "take me off your list")
+        assert h._fsm.state == "DNC_CLOSE"
+        assert h._ctx.disposition == "do_not_call"
+        assert h._ctx.dnc_recorded is True
+        assert h._qualify_locked is True
+
+        # Same path as live turns (includes resume detection).
+        h.send_message = lambda *_a, **_k: asyncio.sleep(0)  # type: ignore[method-assign]
+        await h.on_user_transcript_done("Proceed with your questions.")
+        assert h._fsm.state == "QUALIFY"
+        assert h._ctx.disposition is None
+        assert h._ctx.dnc_recorded is False
+        assert h._qualify_locked is False
+        assert h._intake_frozen is False
+        assert h._dnc_awaiting_feedback is False
+        assert closes == []
+        assert aborts  # hard-close cancelled on resume
+        assert creates  # agent replies under QUALIFY
+        assert any("resumed" in r.lower() or "rescind" in r.lower() for r in receipts)
+
+    asyncio.run(run())
+
+
 def test_dnc_close_skips_delivery_suffix():
     h = _handler()
     h._fsm.transition("DNC_CLOSE", reason="t")
