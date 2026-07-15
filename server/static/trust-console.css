@@ -494,9 +494,10 @@
 
 .econ {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  gap: 1rem 1.5rem;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
+  gap: 1rem 1.75rem;
   align-items: start;
+  width: 100%;
 }
 
 .econ .big {
@@ -505,6 +506,16 @@
   color: var(--qt-heading, var(--text-primary));
   line-height: 1.1;
   letter-spacing: -0.02em;
+  min-width: 0;
+}
+
+/* Customer view: single live metric uses full row width */
+body.view-cust .econ {
+  grid-template-columns: 1fr;
+}
+
+body.view-cust .econ .big {
+  font-size: 2rem;
 }
 
 .econ .big small {
@@ -515,14 +526,6 @@
   margin-top: 0.35rem;
   font-weight: 600;
   text-transform: uppercase;
-}
-
-.econ .note {
-  font-size: 0.75rem;
-  color: var(--text-muted);
-  line-height: 1.45;
-  max-width: 28ch;
-  align-self: center;
 }
 
 .freeze-note {
