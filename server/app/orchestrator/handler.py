@@ -51,6 +51,8 @@ from app.orchestrator.semantic import semantic_enabled
 from app.orchestrator.silence import (
     REPROMPT_CUES,
     DECLINE_CLOSE_RULES,
+    DNC_CLOSE_RULES,
+    NO_RESPONSE_CLOSE_RULES,
     SILENCE_CHECKIN_RULES,
     SILENCE_WATCH_STATES,
     load_silence_policy,
@@ -823,6 +825,7 @@ class OrchestratorMixin:
         finished ``response.create`` (``speculativeDone=true``) so cancel/StopAudio
         could not prevent two agent turns. Prefer +1–2s wait over two spoken replies.
         """
+        started_in = self._fsm.state
         try:
             action = await self._engine.classify_turn(
                 list(self._call_turns), thread_id=self._ctx.call_id
@@ -834,6 +837,52 @@ class OrchestratorMixin:
             action = None
         if self._ctx.ended:
             return
+
+        # GREETING: semantic CONTINUE / None = consent to proceed into QUALIFY.
+        if started_in == "GREETING" and self._fsm.state == "GREETING":
+            if action == "DECLINE_CLOSE":
+                logger.info("[Orchestrator] router greeting -> DECLINE_CLOSE")
+                apply_action(action, self._fsm, self._ctx, sink=self._sink)
+                execute_tool(
+                    "log_disposition",
+                    {"disposition": "no_tcpa_consent"},
+                    self._ctx,
+                    sink=self._sink,
+                )
+                self._notice_action(action)
+                await self._emit_gate_trust(action, self._last_user_text)
+                await self._update_session()
+                await self._create_response(cancel=True, think_pause=False)
+                self._schedule_hard_close()
+                return
+            if action in (
+                "DNC_CLOSE",
+                "CALLBACK_CLOSE",
+                "ESCALATE",
+                "LANGUAGE_ROUTE",
+            ):
+                logger.info("[Orchestrator] router greeting -> %s", action)
+                apply_action(action, self._fsm, self._ctx, sink=self._sink)
+                self._notice_action(action)
+                await self._emit_gate_trust(action, self._last_user_text)
+                await self._update_session()
+                await self._create_response(
+                    cancel=True,
+                    think_pause=action not in _URGENT_NO_PAUSE,
+                )
+                if self._fsm.state in _TERMINAL_CLOSE_STATES:
+                    self._schedule_hard_close()
+                return
+            # CONTINUE / None / unclear → treat as consent and start qualifying.
+            logger.info(
+                "[Orchestrator] router greeting continue (action=%s) -> QUALIFY",
+                action,
+            )
+            self._fsm.transition("QUALIFY", reason="consent_affirmed_semantic")
+            await self._update_session()
+            await self._create_response(cancel=True)
+            return
+
         if action and self._fsm.state == "QUALIFY":
             logger.info("[Orchestrator] router -> %s (single reply)", action)
             apply_action(action, self._fsm, self._ctx, sink=self._sink)
@@ -1230,6 +1279,8 @@ class OrchestratorMixin:
         self._silence_cue = None
         self._silence_reprompting = False
         self._silence_fired.add("close")
+        # Drop open qualify ask so history bias cannot revive buy/refi questions.
+        self._open_question = None
         # Lock pre-goodbye audio baseline BEFORE response.create so hard-close
         # does not treat the previous check-in as the goodbye — and so a slow
         # TTS start is not aborted by an early no-audio fallback.
@@ -1339,6 +1390,19 @@ class OrchestratorMixin:
 
     # --- session (behavior + tools per stage) ------------------------------
 
+    def _terminal_close_instructions(self) -> str:
+        """Stage skill + hard rules — no mood/reaction-first (those revive Q&A)."""
+        text = compose(self._fsm.state, self._ctx.facts())
+        rules = {
+            "DECLINE_CLOSE": DECLINE_CLOSE_RULES,
+            "NO_RESPONSE_CLOSE": NO_RESPONSE_CLOSE_RULES,
+            "DNC_CLOSE": DNC_CLOSE_RULES,
+        }.get(self._fsm.state)
+        if rules:
+            label = self._fsm.state.replace("_", " ")
+            text = f"{text}\n\n---\nTEMPORARY {label} (this turn only):\n{rules}"
+        return text
+
     def _session_config(self):
         session = super()._session_config()  # keeps transcription + tuning
         if self._silence_cue:
@@ -1346,6 +1410,12 @@ class OrchestratorMixin:
             # No mood/reaction suite (would fight the one-line nudge).
             session.instructions = self._silence_checkin_instructions(self._silence_cue)
             session.tools = []
+        elif self._fsm.state in _TERMINAL_CLOSE_STATES:
+            # Always use the close skill + hard rules — never the custom Settings
+            # prompt or qualify history bias (was still asking buy/refi after silence).
+            session.instructions = self._terminal_close_instructions()
+            session.tools = function_tools(tools_for(self._fsm.state))
+            self._apply_mood_voice(session)
         elif self.system_prompt:
             # UI custom prompt: full wording override. Gates still run in code;
             # skills compose is skipped so the Settings text actually takes effect.
@@ -1362,11 +1432,6 @@ class OrchestratorMixin:
                 if self._fsm.state == "QUALIFY"
                 else compose(self._fsm.state, self._ctx.facts())
             )
-            if self._fsm.state == "DECLINE_CLOSE":
-                text = (
-                    f"{text}\n\n---\nTEMPORARY DECLINE CLOSE (this turn only):\n"
-                    f"{DECLINE_CLOSE_RULES}"
-                )
             if self._fsm.state in _DELIVERY_STATES:
                 text = f"{text}{self._delivery_suffix()}"
             session.instructions = text
@@ -1492,12 +1557,12 @@ class OrchestratorMixin:
                 self._schedule_hard_close()
             return
 
-        # No gate. Greeting disclosure must not auto-advance on a refuse.
+        # No gate. Greeting: semantic router (same plane as QUALIFY). Keyword refuse
+        # stays as a fast TCPA floor; keyword affirm is offline fallback only.
         if self._fsm.state == "GREETING":
             if is_consent_refusal(text):
                 logger.info("[Orchestrator] greeting consent refused — DECLINE_CLOSE")
                 apply_action("DECLINE_CLOSE", self._fsm, self._ctx, sink=self._sink)
-                # Prefer TCPA-accurate disposition for disclosure refusal.
                 execute_tool(
                     "log_disposition",
                     {"disposition": "no_tcpa_consent"},
@@ -1510,12 +1575,16 @@ class OrchestratorMixin:
                 await self._create_response(cancel=True, think_pause=False)
                 self._schedule_hard_close()
                 return
+            if semantic_enabled():
+                logger.info("[Orchestrator] greeting → semantic router")
+                self._spawn_router()
+                return
+            # Semantic off / no endpoint: keyword affirm or stay on INTRO.
             if is_consent_affirm(text):
                 self._fsm.transition("QUALIFY", reason="consent_affirmed")
                 await self._update_session()
                 await self._create_response(cancel=True)
                 return
-            # Ambiguous — stay on INTRO; greeting skill can clarify or close.
             logger.info("[Orchestrator] greeting turn ambiguous — staying in GREETING")
             await self._update_session()
             await self._create_response(cancel=True)
