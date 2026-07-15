@@ -57,6 +57,22 @@ HARD RULES for this DECLINE CLOSE turn:
 - Do NOT offer options that continue the application.
 """.strip()
 
+NO_RESPONSE_CLOSE_RULES = """
+HARD RULES for this NO-RESPONSE CLOSE turn:
+- Speak ONLY one short goodbye (you may have lost them / wrapping up / take care).
+- Do NOT ask if they are still there again.
+- Do NOT ask buy vs refinance, location, timeline, credit, income, or any loan question.
+- Do NOT continue qualifying or offer a callback.
+- Do NOT invent that they answered anything.
+""".strip()
+
+DNC_CLOSE_RULES = """
+HARD RULES for this DNC CLOSE turn:
+- Speak ONLY a brief respectful goodbye. Then stop.
+- Do NOT ask any loan or qualifying questions.
+- Do NOT offer a callback or future contact.
+""".strip()
+
 
 def quiet_elapsed(
     now: float,

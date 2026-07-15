@@ -47,6 +47,27 @@ def test_decline_close_instructions_forbid_qualifying():
     assert "Do NOT ask buy vs refinance" in s.instructions
 
 
+def test_no_response_close_instructions_forbid_qualifying():
+    h = _handler()
+    h._fsm.transition("NO_RESPONSE_CLOSE", reason="t")
+    h._open_question = "So — you looking to buy a home, or refinance?"
+    s = h._session_config()
+    assert "TEMPORARY NO RESPONSE CLOSE" in s.instructions
+    assert "Do NOT ask buy vs refinance" in s.instructions
+    assert "OPEN THREAD" not in s.instructions
+    assert [t.name for t in s.tools] == ["end_call"]
+
+
+def test_terminal_close_ignores_custom_system_prompt():
+    """Custom Settings prompt must not keep qualifying after silence/DNC/decline."""
+    h = _handler()
+    h.system_prompt = "You are Maya. Always ask buy or refinance next."
+    h._fsm.transition("NO_RESPONSE_CLOSE", reason="t")
+    s = h._session_config()
+    assert "Always ask buy or refinance next" not in s.instructions
+    assert "Do NOT ask buy vs refinance" in s.instructions
+
+
 def test_greeting_consent_refusal_goes_decline_not_qualify():
     import asyncio
 

@@ -1,7 +1,10 @@
-"""TCPA consent confirm/refuse detection for the GREETING disclosure turn.
+"""TCPA consent helpers for the GREETING disclosure turn.
 
-Runs in the orchestrator (not skills): a hard refuse to \"Does that work for you?\"
-must not advance into QUALIFY.
+Live routing prefers the semantic router (``semantic.route_conversation``) so
+phrases like \"let's go\" don't need a keyword list. This module remains as:
+
+  * a fast refuse floor for unmistakable disclosure rejection (no LLM wait), and
+  * an offline fallback when ``SEMANTIC_INTENT_ENABLED`` is off / no endpoint.
 """
 
 from __future__ import annotations
@@ -21,21 +24,28 @@ _REFUSAL = [
     r"\bwithout (my )?consent\b",
     r"\bnot (giving|giving you) consent\b",
     r"\bi'?m not (giving|ok|okay|comfortable)\b",
-    r"\bstop\b",
     r"\bno\b.*\b(compliance|consent|record|recording)\b",
     r"\b(compliance|consent|record|recording)\b.*\bno\b",
 ]
 
-# Clear confirm of the disclosure question.
+# Clear confirm of the disclosure question ("Does that work for you?").
 _AFFIRM = [
     r"^\s*(yes|yeah|yep|yup|sure|ok|okay|alright|all right)\b",
     r"\b(yes|yeah|yep)\b.*\b(work|fine|ok|okay|good)\b",
     r"\b(that'|that )?works\b",
     r"\bgo ahead\b",
+    r"\blet'?s go\b",
+    r"\blets go\b",
+    r"\bdive in\b",
     r"\bthat'?s fine\b",
+    r"\bsounds good\b",
+    r"\bof course\b",
+    r"\bi'?m ready\b",
+    r"\bready\b",
     r"\bi (consent|agree)\b",
     r"\bcontinue\b",
     r"\bproceed\b",
+    r"\babsolutely\b",
 ]
 
 

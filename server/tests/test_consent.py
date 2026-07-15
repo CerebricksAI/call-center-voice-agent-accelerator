@@ -15,6 +15,10 @@ def test_affirm_disclosure():
     assert is_consent_affirm("Yeah that works")
     assert is_consent_affirm("Sure, go ahead")
     assert is_consent_affirm("Okay")
+    assert is_consent_affirm("Let's go.")
+    assert is_consent_affirm("Lets go")
+    assert is_consent_affirm("Sounds good")
+    assert is_consent_affirm("I'm ready")
 
 
 def test_ambiguous_not_forced():
