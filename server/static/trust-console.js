@@ -320,9 +320,13 @@
     if (!el) return;
     if (state.intakeFrozen) {
       el.classList.add("show");
-      el.textContent = `🔒 intake frozen the moment the opt out matched · nothing after ${state.freezeAt || "that point"} was stored`;
+      el.innerHTML =
+        `<span class="freeze-ico" aria-hidden="true">🔒</span>` +
+        `<span>Intake frozen the moment the opt out matched · nothing after ` +
+        `<b>${escapeHtml(state.freezeAt || "that point")}</b> was stored</span>`;
     } else {
       el.classList.remove("show");
+      el.textContent = "";
     }
   }
 

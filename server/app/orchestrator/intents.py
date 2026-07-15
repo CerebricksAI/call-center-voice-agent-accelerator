@@ -39,6 +39,11 @@ OPT_OUT_HARD = [
     # T9 creative opt-outs — honor over-broadly (missing one is the legal risk)
     r"\bquit calling\b",
     r"\bcancel (it|this|the call)\b",
+    r"\bdon'?t (want to )?be contacted\b",
+    r"\bdo not (want to )?be contacted\b",
+    r"\b(don'?t|do not) contact me (again|anymore)\b",
+    r"\bnever contact\b",
+    r"\bno (more )?contact\b",
 ]
 
 
