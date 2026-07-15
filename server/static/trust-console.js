@@ -158,7 +158,11 @@
     const body = $("trustReceiptBody");
     if (!body) return;
     const row = document.createElement("div");
-    row.className = "r-line";
+    const isFeedback =
+      line.onceKey === "dnc_feedback" ||
+      /opt-out feedback/i.test(line.text || "") ||
+      /do not call feedback/i.test(line.eventLabel || "");
+    row.className = isFeedback ? "r-line feedback" : "r-line";
     row.style.animationDelay = "0.04s";
     const t = document.createElement("span");
     t.className = "t";
@@ -322,7 +326,7 @@
       el.classList.add("show");
       el.innerHTML =
         `<span class="freeze-ico" aria-hidden="true">🔒</span>` +
-        `<span>Intake frozen the moment the opt out matched · nothing after ` +
+        `<span>Intake frozen after opt-out feedback · nothing after ` +
         `<b>${escapeHtml(state.freezeAt || "that point")}</b> was stored</span>`;
     } else {
       el.classList.remove("show");
@@ -478,32 +482,23 @@
   }
 
   function markFrozenUserBubbles() {
+    // Only tag turns that arrive *after* intake is frozen (post-feedback).
+    // Never rewrite earlier feedback / opt-out bubbles as "not captured".
     if (!state.intakeFrozen) return;
-    const log = $("transcriptLog");
-    if (!log) return;
-    const users = log.querySelectorAll(".transcript-bubble.user:not(.frozen)");
-    // Only mark bubbles that appear after a gatehit.
-    let after = false;
-    for (const child of log.children) {
-      if (child.classList && child.classList.contains("gatehit")) after = true;
-      if (
-        after &&
-        child.classList &&
-        child.classList.contains("user") &&
-        !child.classList.contains("frozen")
-      ) {
-        child.classList.add("frozen");
-        if (!child.querySelector(".lockline")) {
-          const lock = document.createElement("span");
-          lock.className = "lockline";
-          lock.textContent = `⊘ not captured · intake frozen at ${state.freezeAt || "opt out"}`;
-          child.appendChild(lock);
-        }
-        const lab = child.querySelector(".transcript-label");
-        if (lab && !lab.textContent.includes("AFTER")) {
-          lab.textContent = "You · after opt out";
-        }
-      }
+  }
+
+  function applyFreezeToNewUserBubble(bubble) {
+    if (!state.intakeFrozen || !bubble) return;
+    bubble.classList.add("frozen");
+    if (!bubble.querySelector(".lockline")) {
+      const lock = document.createElement("span");
+      lock.className = "lockline";
+      lock.textContent = `⊘ not captured · intake frozen at ${state.freezeAt || "feedback wrap"}`;
+      bubble.appendChild(lock);
+    }
+    const lab = bubble.querySelector(".transcript-label");
+    if (lab && !lab.textContent.includes("AFTER")) {
+      lab.textContent = "You · after intake freeze";
     }
   }
 
@@ -541,6 +536,8 @@
         ok: !!msg.ok,
         recordId: msg.recordId || null,
         highlight: msg.highlight || null,
+        onceKey: msg.onceKey || null,
+        eventLabel: msg.eventLabel || state.receiptEvent || null,
       });
       if (msg.intakeFrozen) state.intakeFrozen = true;
       if (msg.turnsAfterOptOut != null) state.turnsAfterOptOut = msg.turnsAfterOptOut;
@@ -596,7 +593,7 @@
       state.freezeAt = msg.at || new Date().toLocaleTimeString();
       state.opt_out_seen = true;
       renderFreeze();
-      markFrozenUserBubbles();
+      // Do not rewrite earlier transcript bubbles (feedback turns must stay clean).
       return;
     }
 
@@ -812,6 +809,7 @@
     onCallStarted,
     renderEcon,
     syncEngTable,
+    applyFreezeToNewUserBubble,
     state,
   };
 

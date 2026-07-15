@@ -16,6 +16,7 @@ class RingBufferProcessor extends AudioWorkletProcessor {
         // (an interruption is not a natural end of speech).
         this.buffer = new Float32Array(0);
         this.hadData = false;
+        this.emptyFrames = 0;
       }
     };
   }
@@ -26,14 +27,19 @@ class RingBufferProcessor extends AudioWorkletProcessor {
       out.set(this.buffer.subarray(0, out.length));
       this.buffer = this.buffer.subarray(out.length);
       this.hadData = true;
+      this.emptyFrames = 0;
     } else {
       out.fill(0);
       this.buffer = new Float32Array(0);
       if (this.hadData) {
-        // Playback just drained to empty — report the true end of speech so the
-        // server ends the call only after the client finishes playing.
-        this.hadData = false;
-        this.port.postMessage({ drained: true });
+        // Debounce: gaps between PCM chunks must NOT look like "finished".
+        // ~128 samples/quantum @ 48kHz ≈ 2.7ms → 180 frames ≈ 480ms empty.
+        this.emptyFrames = (this.emptyFrames || 0) + 1;
+        if (this.emptyFrames >= 180) {
+          this.hadData = false;
+          this.emptyFrames = 0;
+          this.port.postMessage({ drained: true });
+        }
       }
     }
     return true;

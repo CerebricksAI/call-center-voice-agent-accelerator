@@ -52,6 +52,8 @@ from app.orchestrator.silence import (
     REPROMPT_CUES,
     DECLINE_CLOSE_RULES,
     DNC_CLOSE_RULES,
+    DNC_FEEDBACK_ASK_RULES,
+    DNC_FEEDBACK_FOLLOWUP_RULES,
     NO_RESPONSE_CLOSE_RULES,
     SILENCE_CHECKIN_RULES,
     SILENCE_WATCH_STATES,
@@ -123,7 +125,27 @@ _TOOL_STATE_CHANGE: dict[str, str] = {
 # schedule the hard-close on entry rather than depending on the model to call
 # end_call (which gpt-4o-mini does unreliably). CALLBACK_CLOSE is intentionally
 # excluded: it is a multi-turn flow (gather time -> schedule_callback -> end_call).
-_TERMINAL_CLOSE_STATES = {"DECLINE_CLOSE", "DNC_CLOSE", "NO_RESPONSE_CLOSE"}
+# Single-turn goodbyes that hang up after speech. DNC is multi-turn (feedback ask
+# first); hard-close only after feedback or a wrap without it.
+_TERMINAL_CLOSE_STATES = {"DECLINE_CLOSE", "NO_RESPONSE_CLOSE"}
+_DNC_FEEDBACK_SKIP = frozenset(
+    {
+        "no",
+        "nope",
+        "nothing",
+        "n/a",
+        "na",
+        "none",
+        "just remove me",
+        "just stop calling",
+        "that's all",
+        "thats all",
+        "goodbye",
+        "bye",
+        "no thanks",
+        "no thank you",
+    }
+)
 
 # Mood + reaction-first cues apply on conversational stages (not hard closes).
 _DELIVERY_STATES = frozenset(
@@ -135,11 +157,11 @@ _URGENT_NO_PAUSE = frozenset({"DNC_CLOSE"})
 
 # Dispositions that mean the call has reached its outcome. Recording one of these
 # ends the call in code even if the model never calls end_call — the hard-close
-# still waits for the goodbye to finish first. ``callback_requested`` is NOT here:
-# CALLBACK_CLOSE is multi-turn (gather time → schedule → confirm → completed).
+# still waits for the goodbye to finish first. ``callback_requested`` and
+# ``do_not_call`` are NOT here: CALLBACK gathers a time; DNC asks brief feedback
+# before wrapping (list is already written on the opt-out gate).
 _END_DISPOSITIONS = {
     "completed",
-    "do_not_call",
     "declined",
     "no_response",
     "no_tcpa_consent",
@@ -175,12 +197,27 @@ class OrchestratorMixin:
         self._open_question: str | None = None
         self._silence_awaiting_transcript = False
         self._silence_ignore_speech_until = 0.0
+        self._silence_closing = False
+        self._silence_close_token = 0
+        self._silence_settle_active = False
+        # Quiet clock armed only after client PlaybackFinished (not generate-done).
+        self._silence_pending_arm = False
+        self._silence_pending_peak = 0.0
+        self._silence_pending_clear_fired = True
+        # True while Voice Live reports caller speech (start → stop).
+        self._caller_speech_active = False
+        self._silence_phantom_task: asyncio.Task | None = None
         self._mood: Mood = "neutral"
         self._last_user_text: str = ""
         # Trust-console feeds (UI-only): never gate speech / compliance on these.
         self._intake_frozen: bool = False
+        # Lock qualify field capture at DNC gate; UI freeze banner waits until
+        # feedback (+ optional follow-up) finishes.
+        self._qualify_locked: bool = False
         self._opt_out_at: float | None = None
         self._turns_after_opt_out: int = 0
+        self._dnc_awaiting_feedback: bool = False
+        self._dnc_awaiting_followup: bool = False
         self._last_interrupt_ms: int | None = None
         self._trust_t0: float = time.perf_counter()
         # Dedupe receipt keys so gate + tool paths don't reprint the same line.
@@ -314,6 +351,7 @@ class OrchestratorMixin:
             ok=ok,
             recordId=record_id,
             highlight=highlight,
+            onceKey=once_key,
             eventLabel=self._receipt_event_label,
             intakeFrozen=self._intake_frozen,
             turnsAfterOptOut=self._turns_after_opt_out,
@@ -359,7 +397,10 @@ class OrchestratorMixin:
         if action == "DNC_CLOSE":
             self._opt_out_at = time.perf_counter()
             self._turns_after_opt_out = 0
-            self._intake_frozen = True
+            # Lock further qualify fields; do NOT freeze the UI banner yet —
+            # wait until feedback (and optional follow-up) is done.
+            self._qualify_locked = True
+            self._intake_frozen = False
             hit = phrase or quote
             self._trust_receipt_line(
                 f'opt out matched "{hit}"',
@@ -389,12 +430,14 @@ class OrchestratorMixin:
                 f"disposition set: {disp}", ok=True, once_key=f"disp:{disp}"
             )
             self._trust_receipt_line(
-                "intake frozen · later speech not stored",
+                "waiting on opt-out feedback · intake not frozen yet",
                 ok=True,
-                once_key="intake_frozen",
+                once_key="intake_waiting_feedback",
             )
             self._trust_promise("we won't call again", rid)
-            self._trust("freeze", frozen=True, at=time.strftime("%H:%M:%S"))
+            self._dnc_awaiting_feedback = True
+            self._dnc_awaiting_followup = False
+            self._mood = "hesitant"
 
         elif action == "CALLBACK_CLOSE":
             self._trust_receipt_line(
@@ -534,8 +577,9 @@ class OrchestratorMixin:
         schedule_callback in code once a callback time is captured during the callback
         close (idempotent via ctx.callback_scheduled).
         """
-        # After hard opt-out, stop writing new borrower fields (UI freeze + paper trail).
-        if self._intake_frozen:
+        # After hard opt-out, stop writing new borrower fields (except the
+        # orchestrator-owned dnc_feedback write). UI freeze banner is separate.
+        if self._qualify_locked or self._intake_frozen:
             return
         emitted = getattr(self, "_emitted_insights", None) or {}
         for key, row in emitted.items():
@@ -931,7 +975,8 @@ class OrchestratorMixin:
 
         await self._create_response()
 
-    # --- silence policy (T11): 8s / 16s quiet check-ins → no_response ~25s -----
+    # --- silence policy (T11): 5s / 8s check-ins → no_response after +10s -----
+    # Armed on INTRO, QUALIFY, CALLBACK, and DNC (until wrap). Not on terminal closes.
     # After EVERY agent utterance ends: start a fresh quiet countdown.
     # Agent starts speaking → cancel wait. Never count silence while she talks.
 
@@ -952,6 +997,7 @@ class OrchestratorMixin:
             task.cancel()
         self._silence_task = None
         self._silence_arm_token += 1
+        self._cancel_phantom_rearm()
         if self._silence_reprompting:
             self._silence_ignore_dones += 1
         self._silence_reprompting = False
@@ -963,10 +1009,23 @@ class OrchestratorMixin:
             self._silence_cue = None
             self._ctx.silence_count = 0
 
+    def _abort_silence_close(self) -> None:
+        """Cancel an in-flight no-response/DNC silence wrap so caller speech wins."""
+        if self._silence_closing:
+            self._silence_close_token += 1
+            self._silence_closing = False
+            logger.info("[Orchestrator] silence close aborted — caller speaking")
+        self._silence_fired.discard("close")
+
+    def _silence_close_committed(self, token: int) -> bool:
+        return token == self._silence_close_token and not self._ctx.ended
+
     def _silence_close_pending(self) -> bool:
         """Both check-ins fired — next silence step is mandatory NO_RESPONSE close."""
         if self._ctx.ended or self._fsm.state not in SILENCE_WATCH_STATES:
             return False
+        if self._silence_closing:
+            return True
         return (
             "reprompt:0" in self._silence_fired
             and "reprompt:1" in self._silence_fired
@@ -1051,6 +1110,7 @@ class OrchestratorMixin:
             task.cancel()
         self._silence_task = None
         self._silence_arm_token += 1
+        self._silence_anchor = None  # stop any late loop from treating window as live
         if self._silence_reprompting:
             self._silence_ignore_dones += 1
         self._silence_reprompting = False
@@ -1067,24 +1127,49 @@ class OrchestratorMixin:
         self._silence_paused_at = None
         self._silence_paused_total = 0.0
 
-    # Ignore mic VAD blips right after Maya finishes (speaker → mic echo).
-    _SILENCE_POST_SPEECH_GRACE_S = 0.85
-    # speech_started with no transcript → re-arm the quiet countdown.
-    _SILENCE_PHANTOM_TRANSCRIPT_S = 2.0
+    # Echo blips right after Maya finishes used to be ignored for silence — that
+    # also ignored real quick answers and let check-ins fire mid-utterance.
+    # Phantom re-arm waits for speech_stopped + transcript lag, not speech_started.
+    _SILENCE_PHANTOM_TRANSCRIPT_S = 5.0
+
+    def _cancel_phantom_rearm(self) -> None:
+        task = self._silence_phantom_task
+        current = asyncio.current_task()
+        if task is not None and not task.done() and task is not current:
+            task.cancel()
+        self._silence_phantom_task = None
+
+    def _schedule_phantom_rearm(self) -> None:
+        """If no transcript arrives after speech_stopped, resume the quiet ladder."""
+        self._cancel_phantom_rearm()
+        token = self._silence_arm_token
+        task = asyncio.create_task(self._rearm_silence_if_phantom(token))
+        self._silence_phantom_task = task
+        bag = self.__dict__.setdefault("_notice_tasks", set())
+        bag.add(task)
+        task.add_done_callback(bag.discard)
 
     def _arm_silence_watch(self, *, clear_fired: bool = True) -> None:
         """Start a fresh quiet countdown after the agent finished speaking."""
         if self._ctx.ended or self._fsm.state not in SILENCE_WATCH_STATES:
             self._cancel_silence_watch()
             return
+        # Never start a quiet clock while the caller is mid-utterance or we are
+        # still waiting on ASR for a turn we already heard.
+        if self._caller_speech_active or self._silence_awaiting_transcript:
+            logger.info(
+                "[Orchestrator] silence arm deferred "
+                "(speech_active=%s awaiting_transcript=%s)",
+                self._caller_speech_active,
+                self._silence_awaiting_transcript,
+            )
+            return
         self._silence_anchor = time.monotonic()
         self._silence_paused_at = None
         self._silence_paused_total = 0.0
         self._silence_cue = None
         self._silence_awaiting_transcript = False
-        self._silence_ignore_speech_until = (
-            time.perf_counter() + self._SILENCE_POST_SPEECH_GRACE_S
-        )
+        self._silence_ignore_speech_until = 0.0
         if clear_fired:
             self._silence_fired = set()
             self._ctx.silence_count = 0
@@ -1110,7 +1195,7 @@ class OrchestratorMixin:
         self._silence_task = asyncio.create_task(self._silence_watch_loop())
 
     async def _rearm_silence_if_phantom(self, token: int) -> None:
-        """Resume quiet countdown when speech_started was not a real caller turn."""
+        """Resume quiet countdown when speech_stopped never produced a transcript."""
         try:
             await asyncio.sleep(self._SILENCE_PHANTOM_TRANSCRIPT_S)
         except asyncio.CancelledError:
@@ -1119,11 +1204,13 @@ class OrchestratorMixin:
             return
         if not self._silence_awaiting_transcript:
             return
+        if self._caller_speech_active:
+            return
         self._silence_awaiting_transcript = False
         if self._ctx.ended or self._fsm.state not in SILENCE_WATCH_STATES:
             return
         logger.info(
-            "[Orchestrator] silence re-armed after speech_started with no transcript"
+            "[Orchestrator] silence re-armed after speech_stopped with no transcript"
         )
         self._arm_silence_watch(clear_fired=False)
 
@@ -1154,7 +1241,8 @@ class OrchestratorMixin:
                 self._ctx.silence_count = index + 1
                 await self._silence_reprompt(index)
                 return
-            self._silence_fired.add("close")
+            # Do NOT mark "close" fired until _silence_close commits — otherwise
+            # a late caller utterance cannot cancel the wrap.
             await self._silence_close()
         except asyncio.CancelledError:
             raise
@@ -1276,6 +1364,67 @@ class OrchestratorMixin:
     async def _silence_close(self) -> None:
         if self._ctx.ended or self._fsm.state not in SILENCE_WATCH_STATES:
             return
+        # Caller already speaking / transcript pending — never wrap over them.
+        if self._silence_awaiting_transcript:
+            logger.info("[Orchestrator] silence close skipped — caller speech pending")
+            return
+
+        token = self._silence_close_token
+        self._silence_closing = True
+
+        def _aborted() -> bool:
+            return (
+                token != self._silence_close_token
+                or self._silence_awaiting_transcript
+                or self._ctx.ended
+            )
+
+        # Already on DNC — wrap without overwriting do_not_call.
+        if self._fsm.state == "DNC_CLOSE":
+            if _aborted():
+                self._silence_closing = False
+                return
+            quiet = self._silence_quiet_elapsed()
+            checks = int(self._ctx.silence_count)
+            logger.info(
+                "[Orchestrator] silence -> DNC wrap without feedback (quiet=%.1fs)",
+                quiet,
+            )
+            if self._dnc_awaiting_feedback:
+                self._record_dnc_feedback_skip(reason="silence")
+            elif self._dnc_awaiting_followup:
+                self._finalize_dnc_intake_freeze(reason="silence during follow-up")
+            else:
+                self._finalize_dnc_intake_freeze(reason="silence")
+            self._trust_receipt_line(
+                f"silence timeout · {quiet:.0f}s quiet after {checks} check-in(s)",
+                event_label=receipt_event_label("DNC_CLOSE"),
+            )
+            self._trust("silence", status="close", checkinsDone=checks)
+            self._silence_task = None
+            self._silence_anchor = None
+            self._silence_paused_at = None
+            self._silence_paused_total = 0.0
+            self._silence_cue = None
+            self._silence_reprompting = False
+            self._silence_fired.add("close")
+            self._open_question = None
+            self._close_wait_since_audio = getattr(self, "_last_audio_delta_at", 0.0)
+            self._hard_close_baseline_locked = True
+            await self._update_session()
+            if _aborted():
+                self._silence_closing = False
+                self._silence_fired.discard("close")
+                return
+            await self._create_response(cancel=True, think_pause=False)
+            self._silence_closing = False
+            self._schedule_hard_close()
+            return
+
+        if _aborted():
+            self._silence_closing = False
+            return
+
         logger.info(
             "[Orchestrator] silence -> NO_RESPONSE_CLOSE (quiet=%.1fs)",
             self._silence_quiet_elapsed(),
@@ -1303,6 +1452,9 @@ class OrchestratorMixin:
             ok=True,
             once_key=f"disp:{disp}",
         )
+        if _aborted():
+            self._silence_closing = False
+            return
         self._fsm.transition("NO_RESPONSE_CLOSE", reason="silence_timeout")
         self._trust("silence", status="close", checkinsDone=checks)
         self._silence_task = None
@@ -1312,15 +1464,12 @@ class OrchestratorMixin:
         self._silence_cue = None
         self._silence_reprompting = False
         self._silence_fired.add("close")
-        # Drop open qualify ask so history bias cannot revive buy/refi questions.
         self._open_question = None
-        # Lock pre-goodbye audio baseline BEFORE response.create so hard-close
-        # does not treat the previous check-in as the goodbye — and so a slow
-        # TTS start is not aborted by an early no-audio fallback.
         self._close_wait_since_audio = getattr(self, "_last_audio_delta_at", 0.0)
         self._hard_close_baseline_locked = True
         await self._update_session()
         await self._create_response(cancel=True, think_pause=False)
+        self._silence_closing = False
         self._schedule_hard_close()
         self._debug_silence_log(
             "silence_close_create_scheduled",
@@ -1335,28 +1484,28 @@ class OrchestratorMixin:
     async def on_speech_started(self):
         # Caller spoke: abort any in-flight silence check-in so it cannot finish
         # after "Yes" and stack a second reply / invent answers.
+        self._caller_speech_active = True
+        self._cancel_phantom_rearm()
         aborting = self._silence_reprompting or self._silence_cue is not None
-        if self._silence_close_pending():
-            # Both check-ins done — do not wipe progress on a noise blip; wait for
-            # a real finalized transcript (or re-arm close if junk).
+        if self._silence_closing or self._silence_close_pending():
+            # Abort wrap so a real turn (decline / DNC / answer) wins over silence.
+            self._abort_silence_close()
             self._pause_silence_timer_only()
             self._silence_awaiting_transcript = True
+            self._silence_pending_arm = False
             if aborting:
                 logger.info("[Orchestrator] silence check-in aborted by caller speech")
             await super().on_speech_started()
             return
 
-        # Echo after Maya finishes often trips VAD. Ignoring that for a short grace
-        # keeps the quiet countdown alive (otherwise silence never fires).
-        if (
-            not aborting
-            and time.perf_counter() < float(getattr(self, "_silence_ignore_speech_until", 0.0) or 0.0)
-        ):
-            await super().on_speech_started()
-            return
+        # Real caller speech: kill any "wait for playback then arm" settle loop —
+        # otherwise silence arms while they are mid-sentence after a long intro.
+        self._silence_arm_token += 1
 
         if aborting:
             self._cancel_silence_watch()
+            self._silence_pending_arm = False
+            self._silence_awaiting_transcript = True
             logger.info("[Orchestrator] silence check-in aborted by caller speech")
             await super().on_speech_started()
             return
@@ -1364,39 +1513,115 @@ class OrchestratorMixin:
         watch_active = (
             self._silence_anchor is not None
             or (self._silence_task is not None and not self._silence_task.done())
+            or self._silence_pending_arm
         )
         if watch_active:
-            # Pause only — re-arm if no finalized transcript arrives (phantom VAD).
+            # Stop the quiet countdown for the whole utterance. Phantom re-arm
+            # waits until speech_stopped (+ ASR lag) — never from speech_started
+            # alone (2s used to re-arm mid-sentence and fire check-in 2).
             self._pause_silence_timer_only()
+            self._silence_pending_arm = False
             self._silence_awaiting_transcript = True
-            token = self._silence_arm_token
-            task = asyncio.create_task(self._rearm_silence_if_phantom(token))
-            bag = self.__dict__.setdefault("_notice_tasks", set())
-            bag.add(task)
-            task.add_done_callback(bag.discard)
             await super().on_speech_started()
             return
 
         await super().on_speech_started()
 
-    async def _arm_silence_after_settle(self, *, clear_fired: bool, token: int) -> None:
-        """Arm only after Maya's audio has settled — not while she is still talking."""
-        settled = getattr(self, "_AUDIO_SETTLED_S", 0.4)
-        deadline = time.monotonic() + 5.0
-        while time.monotonic() < deadline:
-            if token != self._silence_arm_token:
-                return  # aborted (caller spoke / new turn)
-            if self._ctx.ended or self._fsm.state not in SILENCE_WATCH_STATES:
-                return
-            last = getattr(self, "_last_audio_delta_at", 0.0)
-            if last <= 0.0 or (time.perf_counter() - last) >= settled:
-                break
-            await asyncio.sleep(0.1)
-        if token != self._silence_arm_token:
+    async def on_speech_stopped(self):
+        """Caller finished this utterance — only NOW may a phantom silence re-arm."""
+        self._caller_speech_active = False
+        if self._ctx.ended:
             return
+        if not self._silence_awaiting_transcript:
+            return
+        # Transcript often lags speech_stopped by 0.5–3s; wait before treating
+        # this as a false VAD blip.
+        self._schedule_phantom_rearm()
+
+    async def on_audio_delta(self, audio_bytes: bytes):
+        """Agent TTS chunk — silence must never count while she is still speaking."""
+        await super().on_audio_delta(audio_bytes)
         if self._ctx.ended or self._fsm.state not in SILENCE_WATCH_STATES:
             return
-        self._arm_silence_watch(clear_fired=clear_fired)
+        last = float(getattr(self, "_last_audio_delta_at", 0.0) or 0.0)
+        # Still generating/streaming audio for a pending post-playback arm.
+        if self._silence_pending_arm and last > self._silence_pending_peak:
+            self._silence_pending_peak = last
+        watching = (
+            self._silence_anchor is not None
+            or (self._silence_task is not None and not self._silence_task.done())
+        )
+        if watching:
+            # Agent spoke during the quiet window — cancel the timer. The next
+            # PlaybackFinished (after this speech) restarts the ladder from 5s.
+            logger.info(
+                "[Orchestrator] agent audio during quiet — cancel silence, wait playback"
+            )
+            self._cancel_silence_watch(reset=True)
+            self._silence_pending_arm = True
+            self._silence_pending_peak = last
+            self._silence_pending_clear_fired = True
+            await self._ask_client_playback_end()
+
+    async def _ask_client_playback_end(self) -> None:
+        """Ask the browser to report when buffered agent audio has finished playing."""
+        try:
+            await self.send_message(json.dumps({"Kind": "AwaitPlaybackEnd"}))
+        except Exception:
+            logger.debug(
+                "[Orchestrator] AwaitPlaybackEnd send skipped", exc_info=True
+            )
+
+    async def on_playback_finished(self) -> None:
+        """Client finished PLAYING agent audio — only then may the 5s quiet clock start."""
+        await self._try_arm_silence_after_client_playback()
+
+    async def _try_arm_silence_after_client_playback(self) -> None:
+        if not self._silence_pending_arm:
+            return
+        if self._ctx.ended or self._fsm.state not in SILENCE_WATCH_STATES:
+            self._silence_pending_arm = False
+            return
+        # Caller mid-turn — keep pending until after their transcript / next reply.
+        if self._caller_speech_active or self._silence_awaiting_transcript:
+            logger.info(
+                "[Orchestrator] silence pending held — caller speaking or awaiting ASR"
+            )
+            return
+        peak = float(self._silence_pending_peak or 0.0)
+        last = float(getattr(self, "_last_audio_delta_at", 0.0) or 0.0)
+        drain = float(getattr(self, "_last_drain_at", 0.0) or 0.0)
+        # More TTS arrived after generate-done / prior drain — wait for the next
+        # PlaybackFinished once that audio has played.
+        if last > peak + 0.02:
+            self._silence_pending_peak = last
+            logger.info(
+                "[Orchestrator] silence pending — TTS still after prior peak; "
+                "wait for next PlaybackFinished (not generate-done)"
+            )
+            await self._ask_client_playback_end()
+            return
+        if peak > 0 and drain < peak:
+            return
+        # Brief settle so a flicker-empty buffer doesn't arm mid-utterance.
+        peak_snap = peak
+        await asyncio.sleep(0.3)
+        if not self._silence_pending_arm:
+            return
+        if self._caller_speech_active or self._silence_awaiting_transcript:
+            return
+        last2 = float(getattr(self, "_last_audio_delta_at", 0.0) or 0.0)
+        if last2 > peak_snap + 0.02:
+            self._silence_pending_peak = last2
+            await self._ask_client_playback_end()
+            return
+        clear = bool(self._silence_pending_clear_fired)
+        self._silence_pending_arm = False
+        logger.info(
+            "[Orchestrator] silence arm AFTER client playback finished "
+            "(mark: never on generate-done)"
+        )
+        self._arm_silence_watch(clear_fired=clear)
 
     async def on_response_done(self, response) -> None:
         await super().on_response_done(response)
@@ -1406,35 +1631,125 @@ class OrchestratorMixin:
             self._silence_ignore_dones -= 1
             logger.info("[Orchestrator] ignoring aborted silence response.done")
             return
+        # GENERATE-DONE is NOT enough — do not start the 5s clock here.
+        # Wait for the browser to finish *playing* the audio (PlaybackFinished).
+        clear_fired = True
         if self._silence_reprompting:
-            # Check-in finished — fresh full gap until the NEXT step (keep fired stage).
             self._silence_reprompting = False
             self._silence_cue = None
-            token = self._silence_arm_token
-            asyncio.create_task(
-                self._arm_silence_after_settle(clear_fired=False, token=token)
-            )
-            return
-        # Normal qualify turn finished — brand-new silence episode.
-        token = self._silence_arm_token
-        asyncio.create_task(
-            self._arm_silence_after_settle(clear_fired=True, token=token)
+            clear_fired = False  # keep ladder progress after check-in speech
+        self._silence_arm_token += 1  # cancel any legacy settle loops
+        self._silence_pending_arm = True
+        self._silence_pending_peak = float(
+            getattr(self, "_last_audio_delta_at", 0.0) or 0.0
         )
+        self._silence_pending_clear_fired = clear_fired
+        self._silence_settle_active = False
+        logger.info(
+            "[Orchestrator] generate-done — pending silence until PlaybackFinished "
+            "(peak=%.3f clear_fired=%s)",
+            self._silence_pending_peak,
+            clear_fired,
+        )
+        await self._ask_client_playback_end()
+        # If the client already drained (short utterance), try arming immediately.
+        await self._try_arm_silence_after_client_playback()
 
     # --- session (behavior + tools per stage) ------------------------------
 
     def _terminal_close_instructions(self) -> str:
         """Stage skill + hard rules — no mood/reaction-first (those revive Q&A)."""
         text = compose(self._fsm.state, self._ctx.facts())
+        if self._fsm.state == "DNC_CLOSE":
+            if self._dnc_awaiting_feedback:
+                rules = DNC_FEEDBACK_ASK_RULES
+            elif self._dnc_awaiting_followup:
+                rules = DNC_FEEDBACK_FOLLOWUP_RULES
+            else:
+                rules = DNC_CLOSE_RULES
+            text = (
+                f"{text}\n\n---\nTEMPORARY DNC CLOSE (this turn only):\n{rules}"
+            )
+            return text
         rules = {
             "DECLINE_CLOSE": DECLINE_CLOSE_RULES,
             "NO_RESPONSE_CLOSE": NO_RESPONSE_CLOSE_RULES,
-            "DNC_CLOSE": DNC_CLOSE_RULES,
         }.get(self._fsm.state)
         if rules:
             label = self._fsm.state.replace("_", " ")
             text = f"{text}\n\n---\nTEMPORARY {label} (this turn only):\n{rules}"
         return text
+
+    def _finalize_dnc_intake_freeze(self, *, reason: str) -> None:
+        """Freeze intake UI only after feedback phase ends (not at the opt-out gate)."""
+        self._intake_frozen = True
+        self._dnc_awaiting_feedback = False
+        self._dnc_awaiting_followup = False
+        freeze_at = time.strftime("%H:%M:%S")
+        self._trust("freeze", frozen=True, at=freeze_at)
+        self._trust_receipt_line(
+            f"intake frozen after opt-out feedback · {reason}",
+            ok=True,
+            once_key="intake_frozen_done",
+        )
+
+    def _record_dnc_feedback(self, text: str) -> str:
+        """Store opt-out feedback. Returns 'followup' | 'close' for the next beat."""
+        raw = " ".join((text or "").split()).strip()
+        lowered = raw.lower().rstrip(".!?")
+        skipped = (not raw) or lowered in _DNC_FEEDBACK_SKIP
+        if skipped:
+            self._record_dnc_feedback_skip(reason="declined")
+            return "close"
+        quote = caller_quote(raw, max_len=96)
+        execute_tool(
+            "capture_borrower_field",
+            {"field": "dnc_feedback", "value": raw, "confidence": 1.0},
+            self._ctx,
+            sink=self._sink,
+        )
+        self._trust_receipt_line(
+            f'opt-out feedback · "{quote}"',
+            ok=True,
+            highlight=quote,
+            once_key="dnc_feedback",
+            event_label="do not call feedback",
+        )
+        # Stay open for one soft follow-up — freeze only after that (or skip).
+        self._dnc_awaiting_feedback = False
+        self._dnc_awaiting_followup = True
+        self._mood = "hesitant"
+        return "followup"
+
+    def _record_dnc_followup(self, text: str) -> None:
+        """Optional clarifying note after the main feedback; then freeze intake."""
+        raw = " ".join((text or "").strip().split())
+        lowered = raw.lower().rstrip(".!?")
+        if raw and lowered not in _DNC_FEEDBACK_SKIP:
+            quote = caller_quote(raw, max_len=96)
+            execute_tool(
+                "capture_borrower_field",
+                {"field": "dnc_feedback_followup", "value": raw, "confidence": 1.0},
+                self._ctx,
+                sink=self._sink,
+            )
+            self._trust_receipt_line(
+                f'opt-out feedback follow-up · "{quote}"',
+                ok=True,
+                highlight=quote,
+                once_key="dnc_feedback_followup",
+                event_label="do not call feedback",
+            )
+        self._finalize_dnc_intake_freeze(reason="feedback follow-up complete")
+
+    def _record_dnc_feedback_skip(self, *, reason: str = "declined") -> None:
+        self._trust_receipt_line(
+            f"opt-out feedback skipped · {reason}",
+            ok=True,
+            once_key="dnc_feedback",
+            event_label="do not call feedback",
+        )
+        self._finalize_dnc_intake_freeze(reason=f"feedback skipped ({reason})")
 
     def _session_config(self):
         session = super()._session_config()  # keeps transcription + tuning
@@ -1443,9 +1758,11 @@ class OrchestratorMixin:
             # No mood/reaction suite (would fight the one-line nudge).
             session.instructions = self._silence_checkin_instructions(self._silence_cue)
             session.tools = []
-        elif self._fsm.state in _TERMINAL_CLOSE_STATES:
+        elif self._fsm.state in _TERMINAL_CLOSE_STATES or self._fsm.state == "DNC_CLOSE":
             # Always use the close skill + hard rules — never the custom Settings
             # prompt or qualify history bias (was still asking buy/refi after silence).
+            if self._fsm.state == "DNC_CLOSE":
+                self._mood = "hesitant"
             session.instructions = self._terminal_close_instructions()
             session.tools = function_tools(tools_for(self._fsm.state))
             self._apply_mood_voice(session)
@@ -1538,6 +1855,8 @@ class OrchestratorMixin:
         if not text or self._ctx.ended:
             if self._silence_awaiting_transcript and self._silence_close_pending():
                 self._silence_awaiting_transcript = False
+                self._caller_speech_active = False
+                self._cancel_phantom_rearm()
                 self._arm_silence_watch(clear_fired=False)
             return
 
@@ -1545,6 +1864,8 @@ class OrchestratorMixin:
             text
         ):
             self._silence_awaiting_transcript = False
+            self._caller_speech_active = False
+            self._cancel_phantom_rearm()
             self._debug_silence_log(
                 "silence_tail_junk_ignored",
                 {"textHead": text[:48], "fired": sorted(self._silence_fired)},
@@ -1557,6 +1878,10 @@ class OrchestratorMixin:
             return
 
         self._silence_awaiting_transcript = False
+        self._caller_speech_active = False
+        self._cancel_phantom_rearm()
+        # Prior PlaybackFinished must not arm a quiet clock during this reply.
+        self._silence_pending_arm = False
 
         # Mood from this turn — drives delivery cues + voice style/rate on session.update.
         self._last_user_text = text
@@ -1586,10 +1911,29 @@ class OrchestratorMixin:
                 cancel=True,
                 think_pause=decision.action not in _URGENT_NO_PAUSE,
             )
-            # For a single-turn goodbye, end the call after the goodbye plays even if
-            # the model never calls end_call (disposition is already recorded).
+            # Single-turn goodbyes hang up after speech. DNC stays open for feedback.
             if self._fsm.state in _TERMINAL_CLOSE_STATES:
                 self._schedule_hard_close()
+            return
+
+        # DNC multi-turn: feedback ask → optional soft follow-up → then freeze + close.
+        if self._fsm.state == "DNC_CLOSE" and self._dnc_awaiting_feedback:
+            logger.info("[Orchestrator] DNC feedback turn")
+            next_beat = self._record_dnc_feedback(text)
+            self._mood = "hesitant"
+            await self._update_session()
+            await self._create_response(cancel=True, think_pause=False)
+            if next_beat == "close":
+                self._schedule_hard_close()
+            return
+
+        if self._fsm.state == "DNC_CLOSE" and self._dnc_awaiting_followup:
+            logger.info("[Orchestrator] DNC feedback follow-up turn")
+            self._record_dnc_followup(text)
+            self._mood = "hesitant"
+            await self._update_session()
+            await self._create_response(cancel=True, think_pause=False)
+            self._schedule_hard_close()
             return
 
         # No gate. Greeting: semantic router (same plane as QUALIFY). Keyword refuse

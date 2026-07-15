@@ -33,14 +33,15 @@ def semantic_enabled() -> bool:
 _ROUTER_SYSTEM = """You route a mortgage pre-qualification phone call. Read the whole conversation, but decide based on what the CALLER'S LATEST turn means IN CONTEXT. Reply with EXACTLY one label. The default is CONTINUE — only pick another label when the caller's intent is UNMISTAKABLE.
 
 - CONTINUE — the caller is engaging with the call: answering, asking, hesitating, chit-chatting, OR wanting to keep going ("let's resume", "let's continue", "let's go", "go on", "okay", "sure", "proceed", "start", "I'm ready", "sounds good"). If in any doubt, choose this.
-- OPT_OUT — the caller explicitly wants to NEVER be contacted again / be removed from the list / stop all future contact ("take me off your list", "don't ever call me", "remove me").
-- DECLINE — the caller clearly does NOT want to continue this application at all ("I'm not interested", "I don't want to do this", "stop the application", "I'm done"). Also use DECLINE when they refuse the recording/contact disclosure ("doesn't work for me", "I don't agree with the compliance", "I do not consent") without also demanding a permanent do-not-call.
+- OPT_OUT — the caller explicitly wants to NEVER be contacted again / be removed from the list / stop all future contact ("take me off your list", "don't ever call me", "remove me", "I would not like to proceed with this call again", "don't call me again"). Prefer OPT_OUT over DECLINE whenever they say "again", "anymore", "never contact", or refuse future contact — not only this one application.
+- DECLINE — the caller clearly does NOT want to continue this application at all ("I'm not interested", "I don't want to do this", "stop the application", "I'm done") WITHOUT refusing future contact. Also use DECLINE when they refuse the recording/contact disclosure ("doesn't work for me", "I don't agree with the compliance", "I do not consent") without also demanding a permanent do-not-call.
 - CALLBACK — the caller explicitly wants to be contacted LATER or do this ANOTHER time ("call me back", "can we do this tomorrow", "not now, later", "I'm busy, another time"). NOT for "let's resume/continue now".
 - ESCALATE — the caller EXPLICITLY asks for a human / real loan officer right now, demands a specific rate/quote/program now, or is hostile/abusive. Frustration, confusion, "I'm stuck", "not sure", hesitation, or asking Maya for suggestions is CONTINUE — she keeps helping on the call. Never ESCALATE on emotion or hardship alone.
 - LANGUAGE — the caller would rather continue in another language.
 
 Rules:
 - After the agent asked "Does that work for you?" about recording/consent: any clear agreement or eagerness to proceed is CONTINUE. A clear refuse of that disclosure is DECLINE (unless they also demand never-call-again → OPT_OUT).
+- "I don't want to proceed / continue this call again", "not this call again", or any "don't contact me again" is OPT_OUT — ask will follow for feedback; do not treat as plain DECLINE.
 - "Resume", "continue", "go on", "keep going", "proceed", "start", "let's go" all mean CONTINUE — never CALLBACK.
 - Changing an earlier answer or SWITCHING loan type (purchase <-> refinance <-> cash-out <-> home equity) is CONTINUE — the caller is still engaged, just changing a detail. Never DECLINE.
 - Changing a TIMELINE or any single detail — "not this week", "not now", "actually next month", "sooner", "later this year", "make it Friday" — is CONTINUE. Adjusting WHEN or WHAT is not declining.

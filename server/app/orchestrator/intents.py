@@ -44,6 +44,11 @@ OPT_OUT_HARD = [
     r"\b(don'?t|do not) contact me (again|anymore)\b",
     r"\bnever contact\b",
     r"\bno (more )?contact\b",
+    # Soft "don't contact me again" / "not this call again" — DNC, not mere decline
+    r"\b(this )?call again\b",
+    r"\bproceed .{0,40}\bagain\b",
+    r"\b(would not|wouldn'?t|don'?t|do not) (like to )?proceed .{0,40}again\b",
+    r"\bnot (want to )?do this (call )?again\b",
 ]
 
 
