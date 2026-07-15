@@ -572,8 +572,6 @@ async def api_scorecard():
     """GET live orchestrator text-eval scorecard (same suite as ``evals/run_text.py``)."""
     import time
 
-    from evals.run_text import run_scorecard
-
     engine = (request.args.get("engine") or "fsm").strip().lower()
     if engine not in ("fsm", "langgraph"):
         return jsonify({"error": "engine must be fsm or langgraph"}), 400
@@ -585,7 +583,18 @@ async def api_scorecard():
         payload["cached"] = True
         return jsonify(payload), 200
     try:
+        from evals.run_text import run_scorecard
+
         card = await asyncio.to_thread(run_scorecard, engine)
+    except ImportError as exc:
+        logger.exception("[Scorecard] evals package missing from image: %s", exc)
+        return jsonify(
+            {
+                "error": "evals_not_packaged",
+                "engine": engine,
+                "hint": "Rebuild with server/evals (and scenarios) in the Docker image.",
+            }
+        ), 503
     except Exception:
         logger.exception("[Scorecard] eval run failed")
         return jsonify({"error": "scorecard_failed", "engine": engine}), 500

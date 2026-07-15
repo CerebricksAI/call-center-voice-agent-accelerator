@@ -33,6 +33,10 @@ COPY static /app/static/
 # The orchestrator composes per-stage behavior from these Markdown skill files at
 # runtime — without them, compose() fails when ORCHESTRATOR_ENABLED is on.
 COPY skills /app/skills/
+# Trust-console build scorecard (/api/scorecard) runs the text eval suite in-process.
+COPY evals /app/evals/
+# Silence / session policy defaults (optional; code falls back if absent).
+COPY config /app/config/
 
 ###############
 # Final image #
