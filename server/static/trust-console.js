@@ -340,10 +340,15 @@
       return;
     }
     if (liveScorecard.error) {
-      if (sub) sub.textContent = "Eval harness unavailable";
+      if (sub) {
+        sub.textContent =
+          liveScorecard.hint ||
+          "Eval harness unavailable — rebuild image with server/evals";
+      }
       const tip = document.createElement("span");
       tip.className = "score-pill miss";
       tip.innerHTML = `scorecard <b>error</b>`;
+      tip.title = liveScorecard.error === true ? "eval harness failed" : String(liveScorecard.error);
       host.appendChild(tip);
       return;
     }
@@ -381,13 +386,19 @@
     try {
       const q = refresh ? "?refresh=1" : "";
       const res = await fetch(`/api/scorecard${q}`, { credentials: "same-origin" });
+      const body = await res.json().catch(() => ({}));
       if (!res.ok) {
-        liveScorecard = { error: true };
+        liveScorecard = {
+          error: body.error || true,
+          hint: body.hint || "Eval harness unavailable",
+        };
+      } else if (body && body.error) {
+        liveScorecard = {
+          error: body.error,
+          hint: body.hint || "Eval harness unavailable",
+        };
       } else {
-        liveScorecard = await res.json();
-        if (liveScorecard && liveScorecard.error) {
-          liveScorecard = { error: true };
-        }
+        liveScorecard = body;
       }
     } catch (_) {
       liveScorecard = { error: true };
