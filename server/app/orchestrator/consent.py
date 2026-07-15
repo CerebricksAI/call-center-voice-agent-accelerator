@@ -18,6 +18,8 @@ _REFUSAL = [
     r"\bdon'?t (agree|consent)\b",
     r"\bdo not (agree|consent)\b",
     r"\bi (don'?t|do not) (agree|consent|want)\b",
+    r"\bdon'?t want to (have a )?call\b",
+    r"\bdo not want to (have a )?call\b",
     r"\bno (thanks|thank you)\b",
     r"\bnot (interested|comfortable|okay|ok)\b",
     r"\bi disagree\b",

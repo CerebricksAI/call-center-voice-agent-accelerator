@@ -8,6 +8,8 @@ def test_refuse_disclosure():
     assert is_consent_refusal("I don't agree with your compliance.")
     assert is_consent_refusal("No thanks")
     assert is_consent_refusal("I'm not comfortable with that")
+    assert is_consent_refusal("I don't want to have a call with you.")
+    assert is_consent_refusal("I do not want to have a call")
 
 
 def test_affirm_disclosure():

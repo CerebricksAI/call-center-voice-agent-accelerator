@@ -65,6 +65,16 @@ def test_optout_contact_again_phrases():
 
 
 
+def test_call_again_phrases_are_dnc_not_decline():
+    for phrase in [
+        "I would not like to proceed with this call again.",
+        "I don't want to proceed with this call again",
+        "please don't call again",
+        "I would not like to do this call again",
+    ]:
+        assert gate(phrase, Ctx()) == "DNC_CLOSE", phrase
+
+
 def test_gate_fires_only_on_opt_out_everything_else_defers_to_router():
     # The gate is the compliance floor — ONLY hard opt-out. Decline / callback /
     # escalate / language are now semantic (the router decides), so the gate is silent.

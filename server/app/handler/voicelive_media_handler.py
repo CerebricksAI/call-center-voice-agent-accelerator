@@ -321,6 +321,7 @@ class VoiceLiveMediaHandler:
                     case ServerEventType.INPUT_AUDIO_BUFFER_SPEECH_STOPPED:
                         logger.info("[VoiceLive] Speech stopped")
                         await self._mark("speech_stopped")
+                        await self.on_speech_stopped()
 
                     case ServerEventType.CONVERSATION_ITEM_INPUT_AUDIO_TRANSCRIPTION_DELTA:
                         delta = getattr(event, "delta", None)
@@ -552,6 +553,9 @@ class VoiceLiveMediaHandler:
             "[VoiceLive] barge_in flush dispatched in %.1f ms",
             (time.perf_counter() - t0) * 1000.0,
         )
+
+    async def on_speech_stopped(self):
+        """Hook: caller VAD end-of-speech (override in orchestrator for silence)."""
 
     async def on_audio_delta(self, audio_bytes: bytes):
         """Handle audio from Voice Live — buffer for ambient or send directly."""

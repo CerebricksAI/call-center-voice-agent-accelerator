@@ -963,15 +963,19 @@ class WebMediaHandler(VoiceLiveMediaHandler):
             return False
         kind = payload.get("Kind")
         if kind == "PlaybackFinished":
-            # The browser finished playing all buffered agent audio — the
-            # orchestrator's hard-close waits on this before tearing down.
+            # The browser finished playing all buffered agent audio — hard-close
+            # and silence both wait on this (never arm silence on generate-done).
             self._last_drain_at = time.perf_counter()
+            await self.on_playback_finished()
             return True
         if kind != "EndCall":
             return False
         logger.info("[WebMediaHandler] EndCall received — closing session")
         await self.request_end_call(source="client")
         return True
+
+    async def on_playback_finished(self) -> None:
+        """Hook: browser finished playing buffered agent audio (PlaybackFinished)."""
 
     async def on_message(self, msg):
         """Handle browser control text and PCM audio from Quart receive().

@@ -47,9 +47,9 @@ def test_hard_optout_fires_tools_before_the_close_speaks():
     # ...and in the right order: DNC record, then disposition.
     assert [r["tool"] for r in ctx.tool_log] == ["add_to_do_not_call", "log_disposition"]
     # The model now sees ONLY the opt-out close — no qualifying questions to wander into.
-    assert "You won't be contacted again" in d.instructions
+    assert "You won't be contacted again" in d.instructions or "will not be contacted" in d.instructions.lower()
     assert "LOAN PURPOSE" not in d.instructions
-    assert d.tools == ["end_call"]
+    assert d.tools == ["capture_borrower_field", "end_call"]
 
 
 def test_end_call_refused_without_disposition():

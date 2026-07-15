@@ -52,9 +52,9 @@ def test_graph_optout_fires_tools_before_close_and_isolates_skill():
     d = decisions[0]
     assert d.action == "DNC_CLOSE" and d.state == "DNC_CLOSE"
     assert [r["tool"] for r in ctx.tool_log] == ["add_to_do_not_call", "log_disposition"]
-    assert "You won't be contacted again" in d.instructions
+    assert "won't contact you again" in d.instructions.lower() or "will not be contacted" in d.instructions.lower()
     assert "LOAN PURPOSE" not in d.instructions
-    assert d.tools == ["end_call"]
+    assert d.tools == ["capture_borrower_field", "end_call"]
 
 
 def test_checkpointer_persists_state_by_thread_id():

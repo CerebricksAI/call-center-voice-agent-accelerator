@@ -551,3 +551,49 @@
 {"call_id": "e4b757b42614", "tool": "capture_borrower_field", "args": {"field": "request_for_loan_officer", "value": "Call with loan officer", "confidence": 0.9}, "result": {"ok": true}}
 {"call_id": "e4b757b42614", "tool": "add_to_do_not_call", "args": {"reason": "caller opt-out"}, "result": {"ok": true, "record_id": "DNC 2614"}}
 {"call_id": "e4b757b42614", "tool": "log_disposition", "args": {"disposition": "do_not_call"}, "result": {"ok": true, "disposition": "do_not_call"}}
+{"call_id": "c-test", "tool": "log_disposition", "args": {"disposition": "no_response"}, "result": {"ok": true, "disposition": "no_response"}}
+{"call_id": "c-test", "tool": "log_disposition", "args": {"disposition": "no_response"}, "result": {"ok": true, "disposition": "no_response"}}
+{"call_id": "09e37f3e2fc9", "tool": "log_disposition", "args": {"disposition": "no_response"}, "result": {"ok": true, "disposition": "no_response"}}
+{"call_id": "09e37f3e2fc9", "tool": "end_call", "args": {"reason": "Caller requested not to continue"}, "result": {"ok": true}}
+{"call_id": "c-test", "tool": "log_disposition", "args": {"disposition": "no_response"}, "result": {"ok": true, "disposition": "no_response"}}
+{"call_id": "c-test", "tool": "log_disposition", "args": {"disposition": "no_response"}, "result": {"ok": true, "disposition": "no_response"}}
+{"call_id": "b32a779432dd", "tool": "capture_borrower_field", "args": {"field": "consent_to_contact", "value": "Yes", "confidence": 0.95}, "result": {"ok": true}}
+{"call_id": "b32a779432dd", "tool": "log_disposition", "args": {"disposition": "declined"}, "result": {"ok": true, "disposition": "declined"}}
+{"call_id": "b32a779432dd", "tool": "log_disposition", "args": {"disposition": "declined"}, "result": {"ok": true, "disposition": "declined"}}
+{"call_id": "028d30f740f2", "tool": "log_disposition", "args": {"disposition": "declined"}, "result": {"ok": true, "disposition": "declined"}}
+{"call_id": "028d30f740f2", "tool": "log_disposition", "args": {"disposition": "no_tcpa_consent"}, "result": {"ok": true, "disposition": "no_tcpa_consent"}}
+{"call_id": "3c50cf43b359", "tool": "log_disposition", "args": {"disposition": "no_response"}, "result": {"ok": true, "disposition": "no_response"}}
+{"call_id": "56a701c4e1e7", "tool": "capture_borrower_field", "args": {"field": "consent_to_contact", "value": "Yes", "confidence": 0.95}, "result": {"ok": true}}
+{"call_id": "56a701c4e1e7", "tool": "capture_borrower_field", "args": {"field": "refinance_type", "value": "Not specified", "confidence": 0.9}, "result": {"ok": true}}
+{"call_id": "56a701c4e1e7", "tool": "add_to_do_not_call", "args": {"reason": "caller opt-out"}, "result": {"ok": true, "record_id": "DNC E1E7"}}
+{"call_id": "56a701c4e1e7", "tool": "log_disposition", "args": {"disposition": "do_not_call"}, "result": {"ok": true, "disposition": "do_not_call"}}
+{"call_id": "56a701c4e1e7", "tool": "capture_borrower_field", "args": {"field": "dnc_feedback", "value": "I wouldn't say about that as of now.", "confidence": 1.0}, "result": {"ok": true}}
+{"call_id": "c-test", "tool": "log_disposition", "args": {"disposition": "no_response"}, "result": {"ok": true, "disposition": "no_response"}}
+{"call_id": "4c8424760acf", "tool": "add_to_do_not_call", "args": {"reason": "caller opt-out"}, "result": {"ok": true, "record_id": "DNC 0ACF"}}
+{"call_id": "4c8424760acf", "tool": "log_disposition", "args": {"disposition": "do_not_call"}, "result": {"ok": true, "disposition": "do_not_call"}}
+{"call_id": "4c8424760acf", "tool": "capture_borrower_field", "args": {"field": "dnc_feedback", "value": "I would try to give you one feedback is like I didn't like the offers which.", "confidence": 1.0}, "result": {"ok": true}}
+{"call_id": "b895dd6f83a0", "tool": "add_to_do_not_call", "args": {"reason": "caller opt-out"}, "result": {"ok": true, "record_id": "DNC 83A0"}}
+{"call_id": "b895dd6f83a0", "tool": "log_disposition", "args": {"disposition": "do_not_call"}, "result": {"ok": true, "disposition": "do_not_call"}}
+{"call_id": "b895dd6f83a0", "tool": "capture_borrower_field", "args": {"field": "dnc_feedback", "value": "Yes, I can give you a brief feedback. Like I didn't like the interest rates and the other features and offers which you're providing to me.", "confidence": 1.0}, "result": {"ok": true}}
+{"call_id": "537de3d499f5", "tool": "capture_borrower_field", "args": {"field": "loan_type", "value": "Refinance existing home", "confidence": 0.95}, "result": {"ok": true}}
+{"call_id": "537de3d499f5", "tool": "capture_borrower_field", "args": {"field": "cash_out", "value": "With some cash also", "confidence": 0.9}, "result": {"ok": true}}
+{"call_id": "537de3d499f5", "tool": "log_disposition", "args": {"disposition": "callback_requested"}, "result": {"ok": true, "disposition": "callback_requested"}}
+{"call_id": "537de3d499f5", "tool": "capture_borrower_field", "args": {"field": "callback_request", "value": "Maybe tomorrow", "confidence": 0.75}, "result": {"ok": true}}
+{"call_id": "537de3d499f5", "tool": "capture_borrower_field", "args": {"field": "amount_to_pull_out", "value": "To be provided to loan officer", "confidence": 0.6}, "result": {"ok": true}}
+{"call_id": "537de3d499f5", "tool": "add_to_do_not_call", "args": {"reason": "caller opt-out"}, "result": {"ok": true, "record_id": "DNC 99F5"}}
+{"call_id": "537de3d499f5", "tool": "log_disposition", "args": {"disposition": "do_not_call"}, "result": {"ok": true, "disposition": "do_not_call"}}
+{"call_id": "537de3d499f5", "tool": "capture_borrower_field", "args": {"field": "dnc_feedback", "value": "I can share a small feedback about your agent and your services, so I didn't like the service.", "confidence": 1.0}, "result": {"ok": true}}
+{"call_id": "537de3d499f5", "tool": "capture_borrower_field", "args": {"field": "dnc_feedback_followup", "value": "I would like to say like you didn't meet what type of traits would you provide?", "confidence": 1.0}, "result": {"ok": true}}
+{"call_id": "c-test", "tool": "log_disposition", "args": {"disposition": "no_response"}, "result": {"ok": true, "disposition": "no_response"}}
+{"call_id": "1c3e53250e3a", "tool": "capture_borrower_field", "args": {"field": "consent_to_contact", "value": "Yes", "confidence": 1.0}, "result": {"ok": true}}
+{"call_id": "1c3e53250e3a", "tool": "capture_borrower_field", "args": {"field": "loan_type", "value": "Refinance existing home", "confidence": 0.95}, "result": {"ok": true}}
+{"call_id": "1c3e53250e3a", "tool": "capture_borrower_field", "args": {"field": "cash_out", "value": "Yes", "confidence": 0.95}, "result": {"ok": true}}
+{"call_id": "1c3e53250e3a", "tool": "capture_borrower_field", "args": {"field": "cash_out_option", "value": "Yes, pulling out cash", "confidence": 0.9}, "result": {"ok": true}}
+{"call_id": "1c3e53250e3a", "tool": "capture_borrower_field", "args": {"field": "cash_out_amount", "value": "Something", "confidence": 0.4}, "result": {"ok": true}}
+{"call_id": "1c3e53250e3a", "tool": "log_disposition", "args": {"disposition": "callback_requested"}, "result": {"ok": true, "disposition": "callback_requested"}}
+{"call_id": "1c3e53250e3a", "tool": "capture_borrower_field", "args": {"field": "preferred_contact_method", "value": "Call", "confidence": 0.9}, "result": {"ok": true}}
+{"call_id": "1c3e53250e3a", "tool": "capture_borrower_field", "args": {"field": "preferred_contact_timing", "value": "Some other day", "confidence": 0.9}, "result": {"ok": true}}
+{"call_id": "1c3e53250e3a", "tool": "add_to_do_not_call", "args": {"reason": "caller opt-out"}, "result": {"ok": true, "record_id": "DNC 0E3A"}}
+{"call_id": "1c3e53250e3a", "tool": "log_disposition", "args": {"disposition": "do_not_call"}, "result": {"ok": true, "disposition": "do_not_call"}}
+{"call_id": "1c3e53250e3a", "tool": "capture_borrower_field", "args": {"field": "dnc_feedback", "value": "I would give you a brief feedback. I didn't find good about the interest rates and the services which you're providing in the last three months.", "confidence": 1.0}, "result": {"ok": true}}
+{"call_id": "1c3e53250e3a", "tool": "capture_borrower_field", "args": {"field": "dnc_feedback_followup", "value": "Yeah, I'm there. So I didn't like to proceed now. Just let's end this one now.", "confidence": 1.0}, "result": {"ok": true}}

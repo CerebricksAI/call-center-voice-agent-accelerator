@@ -87,7 +87,7 @@ TOOLS_FOR_STATE: dict[str, list[str]] = {
     "GREETING": ["end_call"],
     "QUALIFY": ["capture_borrower_field", "schedule_callback", "transfer_to_lo", "end_call"],
     "DECLINE_CLOSE": ["log_disposition", "end_call"],
-    "DNC_CLOSE": ["end_call"],
+    "DNC_CLOSE": ["capture_borrower_field", "end_call"],
     "CALLBACK_CLOSE": ["schedule_callback", "log_disposition", "capture_borrower_field", "end_call"],
     "NO_RESPONSE_CLOSE": ["end_call"],
     "TRANSFER": ["capture_borrower_field", "transfer_to_lo", "end_call"],

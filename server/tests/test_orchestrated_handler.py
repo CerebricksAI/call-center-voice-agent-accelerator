@@ -126,13 +126,23 @@ def test_qualify_preserves_transcription_and_temp_and_tools():
     assert "LOAN PURPOSE" in s.instructions
 
 
-def test_dnc_close_locks_to_end_call_only():
+def test_dnc_close_allows_feedback_capture_then_end_call():
     h = _handler()
     h._fsm.transition("DNC_CLOSE", reason="t")
+    h._dnc_awaiting_feedback = True
     s = h._session_config()
-    assert [t.name for t in s.tools] == ["end_call"]
-    assert "You won't be contacted again" in s.instructions
+    assert [t.name for t in s.tools] == ["capture_borrower_field", "end_call"]
+    assert "what did not feel right" in s.instructions.lower() or "didn't like" in s.instructions.lower() or "feedback" in s.instructions.lower()
     assert "LOAN PURPOSE" not in s.instructions
+    # After feedback: soft follow-up rules.
+    h._dnc_awaiting_feedback = False
+    h._dnc_awaiting_followup = True
+    s2 = h._session_config()
+    assert "follow-up" in s2.instructions.lower() or "clarifying" in s2.instructions.lower()
+    # After follow-up: goodbye-only rules.
+    h._dnc_awaiting_followup = False
+    s3 = h._session_config()
+    assert "will not be contacted again" in s3.instructions.lower() or "won't be contacted" in s3.instructions.lower()
 
 
 def test_no_response_close_locks_to_end_call_only():
@@ -192,6 +202,93 @@ def test_session_applies_pace_shifted_rate(monkeypatch):
     h._mood = "frustrated"
     s2 = h._session_config()
     assert getattr(s2.voice, "rate", None) == "-15%"  # unhurried
+
+
+def test_dnc_feedback_turn_records_and_closes():
+    """Opt-out writes DNC now; feedback opens a soft follow-up; freeze+close after that."""
+    import asyncio
+
+    h = _handler()
+    h._sink = lambda cid, rec: None
+    h._fsm.transition("QUALIFY", reason="t")
+    closes: list[bool] = []
+    freezes: list[bool] = []
+    h._schedule_hard_close = lambda: closes.append(True)
+    receipts: list[str] = []
+    h._trust_receipt_line = lambda text, **kw: receipts.append(text)  # type: ignore[method-assign]
+
+    def _trust(kind, **fields):
+        if kind == "freeze":
+            freezes.append(True)
+
+    h._trust = _trust  # type: ignore[method-assign]
+
+    async def _noop_update():
+        return None
+
+    async def _noop_create(**_k):
+        return None
+
+    async def _noop_emit(action, _text):
+        if action == "DNC_CLOSE":
+            h._dnc_awaiting_feedback = True
+            h._qualify_locked = True
+            h._intake_frozen = False
+
+    h._update_session = _noop_update  # type: ignore[method-assign]
+    h._create_response = _noop_create  # type: ignore[method-assign]
+    h._emit_gate_trust = _noop_emit  # type: ignore[method-assign]
+    h._notice_action = lambda *_a, **_k: None  # type: ignore[method-assign]
+    h._abort_pending_hard_close = lambda: None  # type: ignore[method-assign]
+
+    async def turn(text: str) -> None:
+        decision = h._engine.handle_caller_turn(text, h._fsm, h._ctx, sink=h._sink)
+        if decision is not None:
+            if decision.action == "DNC_CLOSE":
+                h._abort_pending_hard_close()
+            h._notice_action(decision.action)
+            await h._emit_gate_trust(decision.action, text)
+            await h._update_session()
+            await h._create_response(cancel=True)
+            return
+        if h._fsm.state == "DNC_CLOSE" and h._dnc_awaiting_feedback:
+            next_beat = h._record_dnc_feedback(text)
+            await h._update_session()
+            await h._create_response(cancel=True, think_pause=False)
+            if next_beat == "close":
+                h._schedule_hard_close()
+            return
+        if h._fsm.state == "DNC_CLOSE" and h._dnc_awaiting_followup:
+            h._record_dnc_followup(text)
+            await h._update_session()
+            await h._create_response(cancel=True, think_pause=False)
+            h._schedule_hard_close()
+
+    async def run():
+        await turn("take me off your list")
+        assert h._fsm.state == "DNC_CLOSE"
+        assert h._ctx.dnc_recorded is True
+        assert h._dnc_awaiting_feedback is True
+        assert h._intake_frozen is False
+        assert freezes == []
+        assert closes == []
+        await turn("Too many calls and I never asked for this.")
+        assert h._dnc_awaiting_feedback is False
+        assert h._dnc_awaiting_followup is True
+        assert h._intake_frozen is False  # freeze waits for follow-up beat
+        assert freezes == []
+        assert closes == []
+        assert "Too many" in str(
+            h._ctx.fields.get("dnc_feedback", {}).get("value") or ""
+        )
+        assert any("opt-out feedback" in r for r in receipts)
+        await turn("The rates felt too high for me.")
+        assert h._dnc_awaiting_followup is False
+        assert h._intake_frozen is True
+        assert freezes == [True]
+        assert closes == [True]
+
+    asyncio.run(run())
 
 
 def test_dnc_close_skips_delivery_suffix():
@@ -282,6 +379,40 @@ def test_on_message_quart_str_endcall_hangs_up():
     assert audio_calls == []
 
 
+def test_silence_arms_only_after_playback_finished_not_generate_done():
+    """5s quiet clock starts on PlaybackFinished, never on response.done alone."""
+    import asyncio
+    import time
+
+    h = _handler()
+    h._fsm.transition("GREETING", reason="t")
+    h._last_audio_delta_at = time.perf_counter()
+    h._last_drain_at = 0.0
+    armed: list[bool] = []
+    h._arm_silence_watch = lambda *, clear_fired=True: armed.append(clear_fired)  # type: ignore[method-assign]
+
+    async def _noop_ask():
+        return None
+
+    h._ask_client_playback_end = _noop_ask  # type: ignore[method-assign]
+
+    async def run():
+        # Simulate generate-done — must NOT arm yet (audio still playing).
+        h._silence_pending_arm = True
+        h._silence_pending_peak = h._last_audio_delta_at
+        h._silence_pending_clear_fired = True
+        await h._try_arm_silence_after_client_playback()
+        assert armed == []
+        assert h._silence_pending_arm is True
+        # Client finished playing — now arm.
+        h._last_drain_at = time.perf_counter()
+        await h._try_arm_silence_after_client_playback()
+
+    asyncio.run(run())
+    assert armed == [True]
+    assert h._silence_pending_arm is False
+
+
 def test_silence_close_pending_after_both_reprompts():
     h = _handler()
     h._fsm.transition("QUALIFY", reason="t")
@@ -290,6 +421,27 @@ def test_silence_close_pending_after_both_reprompts():
     assert h._silence_close_pending() is True
     h._silence_fired.add("close")
     assert h._silence_close_pending() is False
+
+
+def test_silence_close_aborts_when_caller_speaks():
+    import asyncio
+
+    h = _handler()
+    h._fsm.transition("QUALIFY", reason="t")
+    h._silence_fired = {"reprompt:0", "reprompt:1"}
+    h._silence_closing = True
+    h._silence_close_token = 3
+    closes: list[bool] = []
+    h._schedule_hard_close = lambda: closes.append(True)
+
+    async def run():
+        h._silence_awaiting_transcript = True
+        await h._silence_close()
+
+    asyncio.run(run())
+    assert h._fsm.state == "QUALIFY"
+    assert closes == []
+    assert "close" not in h._silence_fired
 
 
 def test_silence_tail_junk_transcript_rearms_close():
@@ -342,6 +494,47 @@ def test_silence_close_schedules_hard_close_before_goodbye():
     assert h._hard_close_baseline_locked is True
     assert h._fsm.state == "NO_RESPONSE_CLOSE"
     assert "close" in h._silence_fired
+
+
+def test_silence_does_not_rearm_while_caller_still_speaking():
+    """speech_started must not start the phantom mid-utterance (check-in race)."""
+    import asyncio
+
+    h = _handler()
+    h._fsm.transition("CALLBACK_CLOSE", reason="t")
+    h._silence_fired = {"reprompt:0"}
+    h.send_message = lambda *_a, **_k: asyncio.sleep(0)  # type: ignore[method-assign]
+
+    async def run():
+        async def _hang():
+            await asyncio.sleep(3600)
+
+        h._silence_task = asyncio.create_task(_hang())
+        h._silence_anchor = 1.0
+        await h.on_speech_started()
+        assert h._caller_speech_active is True
+        assert h._silence_awaiting_transcript is True
+        assert h._silence_phantom_task is None  # no re-arm until speech_stopped
+        assert h._silence_anchor is None
+        # Mid-utterance arm must be deferred by the real method.
+        h._arm_silence_watch(clear_fired=False)
+        assert h._silence_task is None or h._silence_task.done()
+        assert h._silence_anchor is None
+        await h.on_speech_stopped()
+        assert h._caller_speech_active is False
+        assert h._silence_phantom_task is not None
+        h._cancel_phantom_rearm()
+
+    asyncio.run(run())
+
+
+def test_silence_arm_blocked_while_awaiting_transcript():
+    h = _handler()
+    h._fsm.transition("DNC_CLOSE", reason="t")
+    h._silence_awaiting_transcript = True
+    h._arm_silence_watch(clear_fired=True)
+    assert h._silence_task is None
+    assert h._silence_anchor is None
 
 
 def test_bridge_insights_populate_ctx_fields_and_sink():

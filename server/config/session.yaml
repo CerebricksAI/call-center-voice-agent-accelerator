@@ -64,8 +64,10 @@ input_audio_noise_reduction:
 input_audio_echo_cancellation: {}
 
 # Wired by app/orchestrator/silence.py + handler (T11).
-# Quiet-seconds after Maya finishes — room to think before nudges.
+# Absolute quiet marks AFTER agent audio finishes playing (not generate-done):
+#   5s → check-in 1 · 8s (=+3) → check-in 2 · 10s (=+2) → no-response close.
+# After any agent speech, the ladder resets and those gaps run again.
 silence:
-  reprompt_at_s: [15, 30]
-  close_at_s: 45
+  reprompt_at_s: [5, 8]
+  close_at_s: 10
   disposition: no_response

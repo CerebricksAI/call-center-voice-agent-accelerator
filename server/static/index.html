@@ -2165,6 +2165,13 @@
       content.textContent = text;
       bubble.appendChild(label);
       bubble.appendChild(content);
+      if (
+        role === "user" &&
+        window.TrustConsole &&
+        typeof TrustConsole.applyFreezeToNewUserBubble === "function"
+      ) {
+        TrustConsole.applyFreezeToNewUserBubble(bubble);
+      }
       const log = document.getElementById("transcriptLog");
       if (insertAfter && insertAfter.parentNode === log) {
         insertAfter.insertAdjacentElement("afterend", bubble);
@@ -3472,7 +3479,9 @@
       playbackNode.port.onmessage = (e) => {
         if (e.data && e.data.drained) {
           window.__mayaAgentPlaying = false;
-          if (awaitingPlaybackEnd && socket?.readyState === WebSocket.OPEN) {
+          // Always tell the server when agent playback truly ended — silence
+          // countdown must start then, not when TTS chunks were last *sent*.
+          if (socket?.readyState === WebSocket.OPEN) {
             socket.send(JSON.stringify({ Kind: "PlaybackFinished" }));
           }
         }
