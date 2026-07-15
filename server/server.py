@@ -562,6 +562,39 @@ async def api_analytics():
     return jsonify(payload), 200
 
 
+# Short TTL so the trust-console band stays live without re-running on every paint.
+_SCORECARD_TTL_S = 60.0
+_scorecard_cache: dict[str, tuple[float, dict]] = {}
+
+
+@app.route("/api/scorecard")
+async def api_scorecard():
+    """GET live orchestrator text-eval scorecard (same suite as ``evals/run_text.py``)."""
+    import time
+
+    from evals.run_text import run_scorecard
+
+    engine = (request.args.get("engine") or "fsm").strip().lower()
+    if engine not in ("fsm", "langgraph"):
+        return jsonify({"error": "engine must be fsm or langgraph"}), 400
+    refresh = request.args.get("refresh", "").strip().lower() in ("1", "true", "yes")
+    now = time.monotonic()
+    cached = _scorecard_cache.get(engine)
+    if not refresh and cached and (now - cached[0]) < _SCORECARD_TTL_S:
+        payload = dict(cached[1])
+        payload["cached"] = True
+        return jsonify(payload), 200
+    try:
+        card = await asyncio.to_thread(run_scorecard, engine)
+    except Exception:
+        logger.exception("[Scorecard] eval run failed")
+        return jsonify({"error": "scorecard_failed", "engine": engine}), 500
+    card = dict(card)
+    card["cached"] = False
+    _scorecard_cache[engine] = (now, card)
+    return jsonify(card), 200
+
+
 @app.route("/api/models")
 async def api_models():
     """GET configured LLM model names for dashboard labels."""

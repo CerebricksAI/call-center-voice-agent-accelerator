@@ -144,7 +144,9 @@ def execute_tool(
             result = {"ok": True}
     elif name == "add_to_do_not_call":
         ctx.dnc_recorded = True
-        result = {"ok": True}
+        # Stable display id for the trust-console promise ledger (not a CRM primary key).
+        rid = f"DNC {(getattr(ctx, 'call_id', None) or 'local').replace('-', '')[-4:].upper() or '0000'}"
+        result = {"ok": True, "record_id": rid}
     elif name == "log_disposition":
         ctx.disposition = str(args.get("disposition") or getattr(ctx, "disposition", None) or "unknown")
         result = {"ok": True, "disposition": ctx.disposition}
@@ -154,7 +156,12 @@ def execute_tool(
         # called directly by the model would otherwise leave no disposition).
         if getattr(ctx, "disposition", None) is None:
             ctx.disposition = "callback_requested"
-        result = {"ok": True, "preferred_time": args.get("preferred_time")}
+        rid = f"CB {(getattr(ctx, 'call_id', None) or 'local').replace('-', '')[-4:].upper() or '0000'}"
+        result = {
+            "ok": True,
+            "preferred_time": args.get("preferred_time"),
+            "record_id": rid,
+        }
     elif name == "capture_borrower_field":
         field_name = args.get("field")
         if field_name:
