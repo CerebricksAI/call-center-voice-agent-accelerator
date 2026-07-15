@@ -9,6 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <script src="/static/settings-modal.js"></script>
+  <link rel="stylesheet" href="/static/trust-console.css" />
   <style>
     :root,
     [data-theme="light"] {
@@ -351,33 +352,47 @@
 
     /* --- Main content --- */
     .app-main {
-      padding: 0.75rem 0.85rem 0.45rem;
+      padding: 1rem 1.25rem 0.85rem;
       flex: 1;
       min-height: 0;
       overflow: hidden;
       display: flex;
       flex-direction: column;
+      background: var(--bg-main);
     }
 
     .page {
       width: 100%;
-      max-width: 100%;
-      margin: 0;
+      max-width: 1680px;
+      margin: 0 auto;
       flex: 1;
       min-height: 0;
       min-width: 0;
       display: flex;
       flex-direction: column;
-      overflow: hidden;
+      gap: 1rem;
+      overflow-x: hidden;
+      overflow-y: auto;
     }
 
-    /* --- Three-column dashboard --- */
+    .scorecard-band,
+    .eng-drawer,
+    .trust-footer {
+      flex-shrink: 0;
+      max-width: 100%;
+    }
+
+    .page > .dashboard {
+      flex: 1 1 auto;
+      min-height: min(560px, 62vh);
+    }
+
+    /* --- Three-column dashboard: transcript primary, trust rail steady --- */
     .dashboard {
       display: grid;
-      /* fr units so 40/40/20 fits WITH column gaps (percent columns overflow) */
-      grid-template-columns: minmax(0, 2fr) minmax(0, 2fr) minmax(0, 1fr);
+      grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr) minmax(340px, 1.05fr);
       grid-template-rows: minmax(0, 1fr) auto;
-      gap: 0.55rem 0.65rem;
+      gap: 1rem;
       width: 100%;
       flex: 1;
       min-height: 0;
@@ -392,6 +407,18 @@
     .panel-metrics,
     .metrics-sidebar {
       min-width: 0;
+      border-radius: 12px;
+    }
+
+    .panel-fields {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .panel-fields .fields-body {
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
     }
 
     .panel-transcript,
@@ -448,7 +475,7 @@
       align-self: stretch;
       flex-shrink: 0;
       min-height: 0;
-      max-height: 45vh;
+      max-height: 40vh;
       overflow: hidden;
       display: flex;
       flex-direction: column;
@@ -457,7 +484,7 @@
     .details-section:has(.turns-panel.open) {
       display: flex;
       flex-direction: column;
-      max-height: min(62vh, 580px);
+      max-height: min(48vh, 420px);
       min-height: 0;
     }
 
@@ -1526,7 +1553,7 @@
     }
   </style>
 </head>
-<body>
+<body class="view-cust">
   <div id="toastHost" class="toast-host" aria-live="polite" aria-atomic="false"></div>
   <nav class="app-nav">
     <div class="nav-brand">
@@ -1540,6 +1567,10 @@
       <a class="nav-link" href="#" id="navSettings" onclick="openSettings(event)">Settings</a>
     </div>
     <div class="nav-right">
+      <div class="viewtoggle" role="group" aria-label="View mode">
+        <button type="button" id="btnCustView" aria-pressed="true" onclick="TrustConsole.setView(false)">Customer view</button>
+        <button type="button" id="btnEngView" aria-pressed="false" onclick="TrustConsole.setView(true)">Engineer view</button>
+      </div>
       <button type="button" class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="Toggle light/dark theme" aria-label="Toggle theme">
         <span id="themeIcon">☾</span>
       </button>
@@ -1562,6 +1593,14 @@
 
   <main class="app-main">
   <div class="page">
+
+  <div class="trust-ribbon" id="trustRibbon" aria-label="Call workflow">
+    <span class="rb-label">Workflow</span>
+    <span id="trustRibbonStages"></span>
+    <span class="rb-right">
+      <span class="rb-chip" id="trustSilenceChip">Silence <b>—</b></span>
+    </span>
+  </div>
 
   <div class="dashboard">
     <!-- Left 40%: Live Transcript -->
@@ -1614,54 +1653,125 @@
       <div class="fields-body">
         <div id="fieldsLog" class="fields-log"></div>
         <div id="fieldsLegend" class="fields-legend"></div>
+        <div id="intakeFreezeNote" class="freeze-note" role="status"></div>
+      </div>
+      <div class="econ-panel open" id="econPanel">
+        <button type="button" class="econ-toggle open" id="econToggle" aria-expanded="true" aria-controls="econBody">
+          <span class="econ-toggle-text">
+            <span class="econ-title">Call economics</span>
+            <span class="econ-sub customer-only">Campaign cost view for finance</span>
+            <span class="econ-sub engineer-only">Token usage pairs with the engineer drawer</span>
+          </span>
+          <span class="chevron" aria-hidden="true">▼</span>
+        </button>
+        <div class="econ-body" id="econBody">
+          <div class="econ">
+            <div class="big" id="econThisCall">$—<small>This call · 0 turns</small></div>
+            <div class="big customer-only">$—<small>Est. per qualified transfer</small></div>
+            <div class="note customer-only">Estimate uses this campaign's connect and transfer rates; it updates as real calls land.</div>
+            <div class="big engineer-only" id="econTokens">— / —<small>Tokens in / out</small></div>
+          </div>
+        </div>
       </div>
       <div id="callSummaryPanel" class="call-summary-panel"></div>
     </div>
 
-    <!-- Right 20%: Metrics -->
-    <div class="panel panel-metrics metrics-sidebar">
-      <div class="panel-header">Performance Metrics</div>
-      <div class="metrics-scroll">
-      <div class="metric-card">
-        <div class="metric-label">Time to first audio <span class="metric-hint">caller stop → first sound</span></div>
-        <div class="metric-value" id="m-respLatency">—</div>
-        <div class="metric-sub" id="s-respLatency">last — · 0 agent responses</div>
-      </div>
-      <div class="metric-card">
-        <div class="metric-label">Speech → Text <span class="metric-hint">transcription</span></div>
-        <div class="metric-value" id="m-stt">—</div>
-        <div class="metric-sub" id="s-stt">last — · 0 agent responses</div>
-      </div>
-      <div class="metric-card">
-        <div class="metric-label">Thinking <span class="metric-hint">to response start</span></div>
-        <div class="metric-value" id="m-think">—</div>
-        <div class="metric-sub" id="s-think">last — · 0 agent responses</div>
-      </div>
-      <div class="metric-card">
-        <div class="metric-label">Text → Speech <span class="metric-hint">audio playout</span></div>
-        <div class="metric-value" id="m-tts">—</div>
-        <div class="metric-sub" id="s-tts">last — · 0 agent responses</div>
-      </div>
-      <div class="metric-card">
-        <div class="metric-label">End-to-end response time <span class="metric-hint">caller stop → response done</span></div>
-        <div class="metric-value" id="m-response">—</div>
-        <div class="metric-sub" id="s-response">last — · 0 agent responses</div>
-      </div>
-      <div class="metric-card">
-        <div class="metric-label">Output tokens <span class="metric-hint">per response</span></div>
-        <div class="metric-value" id="m-outTokens">—</div>
-        <div class="metric-sub" id="s-outTokens">last — · 0 agent responses</div>
-      </div>
-      <div class="metric-card">
-        <div class="metric-label">Tokens / sec <span class="metric-hint">output rate</span></div>
-        <div class="metric-value" id="m-tps">—</div>
-        <div class="metric-sub" id="s-tps">last — · 0 agent responses</div>
-      </div>
+    <!-- Right: Trust rail -->
+    <div class="panel panel-metrics metrics-sidebar panel-trust">
+      <div class="trust-scroll">
+        <section class="trust-block">
+          <div class="trust-section-head">
+            <h3>Compliance receipts</h3>
+            <span class="sub">Printed as events fire · exportable audit trail</span>
+          </div>
+          <div class="receiptwrap">
+            <div class="receipt" role="log" aria-label="Compliance receipt for this call">
+              <div class="r-head" id="trustReceiptHead"><b>AUDIT COPY</b><span>Waiting for call…</span></div>
+              <div id="trustReceiptBody"></div>
+              <div class="r-total" id="trustReceiptTotal" hidden></div>
+              <div class="r-foot">KEEP FOR YOUR RECORDS</div>
+            </div>
+            <button type="button" class="exportbtn" id="trustExportBtn">Export audit bundle</button>
+          </div>
+        </section>
+
+        <section class="trust-block">
+          <div class="trust-section-head">
+            <h3>Promise ledger</h3>
+            <span class="sub">Nothing spoken without a backing record</span>
+          </div>
+          <div class="ledger" id="trustLedger"></div>
+        </section>
+
+        <section class="trust-block">
+          <div class="trust-section-head">
+            <h3>Gates, this call</h3>
+            <span class="sub">Green means measured against the gate</span>
+          </div>
+          <div class="gate-body">
+            <div class="gate">
+              <div class="g-top"><span>Turn latency p50 <b id="gateTtfaVal">—</b></span><span class="lim" id="gateTtfaLim">gate 0.80</span></div>
+              <div class="gbar"><i id="gateTtfaBar" style="width:0%"></i><span class="mark" id="gateTtfaMark" style="left:80%"></span></div>
+            </div>
+            <div class="gate">
+              <div class="g-top"><span>Interrupt stop <b id="gateInterruptVal">—</b></span><span class="lim" id="gateInterruptLim">gate 300</span></div>
+              <div class="gbar"><i id="gateInterruptBar" style="width:0%"></i><span class="mark" id="gateInterruptMark" style="left:80%"></span></div>
+            </div>
+            <div class="gate">
+              <div class="g-top"><span>Turns after opt out <b id="gateOptOutTurnsVal">—</b></span><span class="lim" id="gateOptOutTurnsLim">gate ≤ 1</span></div>
+              <div class="gbar"><i id="gateOptOutTurnsBar" style="width:0%"></i><span class="mark" id="gateOptOutTurnsMark" style="left:80%"></span></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="trust-block engineer-only">
+          <div class="trust-section-head">
+            <h3>Performance metrics</h3>
+            <span class="sub">Engineer view · live turn cards</span>
+          </div>
+          <div class="metrics-scroll">
+            <div class="metric-card">
+              <div class="metric-label">Time to first audio <span class="metric-hint">caller stop → first sound</span></div>
+              <div class="metric-value" id="m-respLatency">—</div>
+              <div class="metric-sub" id="s-respLatency">last — · 0 agent responses</div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-label">Speech → Text <span class="metric-hint">transcription</span></div>
+              <div class="metric-value" id="m-stt">—</div>
+              <div class="metric-sub" id="s-stt">last — · 0 agent responses</div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-label">Thinking <span class="metric-hint">to response start</span></div>
+              <div class="metric-value" id="m-think">—</div>
+              <div class="metric-sub" id="s-think">last — · 0 agent responses</div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-label">Text → Speech <span class="metric-hint">audio playout</span></div>
+              <div class="metric-value" id="m-tts">—</div>
+              <div class="metric-sub" id="s-tts">last — · 0 agent responses</div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-label">End-to-end response time <span class="metric-hint">caller stop → response done</span></div>
+              <div class="metric-value" id="m-response">—</div>
+              <div class="metric-sub" id="s-response">last — · 0 agent responses</div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-label">Output tokens <span class="metric-hint">per response</span></div>
+              <div class="metric-value" id="m-outTokens">—</div>
+              <div class="metric-sub" id="s-outTokens">last — · 0 agent responses</div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-label">Tokens / sec <span class="metric-hint">output rate</span></div>
+              <div class="metric-value" id="m-tps">—</div>
+              <div class="metric-sub" id="s-tps">last — · 0 agent responses</div>
+            </div>
+          </div>
+        </section>
       </div>
     </div>
 
-    <!-- Collapsible per-turn metrics (80% width, under transcript + fields) -->
-    <div class="details-section">
+    <!-- Collapsible per-turn metrics (engineer; kept for full table) -->
+    <div class="details-section engineer-only">
       <button type="button" class="details-toggle" id="detailsToggle" onclick="toggleTurnDetails()">
         <span id="detailsToggleLabel">Show more details</span>
         <span class="chevron">▼</span>
@@ -1706,6 +1816,40 @@
     </div>
   </div>
 
+  <div class="trust-footer">
+    <div class="scorecard-band">
+      <div class="bandin">
+        <span class="t">Build scorecard<span id="scorecardSubtitle">Loading live evals…</span></span>
+        <span id="scorecardPills"></span>
+      </div>
+    </div>
+
+    <div class="eng-drawer engineer-only" id="trustEngDrawer">
+      <div class="drawer-head">
+        <h3>Per-response metrics</h3>
+        <span class="sub">Engineer view · one stopwatch per agent turn</span>
+      </div>
+      <div class="drawer-table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Stage</th>
+              <th>First audio</th>
+              <th>Response done</th>
+              <th>Tokens</th>
+              <th>Cost</th>
+            </tr>
+          </thead>
+          <tbody id="trustEngTableBody">
+            <tr><td colspan="6" class="muted" style="text-align:center;">No agent responses yet.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="evlog" id="trustEngLog">Event log will fill as gates and tools fire.</div>
+    </div>
+  </div>
+
   <!-- Ambient Scene: Backend handles ambient mixing via AMBIENT_PRESET env var -->
 
   <audio id="ttsPlayer" autoplay></audio>
@@ -1716,6 +1860,7 @@
   </div>
   </main>
 
+  <script src="/static/trust-console.js"></script>
   <script>
     let mediaStream, source, socket;
     let audioContext = new AudioContext({ sampleRate: 24000 });
@@ -2136,6 +2281,10 @@
     let waitingForSummary = false;
     let waitingForCallSaved = false;
     let currentCallId = null;
+    Object.defineProperty(window, "currentCallId", {
+      get() { return currentCallId; },
+      set(v) { currentCallId = v; },
+    });
     let summaryCloseTimer = null;
     let callSavedCloseTimer = null;
     const SUMMARY_CLOSE_TIMEOUT_MS = 180000;
@@ -2252,6 +2401,7 @@
 
     function handleCallStartedMsg(msg) {
       if (msg.callId) currentCallId = msg.callId;
+      if (window.TrustConsole) TrustConsole.onCallStarted();
     }
 
     function handleCallSavedMsg(msg) {
@@ -2425,6 +2575,13 @@
     }
 
     function appendInsights(items) {
+      if (
+        window.TrustConsole &&
+        TrustConsole.state &&
+        TrustConsole.state.intakeFrozen
+      ) {
+        return false;
+      }
       if (!Array.isArray(items) || !items.length) return false;
       const seen = new Set(insightLog.map((i) => normalizeInsightLine(i.value)));
       let added = false;
@@ -2772,6 +2929,10 @@
       scrollKeyDetailsToBottom();
       if (waitingForSummary) {
         if (callSummary || summaryError) {
+          if (summaryCloseTimer) {
+            clearTimeout(summaryCloseTimer);
+            summaryCloseTimer = null;
+          }
           waitingForCallSaved = true;
           showCallFinalizeBanner("saving", currentCallId);
           armCallSavedCloseTimer(CALL_SAVED_WAIT_MS);
@@ -2826,7 +2987,7 @@
       if (summaryLoading && !callSummary && !summaryError) {
         summaryLoading = false;
         summaryError =
-          "Call summary timed out — the connection closed before the summary arrived. Try End Call again and wait a little longer.";
+          "Call summary did not arrive before the connection closed. Open Call History — the summary is saved with the call when generation finishes.";
         renderKeyDetails();
       }
       if (socket && socket.readyState === WebSocket.OPEN) {
@@ -2980,6 +3141,7 @@
       ttsUsd: 0,
       costUsd: 0,
     };
+    window.callUsageTotals = callUsageTotals;
 
     let pendingExtractUsage = null;
 
@@ -3092,6 +3254,7 @@
           callUsageTotals.inputTokens + " / " + callUsageTotals.outputTokens;
         totalCost.textContent = fmtCostUsd(callUsageTotals.costUsd);
       }
+      if (window.TrustConsole) TrustConsole.renderEcon();
     }
 
     function deriveFirstAudioMs(m) {
@@ -3145,6 +3308,11 @@
       const tr = document.createElement("tr");
       tr.dataset.voiceRow = "1";
       tr.dataset.turn = String(msg.turn != null ? msg.turn : "");
+      // Freeze workflow stage at this turn — do not rebind to later DNC/etc.
+      const stageAtTurn =
+        (window.TrustConsole && window.TrustConsole.state && window.TrustConsole.state.stage) ||
+        "—";
+      tr.dataset.stage = String(stageAtTurn);
       tr.dataset.voiceCostUsd = String(voiceCost);
       tr.dataset.ttsCostUsd = String(ttsCost);
       tr.dataset.extractCostUsd = "0";
@@ -3170,6 +3338,10 @@
       updateCallUsageTotals(msg);
       const wrap = document.querySelector(".turn-table-wrap");
       if (wrap) wrap.scrollTop = wrap.scrollHeight;
+      if (window.TrustConsole) {
+        TrustConsole.syncEngTable();
+        TrustConsole.renderEcon();
+      }
     }
 
     function applyTurnMetrics(msg) {
@@ -3212,6 +3384,10 @@
     }
 
     function handleAgentEvent(msg) {
+      if (msg.event === "trust") {
+        if (window.TrustConsole) TrustConsole.handleTrustEvent(msg);
+        return;
+      }
       if (msg.event === "notice") {
         console.log("[toast]", msg.level, "-", msg.text);
         showToast(msg.text, msg.level);
@@ -3224,14 +3400,17 @@
       if (msg.kind === "usage" && msg.source === "extract") {
         applyExtractUsage(msg);
         applyCostBreakdown(msg);
+        if (window.TrustConsole) TrustConsole.onMetrics(msg);
         return;
       }
       if (msg.kind === "usage" && (msg.source === "summary" || msg.source === "transcribe")) {
         applyCostBreakdown(msg);
+        if (window.TrustConsole) TrustConsole.onMetrics(msg);
         return;
       }
       if (msg.kind === "metrics") {
         applyTurnMetrics(msg);
+        if (window.TrustConsole) TrustConsole.onMetrics(msg);
         return;
       }
       if (msg.event === "speech_started") {
@@ -3248,6 +3427,7 @@
       if (msg.event === "first_audio" && msg.ttfaMs != null) {
         const stt = metricsState.stt.length ? metricsState.stt[metricsState.stt.length - 1] : null;
         setCardLatest("respLatency", stt != null ? stt + msg.ttfaMs : msg.ttfaMs);
+        if (window.TrustConsole) TrustConsole.onMetrics(msg);
       }
       if (msg.event === "stt_done" && msg.sttMs != null) setCardLatest("stt", msg.sttMs);
     }
@@ -3277,6 +3457,7 @@
       btn.classList.remove("open");
       document.getElementById("detailsToggleLabel").textContent = "Show more details";
       resetKeyDetails();
+      if (window.TrustConsole) TrustConsole.reset();
     }
 
     // ---------------------------------------------------------------
@@ -3534,19 +3715,18 @@
           handleAuthFailure();
           return;
         }
-        if (!isCallFinalizing()) {
-          setCallStatus(false);
-          stopMicrophone();
-          stopPlayback();
-          resetMicMute();
-        } else {
-          // Summary may still be loading — still free Start for the next call.
-          stopMicrophone();
-          stopPlayback();
-          resetMicMute();
-        }
+        stopMicrophone();
+        stopPlayback();
+        resetMicMute();
+        setCallStatus(false);
         socket = null;
         unlockStartCallButton();
+        // Keep "Generating call summary…" visible if finalize was in flight — the
+        // server now awaits the summary before closing; if we still have no text,
+        // leave the loading state until the safety timer resolves.
+        if (waitingForSummary && summaryLoading && !callSummary && !summaryError) {
+          renderKeyDetails();
+        }
       };
 
       socket.onerror = (err) => console.error("WebSocket error", err);

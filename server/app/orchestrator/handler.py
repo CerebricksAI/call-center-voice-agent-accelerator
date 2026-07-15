@@ -33,8 +33,11 @@ from app.agent_persona import (
     resolve_agent_voice_style,
     voice_name_is_openai,
 )
+from app.orchestrator.callback_time import is_concrete_callback_time
+from app.orchestrator.consent import is_consent_affirm, is_consent_refusal
 from app.orchestrator.dialog import apply_action
 from app.orchestrator.fsm import CallContext, CallStateMachine
+from app.orchestrator.intents import matched_opt_out
 from app.orchestrator.mood import (
     Mood,
     REACTION_FIRST,
@@ -47,6 +50,7 @@ from app.orchestrator.mood import (
 from app.orchestrator.semantic import semantic_enabled
 from app.orchestrator.silence import (
     REPROMPT_CUES,
+    DECLINE_CLOSE_RULES,
     SILENCE_CHECKIN_RULES,
     SILENCE_WATCH_STATES,
     load_silence_policy,
@@ -54,6 +58,18 @@ from app.orchestrator.silence import (
     quiet_elapsed,
 )
 from app.orchestrator.tools import execute_tool, function_tools, tools_for
+from app.orchestrator.trust_ui import (
+    GATE_INTERRUPT_MS,
+    GATE_TTFA_P50_S,
+    GATE_TURNS_AFTER_OPT_OUT,
+    briefing_for_state,
+    call_short_id,
+    caller_quote,
+    dnc_record_id,
+    receipt_event_label,
+    ribbon_stages,
+    stage_label,
+)
 from skills.loader import compose
 
 logger = logging.getLogger(__name__)
@@ -115,11 +131,16 @@ _DELIVERY_STATES = frozenset(
 _URGENT_NO_PAUSE = frozenset({"DNC_CLOSE"})
 
 # Dispositions that mean the call has reached its outcome. Recording one of these
-# (e.g. callback 'completed', logged as the last step of the callback flow) ends the
-# call in code even if the model never calls end_call — the hard-close still waits
-# for the goodbye to finish first, so nothing is cut off. This closes the loop for
-# CALLBACK_CLOSE, which can't close on entry.
-_END_DISPOSITIONS = {"completed", "do_not_call", "declined", "no_response"}
+# ends the call in code even if the model never calls end_call — the hard-close
+# still waits for the goodbye to finish first. ``callback_requested`` is NOT here:
+# CALLBACK_CLOSE is multi-turn (gather time → schedule → confirm → completed).
+_END_DISPOSITIONS = {
+    "completed",
+    "do_not_call",
+    "declined",
+    "no_response",
+    "no_tcpa_consent",
+}
 _CLOSE_STATES = {"DECLINE_CLOSE", "DNC_CLOSE", "CALLBACK_CLOSE", "NO_RESPONSE_CLOSE"}
 
 
@@ -150,14 +171,25 @@ class OrchestratorMixin:
         # Last real QUALIFY ask (not a silence check-in) — used to resume after pauses.
         self._open_question: str | None = None
         self._silence_awaiting_transcript = False
+        self._silence_ignore_speech_until = 0.0
         self._mood: Mood = "neutral"
         self._last_user_text: str = ""
+        # Trust-console feeds (UI-only): never gate speech / compliance on these.
+        self._intake_frozen: bool = False
+        self._opt_out_at: float | None = None
+        self._turns_after_opt_out: int = 0
+        self._last_interrupt_ms: int | None = None
+        self._trust_t0: float = time.perf_counter()
+        # Dedupe receipt keys so gate + tool paths don't reprint the same line.
+        self._receipt_keys: set[str] = set()
+        self._receipt_event_label: str | None = None
         logger.info("[Orchestrator] enabled — starting in %s", self._fsm.state)
 
     def set_call_context(self, call_id, channel="web"):
         super().set_call_context(call_id, channel)
         self._fsm.call_id = call_id
         self._ctx.call_id = call_id
+        self._trust_snapshot(reason="call_start")
 
     # --- UI notices: surface each orchestrator action to the browser as a pop-up ---
 
@@ -204,6 +236,271 @@ class OrchestratorMixin:
         if pair:
             self._notice(pair[0], pair[1], kind="route")
 
+    # --- Trust console (additive AgentEvent feed; never blocks the call) -------
+
+    def _trust_elapsed_s(self) -> float:
+        return round(time.perf_counter() - self._trust_t0, 3)
+
+    def _trust(self, kind: str, **fields) -> None:
+        """Fire-and-forget trust UI event (best-effort; rides AgentEvent)."""
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return
+        payload = {
+            "Kind": "AgentEvent",
+            "event": "trust",
+            "trustKind": kind,
+            "t": self._trust_elapsed_s(),
+            "callId": getattr(self._ctx, "call_id", None),
+            "callShort": call_short_id(getattr(self._ctx, "call_id", None)),
+            "state": self._fsm.state,
+            "stage": stage_label(self._fsm.state),
+            **fields,
+        }
+        task = loop.create_task(self._send_notice(payload))
+        bag = self.__dict__.setdefault("_notice_tasks", set())
+        bag.add(task)
+        task.add_done_callback(bag.discard)
+
+    def _trust_snapshot(self, *, reason: str = "snapshot") -> None:
+        """Push ribbon + briefing + gate arming state to the browser."""
+        brief = briefing_for_state(self._fsm.state)
+        self._trust(
+            "snapshot",
+            reason=reason,
+            ribbon=ribbon_stages(self._fsm.state),
+            rebuttalUsed=bool(getattr(self._ctx, "rebuttal_used", False)),
+            rebuttalBudget=1,
+            briefing=brief,
+            gatesArmed=True,
+            intakeFrozen=self._intake_frozen,
+            disposition=getattr(self._ctx, "disposition", None),
+            dncRecorded=bool(getattr(self._ctx, "dnc_recorded", False)),
+            gateTargets={
+                "ttfaP50s": GATE_TTFA_P50_S,
+                "interruptMs": GATE_INTERRUPT_MS,
+                "turnsAfterOptOut": GATE_TURNS_AFTER_OPT_OUT,
+            },
+            turnsAfterOptOut=self._turns_after_opt_out,
+            lastInterruptMs=self._last_interrupt_ms,
+        )
+
+    def _trust_receipt_line(
+        self,
+        text: str,
+        *,
+        ok: bool = False,
+        record_id: str | None = None,
+        once_key: str | None = None,
+        event_label: str | None = None,
+        highlight: str | None = None,
+    ) -> None:
+        """Append one AUDIT COPY line (UI only). ``once_key`` dedupes gate+tool duplicates."""
+        if once_key:
+            if once_key in self._receipt_keys:
+                return
+            self._receipt_keys.add(once_key)
+        if event_label:
+            self._receipt_event_label = event_label
+        self._trust(
+            "receipt",
+            line=text,
+            ok=ok,
+            recordId=record_id,
+            highlight=highlight,
+            eventLabel=self._receipt_event_label,
+            intakeFrozen=self._intake_frozen,
+            turnsAfterOptOut=self._turns_after_opt_out,
+        )
+
+    def _trust_promise(self, spoken: str, record_id: str) -> None:
+        self._trust("promise", spoken=spoken, recordId=record_id, backed=True)
+
+    def _trust_eng_log(self, text: str) -> None:
+        self._trust("eng_log", text=text)
+
+    async def _flush_line_audio(self) -> int:
+        """Cancel + StopAudio; return ms to silence (trust metric only)."""
+        t0 = time.perf_counter()
+        await self._cancel_active_response_if_needed()
+        try:
+            await self.send_message(
+                json.dumps({"Kind": "StopAudio", "AudioData": None, "StopAudio": {}})
+            )
+        except Exception:
+            logger.debug("[Orchestrator] StopAudio flush skipped", exc_info=True)
+        ms = max(0, int((time.perf_counter() - t0) * 1000))
+        self._last_interrupt_ms = ms
+        return ms
+
+    async def _emit_gate_trust(self, action: str, caller_text: str) -> None:
+        """Append AUDIT COPY lines for a forced workflow action (UI only; never gates speech)."""
+        quote = caller_quote(caller_text)
+        label = receipt_event_label(action)
+        phrase = matched_opt_out(caller_text) if action == "DNC_CLOSE" else None
+
+        self._trust(
+            "gate_hit",
+            action=action,
+            pattern=phrase or quote,
+            message=(
+                f'GATE · opt out matched "{phrase}"'
+                if action == "DNC_CLOSE" and phrase
+                else f"GATE · {action}"
+            ),
+        )
+
+        if action == "DNC_CLOSE":
+            self._opt_out_at = time.perf_counter()
+            self._turns_after_opt_out = 0
+            self._intake_frozen = True
+            hit = phrase or quote
+            self._trust_receipt_line(
+                f'opt out matched "{hit}"',
+                event_label=label,
+                highlight=hit,
+            )
+            self._trust_eng_log(f'gate=OPT_OUT_HARD pattern="{hit}"')
+            flush_ms = await self._flush_line_audio()
+            self._trust_receipt_line("model response cancelled")
+            self._trust_receipt_line(
+                f"line audio flushed · {flush_ms} ms to silence", ok=True
+            )
+            self._trust(
+                "gate_flush",
+                interruptMs=flush_ms,
+                message=f"agent stopped in {flush_ms} ms",
+            )
+            rid = dnc_record_id(self._ctx.call_id)
+            self._trust_receipt_line(
+                f"do not call record {rid} written",
+                ok=True,
+                record_id=rid,
+                once_key=f"dnc:{rid}",
+            )
+            disp = getattr(self._ctx, "disposition", None) or "do_not_call"
+            self._trust_receipt_line(
+                f"disposition set: {disp}", ok=True, once_key=f"disp:{disp}"
+            )
+            self._trust_receipt_line(
+                "intake frozen · later speech not stored",
+                ok=True,
+                once_key="intake_frozen",
+            )
+            self._trust_promise("we won't call again", rid)
+            self._trust("freeze", frozen=True, at=time.strftime("%H:%M:%S"))
+
+        elif action == "CALLBACK_CLOSE":
+            self._trust_receipt_line(
+                f'callback matched "{quote}"',
+                event_label=label,
+                highlight=quote,
+            )
+            flush_ms = await self._flush_line_audio()
+            self._trust_receipt_line("model response cancelled")
+            self._trust_receipt_line(
+                f"line audio flushed · {flush_ms} ms to silence", ok=True
+            )
+            self._trust(
+                "gate_flush",
+                interruptMs=flush_ms,
+                message=f"agent stopped in {flush_ms} ms",
+            )
+            disp = getattr(self._ctx, "disposition", None) or "callback_requested"
+            self._trust_receipt_line(
+                f"disposition set: {disp}", ok=True, once_key=f"disp:{disp}"
+            )
+
+        elif action == "DECLINE_CLOSE":
+            self._trust_receipt_line(
+                f'decline matched "{quote}"',
+                event_label=label,
+                highlight=quote,
+            )
+            flush_ms = await self._flush_line_audio()
+            self._trust_receipt_line("model response cancelled")
+            self._trust_receipt_line(
+                f"line audio flushed · {flush_ms} ms to silence", ok=True
+            )
+            self._trust(
+                "gate_flush",
+                interruptMs=flush_ms,
+                message=f"agent stopped in {flush_ms} ms",
+            )
+            disp = getattr(self._ctx, "disposition", None) or "declined"
+            self._trust_receipt_line(
+                f"disposition set: {disp}", ok=True, once_key=f"disp:{disp}"
+            )
+
+        elif action in ("ESCALATE", "TRANSFER"):
+            self._trust_receipt_line(
+                f'transfer matched "{quote}"',
+                event_label=label,
+                highlight=quote,
+            )
+            flush_ms = await self._flush_line_audio()
+            self._trust_receipt_line("model response cancelled")
+            self._trust_receipt_line(
+                f"line audio flushed · {flush_ms} ms to silence", ok=True
+            )
+            self._trust(
+                "gate_flush",
+                interruptMs=flush_ms,
+                message=f"agent stopped in {flush_ms} ms",
+            )
+            disp = getattr(self._ctx, "disposition", None) or "transferred"
+            self._trust_receipt_line(
+                f"disposition set: {disp}", ok=True, once_key=f"disp:{disp}"
+            )
+
+        elif action == "LANGUAGE_ROUTE":
+            self._trust_receipt_line(
+                f'language route matched "{quote}"',
+                event_label=label,
+                highlight=quote,
+            )
+            flush_ms = await self._flush_line_audio()
+            self._trust_receipt_line("model response cancelled")
+            self._trust_receipt_line(
+                f"line audio flushed · {flush_ms} ms to silence", ok=True
+            )
+            self._trust(
+                "gate_flush",
+                interruptMs=flush_ms,
+                message=f"agent stopped in {flush_ms} ms",
+            )
+            disp = getattr(self._ctx, "disposition", None) or "language_routed"
+            self._trust_receipt_line(
+                f"disposition set: {disp}", ok=True, once_key=f"disp:{disp}"
+            )
+
+        else:
+            self._trust_receipt_line(
+                f"workflow forced → {action}",
+                event_label=label,
+            )
+            flush_ms = await self._flush_line_audio()
+            self._trust(
+                "gate_flush",
+                interruptMs=flush_ms,
+                message=f"agent stopped in {flush_ms} ms",
+            )
+
+        self._trust_snapshot(reason=f"action:{action}")
+
+    def _note_agent_turn_after_opt_out(self) -> None:
+        if self._opt_out_at is None:
+            return
+        self._turns_after_opt_out += 1
+        self._trust_receipt_line(
+            f"close spoken · {self._turns_after_opt_out} turn after opt out",
+            ok=self._turns_after_opt_out <= GATE_TURNS_AFTER_OPT_OUT,
+        )
+        self._trust(
+            "opt_out_turns",
+            turnsAfterOptOut=self._turns_after_opt_out,
+        )
     # --- model-agnostic capture: bridge extracted insights into the paper trail --
 
     # Insight-key hints for a preferred callback time/window. This matches the
@@ -232,6 +529,9 @@ class OrchestratorMixin:
         schedule_callback in code once a callback time is captured during the callback
         close (idempotent via ctx.callback_scheduled).
         """
+        # After hard opt-out, stop writing new borrower fields (UI freeze + paper trail).
+        if self._intake_frozen:
+            return
         emitted = getattr(self, "_emitted_insights", None) or {}
         for key, row in emitted.items():
             if not key or key in self._ctx.fields:
@@ -251,13 +551,31 @@ class OrchestratorMixin:
             )
         if self._fsm.state == "CALLBACK_CLOSE" and not self._ctx.callback_scheduled:
             preferred = self._captured_callback_time(emitted)
-            if preferred:
-                execute_tool(
+            # Do not lock a vague half-answer ("morning" / "anytime") — that cut
+            # the multi-turn schedule dialogue short and hard-closed mid-speech.
+            if preferred and is_concrete_callback_time(preferred):
+                result = execute_tool(
                     "schedule_callback",
                     {"preferred_time": preferred},
                     self._ctx,
                     sink=self._sink,
                 )
+                rid = (result or {}).get("record_id")
+                if rid:
+                    self._trust_promise(f"callback · {preferred}", str(rid))
+                    self._trust_receipt_line(
+                        f"callback recorded · {preferred} {rid}",
+                        ok=True,
+                        record_id=str(rid),
+                        once_key=f"cb:{rid}",
+                        event_label=receipt_event_label("CALLBACK_CLOSE"),
+                        highlight=str(rid),
+                    )
+                    self._trust_receipt_line(
+                        "confirmation matches record",
+                        ok=True,
+                        once_key=f"cb_confirm:{rid}",
+                    )
 
     # --- end-of-call is the orchestrator's alone --------------------------
 
@@ -274,6 +592,14 @@ class OrchestratorMixin:
         """
         if self._ctx.disposition is None:
             logger.debug("[Orchestrator] base end-detection ignored — no disposition yet")
+            return
+        # CALLBACK sets disposition=callback_requested on entry while time is still
+        # being gathered — never treat that as "goodbye finished, hang up".
+        if self._ctx.disposition not in _END_DISPOSITIONS:
+            logger.debug(
+                "[Orchestrator] base end-detection ignored — disposition %s not terminal",
+                self._ctx.disposition,
+            )
             return
         logger.info(
             "[Orchestrator] base end-detection fired (disposition=%s) — scheduling close",
@@ -299,6 +625,10 @@ class OrchestratorMixin:
         if not getattr(self, "_hard_close_baseline_locked", False):
             self._close_wait_since_audio = getattr(self, "_last_audio_delta_at", 0.0)
         self._hard_close_scheduled_at = time.perf_counter()
+        if not getattr(self, "_trust_close_receipt_sent", False):
+            self._trust_close_receipt_sent = True
+            self._trust_receipt_line("call ended clean", ok=True)
+            self._trust("receipt_total", held=True, label="RECORD BEFORE PROMISE")
         self._hard_close_task = asyncio.create_task(self._hard_close_after_grace())
 
     async def request_end_call(self, *, source: str = "client") -> None:
@@ -351,8 +681,10 @@ class OrchestratorMixin:
 
         Timeline: wait for the goodbye to START, then for the client to report it
         FINISHED playing (a real signal, not a server-side guess) -> pause
-        _POST_SPEECH_GRACE_S -> finalize (summary + persist) -> close the socket.
-        Nothing cuts the goodbye short.
+        _POST_SPEECH_GRACE_S -> finalize (summary + persist on the still-open
+        socket) -> brief settle -> close the socket as a safety net.
+        Nothing cuts the goodbye short, and the summary is not dropped by an
+        early WebSocket close.
         """
         # Ask the client to report when it finishes PLAYING the goodbye. It only
         # forwards PlaybackFinished once armed, so the channel stays quiet during
@@ -363,22 +695,38 @@ class OrchestratorMixin:
             logger.debug("[Orchestrator] arm playback-end signal skipped", exc_info=True)
         # Final capture of anything the extractor produced late in the call.
         self._bridge_insights_to_ctx()
+        # Prefetch summary while goodbye audio plays — still silent in the UI until
+        # request_end_call emits the loading banner.
+        try:
+            self._prefetch_call_summary()
+        except Exception:
+            logger.debug("[Orchestrator] summary prefetch skipped", exc_info=True)
         try:
             await self._wait_for_playback_end()
             await asyncio.sleep(self._POST_SPEECH_GRACE_S)
         except asyncio.CancelledError:
             raise
-        # Finalize (summary + persist), then close the socket authoritatively.
+        # Hang up the interview, generate summary, persist — all while the client
+        # WebSocket stays open so "Generating call summary…" can resolve into text.
         try:
             if not getattr(self, "_finalizing", False):
                 await self.request_end_call(source="agent")
+            await self.await_finalize_complete()
         except Exception:
-            logger.debug("[Orchestrator] finalize on hard-close failed", exc_info=True)
+            logger.exception("[Orchestrator] finalize on hard-close failed")
+        # Give the browser a beat to paint CallSummary / CallSaved before we force
+        # the socket down (client normally closes itself after CallSaved).
+        try:
+            await asyncio.sleep(3.0)
+        except asyncio.CancelledError:
+            raise
         ws = getattr(self, "client_ws", None)
         if ws is None:
             return
         try:
-            logger.info("[Orchestrator] hard-closing client WebSocket after goodbye")
+            logger.info(
+                "[Orchestrator] hard-closing client WebSocket after summary+persist"
+            )
             await ws.close(1000)
         except Exception:
             logger.debug("[Orchestrator] client WS close skipped", exc_info=True)
@@ -490,6 +838,7 @@ class OrchestratorMixin:
             logger.info("[Orchestrator] router -> %s (single reply)", action)
             apply_action(action, self._fsm, self._ctx, sink=self._sink)
             self._notice_action(action)
+            await self._emit_gate_trust(action, self._last_user_text)
             await self._update_session()
             await self._create_response(
                 cancel=True,
@@ -636,6 +985,11 @@ class OrchestratorMixin:
         self._silence_paused_at = None
         self._silence_paused_total = 0.0
 
+    # Ignore mic VAD blips right after Maya finishes (speaker → mic echo).
+    _SILENCE_POST_SPEECH_GRACE_S = 0.85
+    # speech_started with no transcript → re-arm the quiet countdown.
+    _SILENCE_PHANTOM_TRANSCRIPT_S = 2.0
+
     def _arm_silence_watch(self, *, clear_fired: bool = True) -> None:
         """Start a fresh quiet countdown after the agent finished speaking."""
         if self._ctx.ended or self._fsm.state not in SILENCE_WATCH_STATES:
@@ -645,6 +999,10 @@ class OrchestratorMixin:
         self._silence_paused_at = None
         self._silence_paused_total = 0.0
         self._silence_cue = None
+        self._silence_awaiting_transcript = False
+        self._silence_ignore_speech_until = (
+            time.perf_counter() + self._SILENCE_POST_SPEECH_GRACE_S
+        )
         if clear_fired:
             self._silence_fired = set()
             self._ctx.silence_count = 0
@@ -652,7 +1010,40 @@ class OrchestratorMixin:
         current = asyncio.current_task()
         if task is not None and not task.done() and task is not current:
             task.cancel()
+        step = next_silence_step(fired=self._silence_fired, policy=self._silence_policy)
+        gap = float(step[2]) if step else None
+        logger.info(
+            "[Orchestrator] silence armed (state=%s, next_gap=%.1fs, fired=%s)",
+            self._fsm.state,
+            gap if gap is not None else -1.0,
+            sorted(self._silence_fired),
+        )
+        self._trust(
+            "silence",
+            status="armed",
+            nextGapS=gap,
+            checkinsDone=int(self._ctx.silence_count),
+            fired=sorted(self._silence_fired),
+        )
         self._silence_task = asyncio.create_task(self._silence_watch_loop())
+
+    async def _rearm_silence_if_phantom(self, token: int) -> None:
+        """Resume quiet countdown when speech_started was not a real caller turn."""
+        try:
+            await asyncio.sleep(self._SILENCE_PHANTOM_TRANSCRIPT_S)
+        except asyncio.CancelledError:
+            raise
+        if token != self._silence_arm_token:
+            return
+        if not self._silence_awaiting_transcript:
+            return
+        self._silence_awaiting_transcript = False
+        if self._ctx.ended or self._fsm.state not in SILENCE_WATCH_STATES:
+            return
+        logger.info(
+            "[Orchestrator] silence re-armed after speech_started with no transcript"
+        )
+        self._arm_silence_watch(clear_fired=False)
 
     async def _silence_watch_loop(self) -> None:
         """Wait one full quiet gap, then fire the next silence step once."""
@@ -777,6 +1168,12 @@ class OrchestratorMixin:
         )
         self._silence_reprompting = True
         self._silence_cue = cue
+        self._trust(
+            "silence",
+            status="checkin",
+            checkinIndex=index + 1,
+            checkinsDone=index + 1,
+        )
         try:
             await self._update_session()
             # Caller may have spoken during session.update — do not create a check-in.
@@ -812,7 +1209,20 @@ class OrchestratorMixin:
             self._ctx,
             sink=self._sink,
         )
+        quiet = self._silence_quiet_elapsed()
+        checks = int(self._ctx.silence_count)
+        self._trust_receipt_line(
+            f"silence timeout · {quiet:.0f}s quiet after {checks} check-in(s)",
+            event_label=receipt_event_label("NO_RESPONSE_CLOSE"),
+        )
+        disp = self._silence_policy.disposition
+        self._trust_receipt_line(
+            f"disposition set: {disp}",
+            ok=True,
+            once_key=f"disp:{disp}",
+        )
         self._fsm.transition("NO_RESPONSE_CLOSE", reason="silence_timeout")
+        self._trust("silence", status="close", checkinsDone=checks)
         self._silence_task = None
         self._silence_anchor = None
         self._silence_paused_at = None
@@ -851,9 +1261,38 @@ class OrchestratorMixin:
                 logger.info("[Orchestrator] silence check-in aborted by caller speech")
             await super().on_speech_started()
             return
-        self._cancel_silence_watch()
+
+        # Echo after Maya finishes often trips VAD. Ignoring that for a short grace
+        # keeps the quiet countdown alive (otherwise silence never fires).
+        if (
+            not aborting
+            and time.perf_counter() < float(getattr(self, "_silence_ignore_speech_until", 0.0) or 0.0)
+        ):
+            await super().on_speech_started()
+            return
+
         if aborting:
+            self._cancel_silence_watch()
             logger.info("[Orchestrator] silence check-in aborted by caller speech")
+            await super().on_speech_started()
+            return
+
+        watch_active = (
+            self._silence_anchor is not None
+            or (self._silence_task is not None and not self._silence_task.done())
+        )
+        if watch_active:
+            # Pause only — re-arm if no finalized transcript arrives (phantom VAD).
+            self._pause_silence_timer_only()
+            self._silence_awaiting_transcript = True
+            token = self._silence_arm_token
+            task = asyncio.create_task(self._rearm_silence_if_phantom(token))
+            bag = self.__dict__.setdefault("_notice_tasks", set())
+            bag.add(task)
+            task.add_done_callback(bag.discard)
+            await super().on_speech_started()
+            return
+
         await super().on_speech_started()
 
     async def _arm_silence_after_settle(self, *, clear_fired: bool, token: int) -> None:
@@ -923,6 +1362,11 @@ class OrchestratorMixin:
                 if self._fsm.state == "QUALIFY"
                 else compose(self._fsm.state, self._ctx.facts())
             )
+            if self._fsm.state == "DECLINE_CLOSE":
+                text = (
+                    f"{text}\n\n---\nTEMPORARY DECLINE CLOSE (this turn only):\n"
+                    f"{DECLINE_CLOSE_RULES}"
+                )
             if self._fsm.state in _DELIVERY_STATES:
                 text = f"{text}{self._delivery_suffix()}"
             session.instructions = text
@@ -941,6 +1385,11 @@ class OrchestratorMixin:
     async def _update_session(self) -> None:
         if self._voicelive_connected and self.conn is not None:
             await self.conn.session.update(session=self._session_config())
+        brief = briefing_for_state(self._fsm.state)
+        self._trust_eng_log(
+            f"session.update skills={brief.get('skills')} bytes={brief.get('bytes')}"
+        )
+        self._trust_snapshot(reason="session_update")
 
     async def _human_think_pause(self) -> None:
         """Short beat after the caller finishes — feels human (150–300ms)."""
@@ -975,7 +1424,10 @@ class OrchestratorMixin:
             logger.info("[Orchestrator] skip response.create before Voice Live — call ending")
             return
         await self.conn.response.create()
-
+        self._note_agent_turn_after_opt_out()
+        # CALLBACK stays multi-turn: never hard-close just because a time is recorded
+        # mid-negotiation — wait for disposition ``completed`` / end_call after the
+        # confirmation goodbye has been spoken.
     # --- the gate, on every finalized caller turn --------------------------
 
     async def on_user_transcript_done(self, transcript: str):
@@ -1014,7 +1466,7 @@ class OrchestratorMixin:
         if self._mood != "neutral":
             logger.info("[Orchestrator] mood=%s", self._mood)
 
-        # Caller spoke — silence clock restarts after this turn's reply settles.
+        # Real caller turn — wipe silence progress; arm again after this reply settles.
         self._cancel_silence_watch()
 
         # The server no longer auto-responds (create_response is off for the
@@ -1028,6 +1480,7 @@ class OrchestratorMixin:
                 "[Orchestrator] gate=%s -> %s", decision.action, decision.state
             )
             self._notice_action(decision.action)
+            await self._emit_gate_trust(decision.action, text)
             await self._update_session()
             await self._create_response(
                 cancel=True,
@@ -1039,10 +1492,31 @@ class OrchestratorMixin:
                 self._schedule_hard_close()
             return
 
-        # No gate. Advance greeting -> qualify on the caller's first real turn, then
-        # reply under the QUALIFY skill (not a re-read of the greeting disclosure).
+        # No gate. Greeting disclosure must not auto-advance on a refuse.
         if self._fsm.state == "GREETING":
-            self._fsm.transition("QUALIFY", reason="consent_or_first_turn")
+            if is_consent_refusal(text):
+                logger.info("[Orchestrator] greeting consent refused — DECLINE_CLOSE")
+                apply_action("DECLINE_CLOSE", self._fsm, self._ctx, sink=self._sink)
+                # Prefer TCPA-accurate disposition for disclosure refusal.
+                execute_tool(
+                    "log_disposition",
+                    {"disposition": "no_tcpa_consent"},
+                    self._ctx,
+                    sink=self._sink,
+                )
+                self._notice_action("DECLINE_CLOSE")
+                await self._emit_gate_trust("DECLINE_CLOSE", text)
+                await self._update_session()
+                await self._create_response(cancel=True, think_pause=False)
+                self._schedule_hard_close()
+                return
+            if is_consent_affirm(text):
+                self._fsm.transition("QUALIFY", reason="consent_affirmed")
+                await self._update_session()
+                await self._create_response(cancel=True)
+                return
+            # Ambiguous — stay on INTRO; greeting skill can clarify or close.
+            logger.info("[Orchestrator] greeting turn ambiguous — staying in GREETING")
             await self._update_session()
             await self._create_response(cancel=True)
             return
@@ -1065,6 +1539,47 @@ class OrchestratorMixin:
             args = {}
         result = execute_tool(name, args, self._ctx, sink=self._sink)
         logger.info("[Orchestrator] tool %s -> %s", name, result)
+        rid = (result or {}).get("record_id")
+        if name == "add_to_do_not_call" and rid:
+            self._trust_receipt_line(
+                f"do not call record {rid} written",
+                ok=True,
+                record_id=str(rid),
+                once_key=f"dnc:{rid}",
+                event_label=receipt_event_label("DNC_CLOSE"),
+            )
+            self._trust_promise("we won't call again", str(rid))
+        elif name == "schedule_callback" and rid:
+            preferred = (args or {}).get("preferred_time") or "agreed window"
+            self._trust_promise(f"callback · {preferred}", str(rid))
+            self._trust_receipt_line(
+                f"callback recorded · {preferred} {rid}",
+                ok=True,
+                record_id=str(rid),
+                once_key=f"cb:{rid}",
+                event_label=receipt_event_label("CALLBACK_CLOSE"),
+                highlight=str(rid),
+            )
+            self._trust_receipt_line(
+                "confirmation matches record",
+                ok=True,
+                once_key=f"cb_confirm:{rid}",
+            )
+        elif name == "log_disposition":
+            disp = (result or {}).get("disposition") or args.get("disposition")
+            if disp:
+                self._trust_receipt_line(
+                    f"disposition set: {disp}",
+                    ok=True,
+                    once_key=f"disp:{disp}",
+                )
+        elif name == "transfer_to_lo":
+            self._trust_receipt_line(
+                "transfer to loan officer recorded",
+                ok=True,
+                once_key="transfer_recorded",
+                event_label=receipt_event_label("TRANSFER"),
+            )
 
         if self._voicelive_connected and self.conn is not None and call_id:
             try:
@@ -1079,13 +1594,18 @@ class OrchestratorMixin:
             self._fsm.transition(target, reason=f"tool:{name}")
             await self._update_session()
 
-        # A terminal outcome was recorded (e.g. callback 'completed') but the model
-        # may not call end_call. End in code — the hard-close waits for the goodbye
-        # to finish playing, so nothing is cut off. Idempotent with the entry-time
-        # schedule for decline/DNC.
-        if (
-            not self._ctx.ended
-            and self._ctx.disposition in _END_DISPOSITIONS
+        # Close the call only when the paper trail is done AND the dialogue is.
+        # CALLBACK: schedule_callback records the time but does NOT end the call —
+        # the agent still confirms, then log_disposition(completed) / end_call.
+        close_now = False
+        if self._ctx.ended:
+            logger.info(
+                "[Orchestrator] end_call accepted (disposition=%s)",
+                self._ctx.disposition,
+            )
+            close_now = True
+        elif (
+            self._ctx.disposition in _END_DISPOSITIONS
             and self._fsm.state in _CLOSE_STATES
         ):
             logger.info(
@@ -1093,15 +1613,22 @@ class OrchestratorMixin:
                 self._ctx.disposition,
                 self._fsm.state,
             )
-            self._schedule_hard_close()
+            close_now = True
+        elif name == "schedule_callback" and (result or {}).get("ok"):
+            # Time on the record. Do not hard-close (still need confirm + completed)
+            # and do not response.create (that was the double-goodbye). Next turn or
+            # log_disposition(completed) finishes the call after speech settles.
+            logger.info(
+                "[Orchestrator] schedule_callback recorded — waiting for confirm + completed"
+            )
+            return
 
-        if self._ctx.ended:
-            logger.info("[Orchestrator] end_call accepted (disposition=%s)", self._ctx.disposition)
-            # Orchestrator owns teardown: wait for the goodbye to finish, then close.
+        if close_now:
             self._schedule_hard_close()
-        else:
-            # Tool follow-up — already mid-turn; no post-caller think pause.
-            await self._create_response(think_pause=False)
+            return
+
+        # Mid-call tools (e.g. capture_borrower_field) — let the model continue.
+        await self._create_response(think_pause=False)
 
 
 class OrchestratedWebHandler(OrchestratorMixin, WebMediaHandler):

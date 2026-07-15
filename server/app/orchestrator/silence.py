@@ -49,6 +49,14 @@ HARD RULES for this single turn:
 - Do NOT call tools.
 """.strip()
 
+DECLINE_CLOSE_RULES = """
+HARD RULES for this DECLINE CLOSE turn:
+- Speak ONLY one or two short goodbye sentences. Then stop.
+- Do NOT ask buy vs refinance, location, timeline, credit, income, or any loan question.
+- Do NOT try to keep qualifying or "focus on the basics."
+- Do NOT offer options that continue the application.
+""".strip()
+
 
 def quiet_elapsed(
     now: float,

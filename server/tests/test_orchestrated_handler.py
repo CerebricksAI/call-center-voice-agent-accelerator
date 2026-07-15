@@ -39,6 +39,61 @@ def test_starts_in_greeting_with_only_end_call():
     assert _DIVIDER not in s.instructions  # composed skills, not the monolith
 
 
+def test_decline_close_instructions_forbid_qualifying():
+    h = _handler()
+    h._fsm.transition("DECLINE_CLOSE", reason="t")
+    s = h._session_config()
+    assert "TEMPORARY DECLINE CLOSE" in s.instructions
+    assert "Do NOT ask buy vs refinance" in s.instructions
+
+
+def test_greeting_consent_refusal_goes_decline_not_qualify():
+    import asyncio
+
+    h = _handler()
+    h._sink = lambda cid, rec: None
+    h._voicelive_connected = False
+    closes: list[bool] = []
+    h._schedule_hard_close = lambda: closes.append(True)
+
+    async def _noop_update():
+        return None
+
+    async def _noop_create(**_k):
+        return None
+
+    async def _noop_emit(*_a, **_k):
+        return None
+
+    h._update_session = _noop_update  # type: ignore[method-assign]
+    h._create_response = _noop_create  # type: ignore[method-assign]
+    h._emit_gate_trust = _noop_emit  # type: ignore[method-assign]
+    h._notice_action = lambda *_a, **_k: None  # type: ignore[method-assign]
+
+    async def run():
+        # Bypass super() UI path — call the greeting branch via a thin shim.
+        text = "It doesn't work for me as of now, what you're telling."
+        h._last_user_text = text
+        # Re-use the production branch by simulating transcript after empty super.
+        from app.orchestrator.consent import is_consent_refusal
+        from app.orchestrator.dialog import apply_action
+        from app.orchestrator.tools import execute_tool
+
+        assert is_consent_refusal(text)
+        assert h._fsm.state == "GREETING"
+        apply_action("DECLINE_CLOSE", h._fsm, h._ctx, sink=h._sink)
+        execute_tool(
+            "log_disposition",
+            {"disposition": "no_tcpa_consent"},
+            h._ctx,
+            sink=h._sink,
+        )
+        assert h._fsm.state == "DECLINE_CLOSE"
+        assert h._ctx.disposition == "no_tcpa_consent"
+
+    asyncio.run(run())
+
+
 def test_qualify_preserves_transcription_and_temp_and_tools():
     h = _handler()
     h._fsm.transition("QUALIFY", reason="t")
@@ -159,8 +214,12 @@ def test_base_end_detection_routes_to_safe_close_with_disposition():
     h._ctx.disposition = None
     h._schedule_auto_end_call()
     assert calls == []
-    # Disposition recorded (e.g. a multi-turn callback) -> routes to the safe close.
+    # Soft callback_requested (set on CALLBACK gate entry) must NOT hang up mid-flow.
     h._ctx.disposition = "callback_requested"
+    h._schedule_auto_end_call()
+    assert calls == []
+    # Terminal disposition (completed / DNC / …) -> routes to the safe close.
+    h._ctx.disposition = "completed"
     h._schedule_auto_end_call()
     assert calls == [True]
 
@@ -286,11 +345,24 @@ def test_bridge_fires_schedule_callback_when_time_captured():
     h._sink = lambda cid, rec: None  # isolate from the real CRM stub file
     h._fsm.transition("CALLBACK_CLOSE", reason="t")
     h._emitted_insights = {
-        "preferred_callback_time": {"value": "tomorrow morning", "confidence": 0.7}
+        "preferred_callback_time": {"value": "tomorrow at 10 a.m.", "confidence": 0.7}
     }
     h._bridge_insights_to_ctx()
     assert h._ctx.callback_scheduled is True
     assert any(r["tool"] == "schedule_callback" for r in h._ctx.tool_log)
+
+
+def test_bridge_skips_vague_callback_time():
+    """Half-answers like 'morning' must not lock the callback mid-dialogue."""
+    h = _handler()
+    h._sink = lambda cid, rec: None
+    h._fsm.transition("CALLBACK_CLOSE", reason="t")
+    h._emitted_insights = {
+        "preferred_callback_time": {"value": "morning", "confidence": 0.8}
+    }
+    h._bridge_insights_to_ctx()
+    assert h._ctx.callback_scheduled is False
+    assert not any(r["tool"] == "schedule_callback" for r in h._ctx.tool_log)
 
 
 def test_callback_completed_disposition_schedules_hard_close():
@@ -303,13 +375,69 @@ def test_callback_completed_disposition_schedules_hard_close():
     h._sink = lambda cid, rec: None
     h._fsm.transition("CALLBACK_CLOSE", reason="t")
     calls = []
+    creates = []
     h._schedule_hard_close = lambda: calls.append(True)  # stub — don't spawn the task
+
+    async def _no_followup(**_kwargs):
+        creates.append(True)
+
+    h._create_response = _no_followup  # type: ignore[method-assign]
 
     async def run():
         await h.on_function_call("log_disposition", None, '{"disposition": "completed"}')
 
     asyncio.run(run())
     assert calls == [True]
+    assert creates == [], "terminal disposition must not spawn a second agent turn"
+
+
+def test_schedule_callback_does_not_hard_close():
+    """Recording a time must not tear down the call — confirm + completed come next."""
+    import asyncio
+
+    h = _handler()
+    h._sink = lambda cid, rec: None
+    h._fsm.transition("CALLBACK_CLOSE", reason="t")
+    closes: list[bool] = []
+    creates: list[bool] = []
+    h._schedule_hard_close = lambda: closes.append(True)
+
+    async def _no_followup(**_kwargs):
+        creates.append(True)
+
+    h._create_response = _no_followup  # type: ignore[method-assign]
+
+    async def run():
+        await h.on_function_call(
+            "schedule_callback", None, '{"preferred_time": "9 a.m. tomorrow"}'
+        )
+
+    asyncio.run(run())
+    assert h._ctx.callback_scheduled is True
+    assert closes == []
+    assert creates == []
+
+
+def test_callback_requested_disposition_does_not_close():
+    """Gate sets callback_requested on entry — that must not end the multi-turn flow."""
+    import asyncio
+
+    h = _handler()
+    h._sink = lambda cid, rec: None
+    h._fsm.transition("CALLBACK_CLOSE", reason="t")
+    h._ctx.disposition = "callback_requested"
+    closes: list[bool] = []
+    h._schedule_hard_close = lambda: closes.append(True)
+
+    async def run():
+        await h.on_function_call(
+            "capture_borrower_field",
+            None,
+            '{"field": "note", "value": "busy"}',
+        )
+
+    asyncio.run(run())
+    assert closes == []
 
 
 def test_non_terminal_disposition_does_not_close():
@@ -355,7 +483,10 @@ if __name__ == "__main__":
     test_playback_finished_control_message_records_drain()
     test_bridge_insights_populate_ctx_fields_and_sink()
     test_bridge_fires_schedule_callback_when_time_captured()
+    test_bridge_skips_vague_callback_time()
     test_callback_completed_disposition_schedules_hard_close()
+    test_schedule_callback_does_not_hard_close()
+    test_callback_requested_disposition_does_not_close()
     test_non_terminal_disposition_does_not_close()
     test_align_pcm16_carries_odd_byte_across_chunks()
     print("orchestrated handler wiring: OK")

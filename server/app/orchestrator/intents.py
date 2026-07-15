@@ -46,6 +46,18 @@ def _hit(patterns: list[str], text: str) -> bool:
     return any(re.search(p, text, re.IGNORECASE) for p in patterns)
 
 
+def matched_opt_out(text: str) -> Optional[str]:
+    """Return the matched opt-out phrase for UI receipts — does not change gate logic."""
+    text = (text or "").strip()
+    if not text:
+        return None
+    for pattern in OPT_OUT_HARD:
+        m = re.search(pattern, text, re.IGNORECASE)
+        if m:
+            return m.group(0)
+    return None
+
+
 def gate(text: str, ctx: Any = None) -> Optional[Action]:
     """Compliance floor: return ``DNC_CLOSE`` on a hard opt-out, otherwise None.
 

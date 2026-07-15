@@ -14,12 +14,18 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.orchestrator.intents import gate  # noqa: E402
+from app.orchestrator.intents import gate, matched_opt_out  # noqa: E402
 
 
 @dataclass
 class Ctx:
     rebuttal_used: bool = False
+
+
+def test_matched_opt_out_returns_phrase():
+    assert matched_opt_out("Hey, don't call me over again") is not None
+    assert "call" in matched_opt_out("don't call me").lower()
+    assert matched_opt_out("still exploring") is None
 
 
 def test_hard_optout_variants_all_map_to_dnc():

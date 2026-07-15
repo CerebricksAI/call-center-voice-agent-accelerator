@@ -915,9 +915,12 @@ class WebMediaHandler(VoiceLiveMediaHandler):
             return
         self._finalizing = True
         try:
+            # Summary first while the client WebSocket is still open, then tear down
+            # Voice Live. Parallel cleanup previously raced the HTTP summary call and
+            # could leave the UI stuck on "Generating…" if the socket dropped early.
+            await self._await_call_summary()
             cancel_task = asyncio.create_task(self._cancel_extract_worker())
             await asyncio.gather(
-                self._await_call_summary(),
                 self._ensure_voicelive_cleanup(persist=False),
                 cancel_task,
                 return_exceptions=True,
@@ -926,7 +929,33 @@ class WebMediaHandler(VoiceLiveMediaHandler):
             await self._try_notify_call_saved(saved_id)
         except Exception:
             logger.exception("[WebMediaHandler] Finalize call failed")
+            try:
+                if not self._summary_sent:
+                    await self._emit_call_summary(
+                        loading=False,
+                        error="Call summary failed during finalize",
+                    )
+                    self._summary_sent = True
+            except Exception:
+                logger.debug("[WebMediaHandler] summary error emit skipped", exc_info=True)
 
+    async def await_finalize_complete(self) -> None:
+        """Block until summary + persist have finished (hard-close / disconnect).
+
+        ``request_end_call`` starts finalize as a background task so speech teardown
+        stays responsive; callers that must keep the client socket open until the
+        summary is delivered should await this before ``ws.close``.
+        """
+        task = self._finalize_task
+        if task is not None and not task.done():
+            await asyncio.gather(task, return_exceptions=True)
+            return
+        if not self._finalizing:
+            self._finalizing = True
+        if not self._summary_sent:
+            await self._await_call_summary()
+        saved_id = await self._await_persist_call_record()
+        await self._try_notify_call_saved(saved_id)
     async def _handle_control_message(self, text: str) -> bool:
         try:
             payload = json.loads(text)
